@@ -1,0 +1,1492 @@
+import React, { useState, useEffect } from 'react';
+import { Product, RawMaterial, StockMovement, ProductionLog, ProductionJob } from '../types';
+import { dataStore, RECIPES } from '../dataStore';
+import { 
+  Box, 
+  Hammer, 
+  History, 
+  Plus, 
+  ArrowUpRight, 
+  ArrowDownLeft, 
+  Clock, 
+  CheckCircle2, 
+  Clipboard, 
+  ArrowRight, 
+  Search, 
+  Filter, 
+  AlertTriangle, 
+  User, 
+  Calendar, 
+  ChevronRight, 
+  X, 
+  FileText, 
+  Check, 
+  Loader2, 
+  AlertCircle 
+} from 'lucide-react';
+
+interface ProductionInventoryModuleProps {
+  userRole: string;
+}
+
+export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps> = ({ userRole }) => {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>([]);
+  const [movements, setMovements] = useState<StockMovement[]>([]);
+  const [productionLogs, setProductionLogs] = useState<ProductionLog[]>([]);
+  const [productionJobs, setProductionJobs] = useState<ProductionJob[]>([]);
+  
+  // Navigation: 'tracker' (Kanban Board) or 'stock' (Convert & Materials)
+  const [subTab, setSubTab] = useState<'tracker' | 'stock'>('tracker');
+
+  // Interactive Helper States
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'ongoing' | 'kendala' | 'terlambat' | 'completed_today'>('all');
+  const [selectedJob, setSelectedJob] = useState<ProductionJob | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  
+  // Note inputs for modal
+  const [modalNote, setModalNote] = useState('');
+
+  // Production input states
+  const [selectedProductId, setSelectedProductId] = useState('');
+  const [productionQty, setProductionQty] = useState(1);
+  const [customMaterials, setCustomMaterials] = useState<Array<{ material_id: string; qty: number }>>([]);
+
+  // Stock Adjustment states
+  const [showAdjust, setShowAdjust] = useState(false);
+  const [adjustType, setAdjustType] = useState<'product' | 'material'>('product');
+  const [adjustItemId, setAdjustItemId] = useState('');
+  const [adjustQty, setAdjustQty] = useState(0);
+  const [adjustDirection, setAdjustDirection] = useState<'in' | 'out'>('in');
+  const [adjustRef, setAdjustRef] = useState('Stock Opname manual');
+
+  // Resep produksi terpusat di dataStore (dipakai juga oleh OrderModule saat kirim ke produksi)
+
+  useEffect(() => {
+    loadData();
+    const handleStorageChange = () => {
+      loadData();
+    };
+    window.addEventListener('nxty_storage_change', handleStorageChange);
+    return () => window.removeEventListener('nxty_storage_change', handleStorageChange);
+  }, []);
+
+  const loadData = () => {
+    setProducts(dataStore.getProducts());
+    setRawMaterials(dataStore.getRawMaterials());
+    setMovements(dataStore.getStockMovements());
+    setProductionLogs(dataStore.getProductionLogs());
+    setProductionJobs(dataStore.getProductionJobs());
+  };
+
+  // Data lokal instan — tanpa jeda loading buatan
+  const triggerLoading = () => {
+    setIsLoading(false);
+  };
+
+  // Helper to check if raw materials are sufficient for a job
+  const checkMaterialSufficiency = (job: ProductionJob): { sufficient: boolean; details: Array<{ name: string; required: number; available: number }> } => {
+    const recipe = RECIPES[job.product_id];
+    if (!recipe) return { sufficient: true, details: [] };
+    
+    const details = recipe.map(item => {
+      const mat = rawMaterials.find(rm => rm.id === item.material_id);
+      const required = item.qtyPerUnit * job.qty;
+      const available = mat ? mat.current_stock : 0;
+      return {
+        name: mat ? mat.name : 'Bahan Tidak Diketahui',
+        required,
+        available
+      };
+    });
+
+    const sufficient = details.every(d => d.available >= d.required);
+    return { sufficient, details };
+  };
+
+  // Helper for computing Deadline (7 days from created_at)
+  const getJobDeadlineStr = (job: ProductionJob) => {
+    const createdDate = new Date(job.created_at || Date.now());
+    const deadlineDate = new Date(createdDate.getTime() + 7 * 24 * 60 * 60 * 1000);
+    return deadlineDate.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+  };
+
+  const isJobOverdue = (job: ProductionJob) => {
+    if (job.status === 'completed') return false;
+    const createdDate = new Date(job.created_at || Date.now());
+    const deadlineDate = new Date(createdDate.getTime() + 7 * 24 * 60 * 60 * 1000);
+    return deadlineDate.getTime() < Date.now();
+  };
+
+  // Helper to check for Kendala (Issues)
+  const hasKendala = (job: ProductionJob) => {
+    const noteText = (job.notes || '').toLowerCase();
+    const stagesNoteText = job.stages.map(s => s.notes || '').join(' ').toLowerCase();
+    return noteText.includes('kendala') || 
+           noteText.includes('macet') || 
+           noteText.includes('rusak') || 
+           noteText.includes('masalah') || 
+           noteText.includes('terhambat') ||
+           stagesNoteText.includes('kendala') ||
+           stagesNoteText.includes('macet') ||
+           stagesNoteText.includes('rusak') ||
+           stagesNoteText.includes('masalah') ||
+           stagesNoteText.includes('terhambat');
+  };
+
+  // Helper to check for Completed Today
+  const isCompletedToday = (job: ProductionJob) => {
+    if (job.status !== 'completed') return false;
+    const lastStage = job.stages[job.stages.length - 1];
+    if (!lastStage || !lastStage.updated_at) return false;
+    const completedDate = new Date(lastStage.updated_at).toDateString();
+    const todayDate = new Date().toDateString();
+    return completedDate === todayDate;
+  };
+
+  // Filter products based on user department role
+  const getFilteredProducts = () => {
+    if (userRole === 'admin_eva_foam') {
+      return products.filter(p => p.department_id === 'dept-eva-foam');
+    }
+    if (userRole === 'admin_konveksi') {
+      return products.filter(p => p.department_id === 'dept-konveksi');
+    }
+    return products; // General warehouse or owner sees all
+  };
+
+  // Auto populate ingredients when a product is selected
+  useEffect(() => {
+    if (selectedProductId) {
+      const recipe = RECIPES[selectedProductId];
+      if (recipe) {
+        const custom = recipe.map(item => ({
+          material_id: item.material_id,
+          qty: item.qtyPerUnit * productionQty
+        }));
+        setCustomMaterials(custom);
+      } else {
+        setCustomMaterials([]);
+      }
+    } else {
+      setCustomMaterials([]);
+    }
+  }, [selectedProductId, productionQty]);
+
+  const handlePostProduction = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedProductId || productionQty <= 0) return;
+
+    // Call dataStore transactional logging
+    const success = dataStore.recordProduction(
+      userRole === 'admin_eva_foam' ? 'dept-eva-foam' : 'dept-konveksi',
+      selectedProductId,
+      productionQty,
+      customMaterials
+    );
+
+    if (success) {
+      setSelectedProductId('');
+      setProductionQty(1);
+      alert('Produksi sukses dicatat! Bahan baku berkurang & stok barang jadi otomatis bertambah.');
+      loadData();
+      triggerLoading();
+    } else {
+      alert('Gagal mencatat produksi! Silakan periksa kembali kecukupan stok bahan baku di gudang.');
+    }
+  };
+
+  const handleManualAdjustment = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adjustItemId || adjustQty <= 0) return;
+
+    const currentMovements = dataStore.getStockMovements();
+    
+    if (adjustType === 'product') {
+      const currentProducts = dataStore.getProducts();
+      const prod = currentProducts.find(p => p.id === adjustItemId);
+      if (!prod) return;
+
+      const type: 'barang_jadi_masuk' | 'barang_jadi_keluar' = adjustDirection === 'in' ? 'barang_jadi_masuk' : 'barang_jadi_keluar';
+      const change = adjustDirection === 'in' ? adjustQty : -adjustQty;
+
+      const updatedProducts = currentProducts.map(p => {
+        if (p.id === adjustItemId) {
+          return { ...p, stock: Math.max(0, p.stock + change) };
+        }
+        return p;
+      });
+
+      currentMovements.unshift({
+        id: Math.random().toString(36).substring(2, 9),
+        type,
+        item_id: prod.id,
+        item_name: prod.name,
+        amount: adjustQty,
+        reference: adjustRef,
+        created_at: new Date().toISOString()
+      });
+
+      dataStore.setProducts(updatedProducts);
+    } else {
+      const currentMaterials = dataStore.getRawMaterials();
+      const mat = currentMaterials.find(m => m.id === adjustItemId);
+      if (!mat) return;
+
+      const type: 'bahan_masuk' | 'bahan_keluar' = adjustDirection === 'in' ? 'bahan_masuk' : 'bahan_keluar';
+      const change = adjustDirection === 'in' ? adjustQty : -adjustQty;
+
+      const updatedMaterials = currentMaterials.map(m => {
+        if (m.id === adjustItemId) {
+          return { ...m, current_stock: Math.max(0, m.current_stock + change) };
+        }
+        return m;
+      });
+
+      currentMovements.unshift({
+        id: Math.random().toString(36).substring(2, 9),
+        type,
+        item_id: mat.id,
+        item_name: mat.name,
+        amount: adjustQty,
+        reference: adjustRef,
+        created_at: new Date().toISOString()
+      });
+
+      dataStore.setRawMaterials(updatedMaterials);
+    }
+
+    dataStore.setStockMovements(currentMovements);
+    
+    // Reset adjust form
+    setAdjustItemId('');
+    setAdjustQty(0);
+    setShowAdjust(false);
+    alert('Penyesuaian stok manual berhasil diposting!');
+    loadData();
+    triggerLoading();
+  };
+
+  const handleUpdateJobStage = (jobId: string, stageName: string, action: 'start' | 'complete', customNote?: string) => {
+    const currentJobs = dataStore.getProductionJobs();
+    const job = currentJobs.find(j => j.id === jobId);
+    if (!job) return;
+
+    const note = customNote !== undefined ? customNote : modalNote;
+
+    // Update specific stage
+    const updatedStages = job.stages.map(stg => {
+      if (stg.stage === stageName) {
+        return {
+          ...stg,
+          status: (action === 'start' ? 'ongoing' : 'completed') as 'pending' | 'ongoing' | 'completed',
+          updated_at: new Date().toISOString(),
+          updated_by: userRole === 'owner' ? 'Owner' : 'Operator Produksi',
+          notes: note || stg.notes
+        };
+      }
+      return stg;
+    });
+
+    // Check if ALL stages are now completed
+    const allCompleted = updatedStages.every(stg => stg.status === 'completed');
+    const status = allCompleted ? 'completed' : 'ongoing';
+
+    // Figure out what the current active stage is
+    const current_stage = updatedStages.find(stg => stg.status === 'ongoing')?.stage || 
+                          (allCompleted ? updatedStages[updatedStages.length - 1].stage : job.current_stage);
+
+    const updatedJob: ProductionJob = {
+      ...job,
+      stages: updatedStages,
+      current_stage,
+      status,
+      notes: note || job.notes
+    };
+
+    // If completed, let's automatically add this product to products stock!
+    if (allCompleted && job.status !== 'completed') {
+      const currentProducts = dataStore.getProducts();
+      const updatedProducts = currentProducts.map(p => {
+        if (p.id === job.product_id) {
+          return { ...p, stock: p.stock + job.qty };
+        }
+        return p;
+      });
+      dataStore.setProducts(updatedProducts);
+
+      // Record a Stock Movement
+      const movements = dataStore.getStockMovements();
+      movements.unshift({
+        id: Math.random().toString(36).substring(2, 9),
+        type: 'barang_jadi_masuk',
+        item_id: job.product_id,
+        item_name: job.product_name,
+        amount: job.qty,
+        reference: `Selesai Produksi (${job.order_number || 'Internal'})`,
+        created_at: new Date().toISOString()
+      });
+      dataStore.setStockMovements(movements);
+
+      alert(`Selamat! Produksi ${job.product_name} sebanyak ${job.qty} Pcs telah SELESAI seluruh tahapannya. Stok otomatis ditambahkan ke Gudang.`);
+    }
+
+    const updatedJobsList = currentJobs.map(j => j.id === jobId ? updatedJob : j);
+    dataStore.setProductionJobs(updatedJobsList);
+
+    // Update state & reset notes
+    // Jangan buka modal bila update dipicu dari tombol cepat di kartu
+    setSelectedJob(prev => (prev ? updatedJob : null));
+    setModalNote('');
+    loadData();
+    triggerLoading();
+  };
+
+  const handleSaveOnlyNotes = (jobId: string, asKendala = false) => {
+    if (!modalNote.trim()) {
+      alert(asKendala ? 'Tulis dulu kendalanya sebelum melaporkan.' : 'Tulis catatan terlebih dahulu sebelum menyimpan.');
+      return;
+    }
+
+    const currentJobs = dataStore.getProductionJobs();
+    const job = currentJobs.find(j => j.id === jobId);
+    if (!job) return;
+
+    // Prefiks "KENDALA:" membuat job otomatis terdeteksi bermasalah di papan & filter
+    const finalNote = asKendala && !modalNote.toLowerCase().includes('kendala')
+      ? `KENDALA: ${modalNote}`
+      : modalNote;
+
+    // Save notes to the overall job notes and the active stage notes as well
+    const updatedStages = job.stages.map(stg => {
+      if (stg.stage === job.current_stage || stg.status === 'ongoing') {
+        return {
+          ...stg,
+          notes: finalNote,
+          updated_at: new Date().toISOString(),
+          updated_by: userRole === 'owner' ? 'Owner' : 'Operator Produksi'
+        };
+      }
+      return stg;
+    });
+
+    const updatedJob: ProductionJob = {
+      ...job,
+      stages: updatedStages,
+      notes: finalNote
+    };
+
+    const updatedJobsList = currentJobs.map(j => j.id === jobId ? updatedJob : j);
+    dataStore.setProductionJobs(updatedJobsList);
+
+    setSelectedJob(updatedJob);
+    setModalNote('');
+    loadData();
+    triggerLoading();
+    alert('Catatan & status kendala berhasil disimpan pada tahapan ini!');
+  };
+
+  const handleRevertJobStage = (jobId: string) => {
+    const currentJobs = dataStore.getProductionJobs();
+    const job = currentJobs.find(j => j.id === jobId);
+    if (!job) return;
+
+    const reverseStages = [...job.stages].reverse();
+    const targetStage = reverseStages.find(stg => stg.status !== 'pending');
+    if (!targetStage) {
+      alert("Tidak ada tahapan yang bisa dikembalikan (semua masih antre/pending).");
+      return;
+    }
+
+    const confirmRollback = window.confirm(`Apakah Anda yakin ingin membatalkan/mengoreksi mundur tahap "${targetStage.stage}" untuk ${job.product_name}?`);
+    if (!confirmRollback) return;
+
+    let newStatus: 'pending' | 'ongoing' | 'completed' = 'pending';
+    if (targetStage.status === 'completed') {
+      newStatus = 'ongoing';
+    } else if (targetStage.status === 'ongoing') {
+      newStatus = 'pending';
+    }
+
+    const updatedStages = job.stages.map(stg => {
+      if (stg.stage === targetStage.stage) {
+        return {
+          ...stg,
+          status: newStatus,
+          updated_at: new Date().toISOString(),
+          updated_by: userRole,
+          notes: ''
+        };
+      }
+      return stg;
+    });
+
+    const allCompleted = updatedStages.every(stg => stg.status === 'completed');
+    const wasCompleted = job.status === 'completed';
+
+    if (wasCompleted && !allCompleted) {
+      const currentProducts = dataStore.getProducts();
+      const updatedProducts = currentProducts.map(p => {
+        if (p.id === job.product_id) {
+          return { ...p, stock: Math.max(0, p.stock - job.qty) };
+        }
+        return p;
+      });
+      dataStore.setProducts(updatedProducts);
+
+      const movements = dataStore.getStockMovements();
+      movements.unshift({
+        id: Math.random().toString(36).substring(2, 9),
+        type: 'barang_jadi_keluar',
+        item_id: job.product_id,
+        item_name: job.product_name,
+        amount: job.qty,
+        reference: `Koreksi Mundur Tahapan (${job.order_number || 'Internal'})`,
+        created_at: new Date().toISOString()
+      });
+      dataStore.setStockMovements(movements);
+      alert(`Stok produk ${job.product_name} sebanyak ${job.qty} Pcs otomatis ditarik kembali dari gudang karena status pekerjaan dibatalkan dari selesai.`);
+    }
+
+    const status = allCompleted ? 'completed' : 'ongoing';
+    const current_stage = updatedStages.find(stg => stg.status === 'ongoing')?.stage || 
+                          (allCompleted ? updatedStages[updatedStages.length - 1].stage : updatedStages[0].stage);
+
+    const updatedJob: ProductionJob = {
+      ...job,
+      stages: updatedStages,
+      current_stage,
+      status
+    };
+
+    const updatedJobsList = currentJobs.map(j => j.id === jobId ? updatedJob : j);
+    dataStore.setProductionJobs(updatedJobsList);
+    
+    setSelectedJob(updatedJob);
+    loadData();
+    triggerLoading();
+    alert(`Sukses mengembalikan status tahap "${targetStage.stage}" kembali menjadi "${newStatus === 'ongoing' ? 'Diproses' : 'Antre'}".`);
+  };
+
+  const isRestrictedProduction = userRole === 'admin_marketplace' || userRole === 'admin_keuangan_hr';
+
+  // Kanban Query Filters
+  const filteredJobs = productionJobs.filter(job => {
+    // 1. Search Query
+    const searchLower = searchQuery.toLowerCase();
+    const matchesSearch = 
+      (job.order_number || '').toLowerCase().includes(searchLower) ||
+      job.product_name.toLowerCase().includes(searchLower) ||
+      (job.variant || '').toLowerCase().includes(searchLower);
+
+    if (!matchesSearch) return false;
+
+    // 2. Active filter selection
+    if (activeFilter === 'all') return true;
+    if (activeFilter === 'ongoing') return job.status === 'ongoing';
+    if (activeFilter === 'kendala') return hasKendala(job);
+    if (activeFilter === 'terlambat') return isJobOverdue(job);
+    if (activeFilter === 'completed_today') return isCompletedToday(job);
+
+    return true;
+  });
+
+  // Aksi berikutnya untuk satu job: tahap mana yang harus dimulai/diselesaikan (untuk tombol satu-tap di kartu)
+  const getNextAction = (job: ProductionJob): { stage: string; action: 'start' | 'complete' } | null => {
+    if (job.status === 'completed') return null;
+    const ongoing = job.stages.find(stg => stg.status === 'ongoing');
+    if (ongoing) return { stage: ongoing.stage, action: 'complete' };
+    const pending = job.stages.find(stg => stg.status === 'pending');
+    if (pending) return { stage: pending.stage, action: 'start' };
+    return null;
+  };
+
+  // Count helper functions for quick-filter tabs
+  const getFilterCounts = () => {
+    return {
+      all: productionJobs.length,
+      ongoing: productionJobs.filter(j => j.status === 'ongoing').length,
+      kendala: productionJobs.filter(hasKendala).length,
+      terlambat: productionJobs.filter(isJobOverdue).length,
+      completed_today: productionJobs.filter(isCompletedToday).length,
+    };
+  };
+
+  const counts = getFilterCounts();
+
+  return (
+    <div className="space-y-6">
+      <div className="no-print flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-100 pb-4">
+        <div>
+          <h1 className="text-xl font-bold text-[#1F4B36] font-sans">Manajemen Alur Kerja Produksi</h1>
+          <p className="text-xs text-gray-400">Pencatatan real-time alur pengerjaan pesanan tiap divisi (Eva Foam &amp; Konveksi) serta audit log bahan baku.</p>
+        </div>
+      </div>
+
+      {/* Sub-Tabs navigation */}
+      <div className="no-print flex border-b border-gray-200 gap-2">
+        <button
+          onClick={() => { setSubTab('tracker'); triggerLoading(); }}
+          className={`px-5 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
+            subTab === 'tracker'
+              ? 'border-[#1F4B36] text-[#1F4B36]'
+              : 'border-transparent text-gray-400 hover:text-gray-600'
+          }`}
+        >
+          <Clipboard className="w-4 h-4" /> Papan Alur Produksi
+        </button>
+        <button
+          onClick={() => { setSubTab('stock'); triggerLoading(); }}
+          className={`px-5 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
+            subTab === 'stock'
+              ? 'border-[#1F4B36] text-[#1F4B36]'
+              : 'border-transparent text-gray-400 hover:text-gray-600'
+          }`}
+        >
+          <Box className="w-4 h-4" /> Input Hasil Produksi &amp; Stok Bahan
+        </button>
+      </div>
+
+      {/* TRACKER VIEW */}
+      {subTab === 'tracker' && (
+        <div className="space-y-6 animate-fadeIn">
+          
+          {/* SEARCH, FILTERS & CONTROLS */}
+          <div className="bg-white rounded-xl border border-gray-200 p-4 md:p-5 shadow-2xs space-y-4">
+            <div className="flex flex-col md:flex-row gap-3 items-center justify-between">
+              
+              {/* Search bar */}
+              <div className="relative w-full md:w-80">
+                <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Cari nomor order, produk..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg pl-9 pr-4 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[#1F4B36] text-gray-800 placeholder-gray-400 transition-all font-sans"
+                />
+                {searchQuery && (
+                  <button onClick={() => setSearchQuery('')} className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Status info banner */}
+              <div className="flex items-center gap-2 text-[11px] text-gray-500 font-medium">
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 block"></span> Selesai</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-[#1F4B36] block"></span> Aktif/Utama</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-500 block"></span> Diproses</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-gray-300 block"></span> Antre</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-rose-500 block"></span> Kendala</span>
+              </div>
+            </div>
+
+            {/* Quick Filters */}
+            <div className="flex flex-wrap gap-2 border-t border-gray-100 pt-3">
+              <button
+                onClick={() => { setActiveFilter('all'); triggerLoading(); }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  activeFilter === 'all'
+                    ? 'bg-[#1F4B36] text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                Semua <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${activeFilter === 'all' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'}`}>{counts.all}</span>
+              </button>
+              <button
+                onClick={() => { setActiveFilter('ongoing'); triggerLoading(); }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  activeFilter === 'ongoing'
+                    ? 'bg-amber-600 text-white'
+                    : 'bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200'
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5" /> Diproses <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${activeFilter === 'ongoing' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-800'}`}>{counts.ongoing}</span>
+              </button>
+              <button
+                onClick={() => { setActiveFilter('kendala'); triggerLoading(); }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  activeFilter === 'kendala'
+                    ? 'bg-rose-600 text-white'
+                    : 'bg-rose-50 text-rose-800 hover:bg-rose-100 border border-rose-200'
+                }`}
+              >
+                <AlertTriangle className="w-3.5 h-3.5" /> Kendala <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${activeFilter === 'kendala' ? 'bg-white/20 text-white' : 'bg-rose-100 text-rose-800'}`}>{counts.kendala}</span>
+              </button>
+              <button
+                onClick={() => { setActiveFilter('terlambat'); triggerLoading(); }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  activeFilter === 'terlambat'
+                    ? 'bg-red-700 text-white'
+                    : 'bg-red-50 text-red-800 hover:bg-red-100 border border-red-200'
+                }`}
+              >
+                <AlertCircle className="w-3.5 h-3.5" /> Terlambat <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${activeFilter === 'terlambat' ? 'bg-white/20 text-white' : 'bg-red-100 text-red-800'}`}>{counts.terlambat}</span>
+              </button>
+              <button
+                onClick={() => { setActiveFilter('completed_today'); triggerLoading(); }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  activeFilter === 'completed_today'
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200'
+                }`}
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" /> Selesai Hari Ini <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${activeFilter === 'completed_today' ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800'}`}>{counts.completed_today}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* RINGKASAN ALUR: berapa job sedang berada di tiap tahap, per departemen */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {([
+              { id: 'dept-eva-foam', label: 'Alur Eva Foam', stages: ['Campur Bahan', 'Cetak', 'Potong', 'Finishing', 'Cek Kualitas', 'Packing'] },
+              { id: 'dept-konveksi', label: 'Alur Konveksi (Jahit)', stages: ['Potong', 'Sablon', 'Jahit', 'Finishing', 'Cek Kualitas', 'Packing'] },
+            ] as const).map(dept => {
+              const deptJobs = productionJobs.filter(j => j.department_id === dept.id);
+              const activeJobs = deptJobs.filter(j => j.status !== 'completed');
+              const doneCount = deptJobs.filter(j => j.status === 'completed').length;
+              return (
+                <div key={dept.id} className="bg-white rounded-xl border border-gray-200 p-3.5">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">{dept.label}</p>
+                  <div className="flex items-center gap-1 overflow-x-auto pb-1">
+                    {dept.stages.map((stg, idx) => {
+                      const count = activeJobs.filter(j => j.current_stage === stg).length;
+                      return (
+                        <React.Fragment key={stg}>
+                          {idx > 0 && <span className="text-gray-300 shrink-0">→</span>}
+                          <span className={`shrink-0 px-2 py-1 rounded-lg text-xs font-semibold border ${
+                            count > 0
+                              ? 'bg-[#1F4B36] text-white border-[#1F4B36]'
+                              : 'bg-gray-50 text-gray-400 border-gray-100'
+                          }`}>
+                            {stg}{count > 0 && <span className="ml-1 font-black">{count}</span>}
+                          </span>
+                        </React.Fragment>
+                      );
+                    })}
+                    <span className="text-gray-300 shrink-0">→</span>
+                    <span className={`shrink-0 px-2 py-1 rounded-lg text-xs font-semibold border ${
+                      doneCount > 0 ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-gray-50 text-gray-400 border-gray-100'
+                    }`}>
+                      Selesai{doneCount > 0 && <span className="ml-1 font-black">{doneCount}</span>}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* LOADING STATE */}
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-20 space-y-3 bg-white rounded-xl border border-gray-100">
+              <Loader2 className="w-8 h-8 text-[#1F4B36] animate-spin" />
+              <p className="text-xs text-gray-500 font-medium">Memuat data alur kerja...</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+              
+              {/* DEPARTEMEN EVA FOAM COLUMN */}
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-xs">
+                <div className="flex items-center justify-between border-b border-gray-100 p-4 bg-gray-50/50">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-emerald-600"></div>
+                    <h3 className="font-bold text-sm text-[#1F4B36] uppercase tracking-wide">1. Departemen Eva Foam</h3>
+                  </div>
+                  <span className="text-[11px] bg-emerald-100 text-emerald-900 px-2.5 py-0.5 rounded-full font-black font-mono">
+                    {filteredJobs.filter(j => j.department_id === 'dept-eva-foam').length} Pekerjaan
+                  </span>
+                </div>
+
+                <div className="divide-y divide-gray-100 max-h-[650px] overflow-y-auto pr-1">
+                  {filteredJobs.filter(j => j.department_id === 'dept-eva-foam').length === 0 ? (
+                    <div className="text-center py-16 p-6">
+                      <Clipboard className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                      <p className="text-xs text-gray-400 italic">Tidak ada antrean pengerjaan.</p>
+                    </div>
+                  ) : (
+                    filteredJobs
+                      .filter(j => j.department_id === 'dept-eva-foam')
+                      .map(job => {
+                        const { sufficient } = checkMaterialSufficiency(job);
+                        const delay = isJobOverdue(job);
+                        const issue = hasKendala(job);
+
+                        return (
+                          <div 
+                            key={job.id} 
+                            onClick={() => setSelectedJob(job)}
+                            className="group relative p-4 flex flex-col md:grid md:grid-cols-12 gap-4 items-center justify-between hover:bg-emerald-50/20 transition-all cursor-pointer"
+                          >
+                            {/* 1. WO & PRODUCT INFO (5 columns on md+) */}
+                            <div className="w-full md:col-span-5 space-y-1 text-left">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="text-[9px] font-mono bg-emerald-50 text-emerald-800 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider border border-emerald-100">
+                                  {job.order_number || 'Internal'}
+                                </span>
+                                <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                                  job.status === 'completed' 
+                                    ? 'bg-emerald-100 text-emerald-800' 
+                                    : 'bg-amber-100 text-amber-800'
+                                }`}>
+                                  {job.status === 'completed' ? 'Selesai' : 'Diproses'}
+                                </span>
+                                {issue && (
+                                  <span className="text-[8px] bg-rose-100 text-rose-800 px-1.5 py-0.5 rounded font-black flex items-center gap-0.5">
+                                    <AlertTriangle className="w-2.5 h-2.5" /> KENDALA
+                                  </span>
+                                )}
+                              </div>
+                              <h4 className="font-extrabold text-gray-900 text-xs tracking-tight leading-snug group-hover:text-[#1F4B36] transition-colors">{job.product_name}</h4>
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-gray-400">
+                                <span>Varian: <strong className="text-gray-600 font-semibold">{job.variant}</strong></span>
+                                <span>&bull;</span>
+                                <span className={`inline-flex items-center gap-1 font-bold ${sufficient ? 'text-emerald-700' : 'text-amber-700'}`}>
+                                  <span className={`w-1 h-1 rounded-full ${sufficient ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
+                                  Bahan {sufficient ? 'Tersedia' : 'Kurang'}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* 2. PROGRESS BAR & STAGE (4 columns on md+) */}
+                            <div className="w-full md:col-span-4 space-y-1.5 text-left">
+                              <div className="flex justify-between items-center text-[9px] text-gray-400 font-bold uppercase tracking-wider">
+                                <span>Tahap: <strong className="text-[#1F4B36] font-extrabold">{job.current_stage}</strong></span>
+                                <span>{job.stages.filter(s => s.status === 'completed').length} / {job.stages.length}</span>
+                              </div>
+                              
+                              <div className="flex gap-0.5 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                {job.stages.map((stg, index) => {
+                                  let bgClass = 'bg-gray-200/50';
+                                  if (stg.status === 'completed') bgClass = 'bg-emerald-500';
+                                  else if (stg.status === 'ongoing') {
+                                    bgClass = hasKendala(job) ? 'bg-rose-500' : 'bg-[#1F4B36]';
+                                  }
+                                  return (
+                                    <div
+                                      key={index}
+                                      className={`h-full flex-1 ${bgClass} transition-all`}
+                                      title={`${stg.stage}: ${stg.status}`}
+                                    />
+                                  );
+                                })}
+                              </div>
+
+                              {/* Tombol satu-tap untuk operator */}
+                              {(() => {
+                                const na = getNextAction(job);
+                                if (!na) return null;
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); handleUpdateJobStage(job.id, na.stage, na.action, ''); }}
+                                    className={`mt-1.5 w-full text-xs font-bold py-1.5 px-2 rounded-lg cursor-pointer transition-colors ${
+                                      na.action === 'start'
+                                        ? 'bg-white border border-[#1F4B36] text-[#1F4B36] hover:bg-emerald-50'
+                                        : 'bg-[#1F4B36] text-white hover:bg-[#163826]'
+                                    }`}
+                                  >
+                                    {na.action === 'start' ? `▶ Mulai: ${na.stage}` : `✓ Selesaikan: ${na.stage}`}
+                                  </button>
+                                );
+                              })()}
+                            </div>
+
+                            {/* 3. SPECS & DEADLINE (3 columns on md+) */}
+                            <div className="w-full md:col-span-3 text-left md:text-right flex md:flex-col items-center md:items-end justify-between md:justify-center gap-2">
+                              <div className="flex items-center gap-2 md:flex-col md:items-end md:gap-0.5">
+                                <span className="font-mono text-xs font-black text-gray-900 px-2 py-0.5 bg-gray-100 rounded">
+                                  {job.qty} Pcs
+                                </span>
+                                <span className="text-[10px] text-gray-500 font-medium flex items-center gap-1">
+                                  <User className="w-3 h-3 text-gray-400" />
+                                  <span className="truncate max-w-[80px]">{job.stages.find(s => s.status === 'ongoing')?.updated_by || '—'}</span>
+                                </span>
+                              </div>
+
+                              <div className="flex flex-col items-end">
+                                <span className={`text-[10px] font-bold flex items-center gap-1 ${delay ? 'text-red-600' : 'text-gray-400'}`}>
+                                  <Calendar className="w-3 h-3" />
+                                  {getJobDeadlineStr(job)}
+                                </span>
+                                <span className="text-[9.5px] font-black text-[#1F4B36] hover:underline flex items-center gap-0.5 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                                  Atur <ChevronRight className="w-3 h-3" />
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                  )}
+                </div>
+              </div>
+
+              {/* DEPARTEMEN KONVEKSI COLUMN */}
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-xs">
+                <div className="flex items-center justify-between border-b border-gray-100 p-4 bg-sky-50/20">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-sky-600"></div>
+                    <h3 className="font-bold text-sm text-sky-900 uppercase tracking-wide">2. Departemen Konveksi (Jahit)</h3>
+                  </div>
+                  <span className="text-[11px] bg-sky-100 text-sky-900 px-2.5 py-0.5 rounded-full font-black font-mono">
+                    {filteredJobs.filter(j => j.department_id === 'dept-konveksi').length} Pekerjaan
+                  </span>
+                </div>
+
+                <div className="divide-y divide-gray-100 max-h-[650px] overflow-y-auto pr-1">
+                  {filteredJobs.filter(j => j.department_id === 'dept-konveksi').length === 0 ? (
+                    <div className="text-center py-16 p-6">
+                      <Clipboard className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                      <p className="text-xs text-gray-400 italic">Tidak ada antrean pengerjaan.</p>
+                    </div>
+                  ) : (
+                    filteredJobs
+                      .filter(j => j.department_id === 'dept-konveksi')
+                      .map(job => {
+                        const { sufficient } = checkMaterialSufficiency(job);
+                        const delay = isJobOverdue(job);
+                        const issue = hasKendala(job);
+
+                        return (
+                          <div 
+                            key={job.id} 
+                            onClick={() => setSelectedJob(job)}
+                            className="group relative p-4 flex flex-col md:grid md:grid-cols-12 gap-4 items-center justify-between hover:bg-sky-50/20 transition-all cursor-pointer"
+                          >
+                            {/* 1. WO & PRODUCT INFO (5 columns on md+) */}
+                            <div className="w-full md:col-span-5 space-y-1 text-left">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="text-[9px] font-mono bg-sky-50 text-sky-800 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider border border-sky-100">
+                                  {job.order_number || 'Internal'}
+                                </span>
+                                <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                                  job.status === 'completed' 
+                                    ? 'bg-emerald-100 text-emerald-800' 
+                                    : 'bg-amber-100 text-amber-800'
+                                }`}>
+                                  {job.status === 'completed' ? 'Selesai' : 'Diproses'}
+                                </span>
+                                {issue && (
+                                  <span className="text-[8px] bg-rose-100 text-rose-800 px-1.5 py-0.5 rounded font-black flex items-center gap-0.5">
+                                    <AlertTriangle className="w-2.5 h-2.5" /> KENDALA
+                                  </span>
+                                )}
+                              </div>
+                              <h4 className="font-extrabold text-gray-900 text-xs tracking-tight leading-snug group-hover:text-sky-800 transition-colors">{job.product_name}</h4>
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-gray-400">
+                                <span>Varian: <strong className="text-gray-600 font-semibold">{job.variant}</strong></span>
+                                <span>&bull;</span>
+                                <span className={`inline-flex items-center gap-1 font-bold ${sufficient ? 'text-emerald-700' : 'text-amber-700'}`}>
+                                  <span className={`w-1 h-1 rounded-full ${sufficient ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
+                                  Bahan {sufficient ? 'Tersedia' : 'Kurang'}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* 2. PROGRESS BAR & STAGE (4 columns on md+) */}
+                            <div className="w-full md:col-span-4 space-y-1.5 text-left">
+                              <div className="flex justify-between items-center text-[9px] text-gray-400 font-bold uppercase tracking-wider">
+                                <span>Tahap: <strong className="text-sky-800 font-extrabold">{job.current_stage}</strong></span>
+                                <span>{job.stages.filter(s => s.status === 'completed').length} / {job.stages.length}</span>
+                              </div>
+                              
+                              <div className="flex gap-0.5 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                {job.stages.map((stg, index) => {
+                                  let bgClass = 'bg-gray-200/50';
+                                  if (stg.status === 'completed') bgClass = 'bg-emerald-500';
+                                  else if (stg.status === 'ongoing') {
+                                    bgClass = hasKendala(job) ? 'bg-rose-500' : 'bg-sky-700';
+                                  }
+                                  return (
+                                    <div
+                                      key={index}
+                                      className={`h-full flex-1 ${bgClass} transition-all`}
+                                      title={`${stg.stage}: ${stg.status}`}
+                                    />
+                                  );
+                                })}
+                              </div>
+
+                              {/* Tombol satu-tap untuk operator */}
+                              {(() => {
+                                const na = getNextAction(job);
+                                if (!na) return null;
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); handleUpdateJobStage(job.id, na.stage, na.action, ''); }}
+                                    className={`mt-1.5 w-full text-xs font-bold py-1.5 px-2 rounded-lg cursor-pointer transition-colors ${
+                                      na.action === 'start'
+                                        ? 'bg-white border border-sky-700 text-sky-800 hover:bg-sky-50'
+                                        : 'bg-sky-700 text-white hover:bg-sky-800'
+                                    }`}
+                                  >
+                                    {na.action === 'start' ? `▶ Mulai: ${na.stage}` : `✓ Selesaikan: ${na.stage}`}
+                                  </button>
+                                );
+                              })()}
+                            </div>
+
+                            {/* 3. SPECS & DEADLINE (3 columns on md+) */}
+                            <div className="w-full md:col-span-3 text-left md:text-right flex md:flex-col items-center md:items-end justify-between md:justify-center gap-2">
+                              <div className="flex items-center gap-2 md:flex-col md:items-end md:gap-0.5">
+                                <span className="font-mono text-xs font-black text-gray-900 px-2 py-0.5 bg-gray-100 rounded">
+                                  {job.qty} Pcs
+                                </span>
+                                <span className="text-[10px] text-gray-500 font-medium flex items-center gap-1">
+                                  <User className="w-3 h-3 text-gray-400" />
+                                  <span className="truncate max-w-[80px]">{job.stages.find(s => s.status === 'ongoing')?.updated_by || '—'}</span>
+                                </span>
+                              </div>
+
+                              <div className="flex flex-col items-end">
+                                <span className={`text-[10px] font-bold flex items-center gap-1 ${delay ? 'text-red-600' : 'text-gray-400'}`}>
+                                  <Calendar className="w-3 h-3" />
+                                  {getJobDeadlineStr(job)}
+                                </span>
+                                <span className="text-[9.5px] font-black text-sky-800 hover:underline flex items-center gap-0.5 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                                  Atur <ChevronRight className="w-3 h-3" />
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                  )}
+                </div>
+              </div>
+
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* DETAIL WORKFLOW DRAWER / MODAL */}
+      {selectedJob && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden border border-gray-100">
+            
+            {/* Modal Header */}
+            <div className="bg-[#1F4B36] text-white p-5 flex items-center justify-between">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 bg-white/20 text-white rounded text-[10px] font-mono font-bold uppercase tracking-wider border border-white/10">
+                    {selectedJob.order_number || 'INTERNAL JOB'}
+                  </span>
+                  <h3 className="text-base font-black tracking-wide uppercase">{selectedJob.product_name}</h3>
+                </div>
+                <p className="text-xs text-emerald-100 font-medium">
+                  Divisi: {selectedJob.department_id === 'dept-eva-foam' ? 'Eva Foam' : 'Konveksi (Jahit)'} &middot; Varian: {selectedJob.variant} &middot; Qty: <span className="font-bold underline">{selectedJob.qty} Pcs</span>
+                </p>
+              </div>
+              <button 
+                onClick={() => { setSelectedJob(null); setModalNote(''); }}
+                className="bg-white/10 hover:bg-white/20 text-white p-2 rounded-full transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-12 gap-6">
+              
+              {/* LEFT COLUMN: Production Details & Progressive Stepper */}
+              <div className="md:col-span-7 space-y-6">
+                
+                {/* Stepper Title */}
+                <div>
+                  <h4 className="text-xs font-black text-gray-400 uppercase tracking-wider mb-3">Progress Stepper Tahap Produksi</h4>
+                  
+                  <div className="space-y-3">
+                    {selectedJob.stages.map((stg, sIdx) => {
+                      const isCompleted = stg.status === 'completed';
+                      const isOngoing = stg.status === 'ongoing';
+                      const isPending = stg.status === 'pending';
+                      const isIssue = stg.notes && (
+                        stg.notes.toLowerCase().includes('kendala') || 
+                        stg.notes.toLowerCase().includes('rusak') || 
+                        stg.notes.toLowerCase().includes('macet')
+                      );
+
+                      // Colors mapped according to guidelines
+                      let statusBg = 'bg-gray-100 border-gray-200 text-gray-500';
+                      let labelText = 'Antre';
+                      if (isCompleted) {
+                        statusBg = 'bg-emerald-50 border-emerald-200 text-emerald-800';
+                        labelText = 'Selesai';
+                      } else if (isOngoing) {
+                        statusBg = isIssue 
+                          ? 'bg-rose-50 border-rose-300 text-rose-800' 
+                          : 'bg-[#1F4B36]/10 border-[#1F4B36]/20 text-[#1F4B36] font-bold';
+                        labelText = isIssue ? 'KENDALA' : 'Sedang Diproses';
+                      }
+
+                      return (
+                        <div 
+                          key={sIdx} 
+                          className={`flex items-start gap-3 p-3.5 rounded-xl border transition-all ${statusBg} ${isOngoing ? 'ring-2 ring-[#1F4B36]/10' : ''}`}
+                        >
+                          <div className="flex flex-col items-center">
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                              isCompleted ? 'bg-emerald-500 text-white' : isOngoing ? 'bg-[#1F4B36] text-white' : 'bg-gray-200 text-gray-500'
+                            }`}>
+                              {sIdx + 1}
+                            </div>
+                            {sIdx < selectedJob.stages.length - 1 && (
+                              <div className="w-0.5 h-10 bg-gray-200 my-1"></div>
+                            )}
+                          </div>
+
+                          <div className="flex-1 space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold font-sans uppercase tracking-wide">{stg.stage}</span>
+                              <span className="text-[10px] font-bold uppercase tracking-wider opacity-90">{labelText}</span>
+                            </div>
+
+                            {stg.updated_at && (
+                              <p className="text-[9.5px] opacity-75 font-mono">
+                                Diperbarui oleh: <span className="font-bold underline">{stg.updated_by || 'PIC'}</span> &middot; {new Date(stg.updated_at).toLocaleString('id-ID')}
+                              </p>
+                            )}
+
+                            {stg.notes && (
+                              <div className="mt-1.5 p-2 bg-white/60 rounded border border-black/5 text-[10.5px] italic text-gray-700 font-mono">
+                                Catatan: {stg.notes}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Estimate Raw Materials Used */}
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-3">
+                  <h4 className="text-xs font-black text-gray-500 uppercase tracking-wider">Estimasi Alokasi Bahan Baku</h4>
+                  
+                  {(() => {
+                    const { sufficient, details } = checkMaterialSufficiency(selectedJob);
+                    return (
+                      <div className="space-y-2">
+                        {details.length === 0 ? (
+                          <p className="text-xs text-gray-400 italic font-mono">Formula bahan baku untuk produk ini tidak didefinisikan.</p>
+                        ) : (
+                          details.map((det, idx) => {
+                            const matSuff = det.available >= det.required;
+                            return (
+                              <div key={idx} className="flex items-center justify-between bg-white px-3 py-2 rounded-lg border border-gray-100 text-xs font-medium">
+                                <span className="text-gray-700 font-sans">{det.name}</span>
+                                <div className="text-right space-y-0.5 font-mono">
+                                  <p className="text-[11px] font-bold text-gray-800">
+                                    Butuh: {det.required} Unit
+                                  </p>
+                                  <p className={`text-[10px] font-semibold ${matSuff ? 'text-emerald-700' : 'text-rose-600'}`}>
+                                    Sedia di Gudang: {det.available} Unit
+                                  </p>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+
+                        <div className={`p-3 rounded-lg text-xs font-bold border mt-2 flex items-center gap-1.5 ${
+                          sufficient ? 'bg-emerald-50 border-emerald-100 text-emerald-800' : 'bg-amber-50 border-amber-100 text-amber-800'
+                        }`}>
+                          <AlertCircle className="w-4 h-4 shrink-0" />
+                          {sufficient 
+                            ? 'Bahan baku lengkap & mencukupi di gudang utama.' 
+                            : 'PERINGATAN: Stok bahan baku di gudang kurang untuk melengkapi job produksi ini.'
+                          }
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+              </div>
+
+              {/* RIGHT COLUMN: Operator Field Interaction panel */}
+              <div className="md:col-span-5 bg-gray-50 rounded-xl p-5 border border-gray-200 space-y-6 h-fit">
+                
+                <div className="space-y-1">
+                  <h4 className="text-xs font-black text-gray-500 uppercase tracking-wider">Portal Operator Lapangan</h4>
+                  <p className="text-[11px] text-gray-400">Gunakan panel di bawah ini untuk memperbarui progres pengerjaan.</p>
+                </div>
+
+                {/* ACTIVE STAGE CONTROL INTERACTIVE PANEL */}
+                {selectedJob.status !== 'completed' ? (
+                  <div className="space-y-4">
+                    {(() => {
+                      // Find the active stage to update
+                      let activeStageIndex = selectedJob.stages.findIndex(stg => stg.status === 'ongoing');
+                      let actionType: 'start' | 'complete' = 'complete';
+                      
+                      if (activeStageIndex === -1) {
+                        // If no ongoing, find the first pending
+                        activeStageIndex = selectedJob.stages.findIndex(stg => stg.status === 'pending');
+                        actionType = 'start';
+                      }
+
+                      if (activeStageIndex === -1) return null; // All done or fallback
+                      const activeStageObj = selectedJob.stages[activeStageIndex];
+
+                      return (
+                        <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-4 shadow-3xs">
+                          <div className="border-b border-gray-100 pb-2.5">
+                            <span className="text-[9px] font-mono font-bold uppercase tracking-wider bg-amber-100 text-amber-800 px-2 py-0.5 rounded">
+                              TAHAP AKTIF
+                            </span>
+                            <h5 className="font-bold text-xs text-gray-800 mt-1 uppercase font-sans">
+                              {activeStageObj.stage} ({actionType === 'start' ? 'Belum Mulai' : 'Sedang Berjalan'})
+                            </h5>
+                          </div>
+
+                          {/* Notes Textarea input */}
+                          <div className="space-y-1.5">
+                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                              Catatan Progres / Laporan Kendala:
+                            </label>
+                            <textarea
+                              rows={3}
+                              placeholder="Ketik detail operator pelaksana, kendala mesin, keterlambatan bahan, dll..."
+                              value={modalNote}
+                              onChange={(e) => setModalNote(e.target.value)}
+                              className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-[#1F4B36] font-mono placeholder-gray-400"
+                            />
+                          </div>
+
+                          {/* Primary "Selesaikan Tahap" / "Mulai Kerja" button */}
+                          <div className="space-y-2.5">
+                            {actionType === 'start' ? (
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateJobStage(selectedJob.id, activeStageObj.stage, 'start')}
+                                className="w-full bg-[#1F4B36] hover:bg-[#122d20] text-white font-bold text-xs px-4 py-3 rounded-lg flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-all"
+                              >
+                                <PlayButtonIcon className="w-4 h-4 text-emerald-200" />
+                                Mulai Kerjakan Tahap: {activeStageObj.stage}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateJobStage(selectedJob.id, activeStageObj.stage, 'complete')}
+                                className="w-full bg-[#1F4B36] hover:bg-[#122d20] text-white font-black text-xs px-4 py-3 rounded-lg flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-all uppercase tracking-wider"
+                              >
+                                <CheckCircle2 className="w-4.5 h-4.5 text-emerald-300" />
+                                Selesaikan Tahap: {activeStageObj.stage}
+                              </button>
+                            )}
+
+                            {/* Secondary Action: Save Only Notes without switching stage */}
+                            <div className="grid grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleSaveOnlyNotes(selectedJob.id)}
+                                className="bg-white hover:bg-gray-50 text-[#1F4B36] border border-gray-200 font-bold text-xs px-3 py-2 rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+                              >
+                                <FileText className="w-3.5 h-3.5" />
+                                Simpan Catatan
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleSaveOnlyNotes(selectedJob.id, true)}
+                                className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs px-3 py-2 rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+                              >
+                                <AlertTriangle className="w-3.5 h-3.5" />
+                                Laporkan Kendala
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                ) : (
+                  <div className="bg-emerald-50 text-emerald-900 border border-emerald-100 rounded-xl p-4 text-center space-y-2">
+                    <CheckCircle2 className="w-10 h-10 mx-auto text-emerald-600" />
+                    <h5 className="font-bold text-xs uppercase font-sans">Produksi Selesai!</h5>
+                    <p className="text-[11px] text-emerald-700 leading-relaxed font-sans">
+                      Seluruh tahapan produksi untuk pekerjaan ini telah selesai dikerjakan &amp; stok telah dimasukkan ke gudang barang jadi.
+                    </p>
+                  </div>
+                )}
+
+                {/* DANGEROUS BACKSTAGE ROLLBACK BUTTON */}
+                {selectedJob.stages.some(stg => stg.status !== 'pending') && (
+                  <div className="bg-rose-50 border border-rose-100 p-4 rounded-xl space-y-3">
+                    <p className="text-[10px] font-bold text-rose-800 uppercase tracking-wider flex items-center gap-1">
+                      <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" /> Area Koreksi / Rollback Status
+                    </p>
+                    <p className="text-[10.5px] text-rose-700 leading-normal font-sans">
+                      Gunakan tombol di bawah ini apabila operator salah mengklik penyelesaian tahap. Sistem akan menarik kembali status ke tahap sebelumnya.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => handleRevertJobStage(selectedJob.id)}
+                      className="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-3.5 py-2 rounded-lg flex items-center justify-center gap-1 cursor-pointer transition-all shadow-xs"
+                    >
+                      <History className="w-3.5 h-3.5" />
+                      Kembalikan Tahap Sebelumnya (Mundur)
+                    </button>
+                  </div>
+                )}
+
+              </div>
+
+            </div>
+
+            {/* Modal Footer */}
+            <div className="bg-gray-50 border-t border-gray-100 p-4 flex justify-between items-center text-[10px] text-gray-400">
+              <span>Sistem Manajemen Alur Kerja Produksi &middot; ARI SPORTINDO</span>
+              <button
+                type="button"
+                onClick={() => { setSelectedJob(null); setModalNote(''); }}
+                className="bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-bold px-4 py-2 rounded-lg cursor-pointer transition-colors"
+              >
+                Tutup Panel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* STOCK VIEW */}
+      {subTab === 'stock' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fadeIn">
+          
+          {/* LEFT COLUMN: Input Production Logs */}
+          <div className="lg:col-span-5 space-y-6">
+            {!isRestrictedProduction ? (
+              <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
+                <div className="border-b border-gray-100 pb-3 flex items-center gap-1.5">
+                  <Hammer className="w-4.5 h-4.5 text-[#1F4B36]" />
+                  <h3 className="font-bold text-sm text-gray-800">Catat Hasil Produksi Baru</h3>
+                </div>
+
+                <form onSubmit={handlePostProduction} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1">Barang yang Diproduksi</label>
+                    <select
+                      value={selectedProductId}
+                      onChange={(e) => {
+                        const pid = e.target.value;
+                        setSelectedProductId(pid);
+                        if (RECIPES[pid]) {
+                          const cons = RECIPES[pid].map(recipe => ({
+                            material_id: recipe.material_id,
+                            qty: recipe.qtyPerUnit * productionQty
+                          }));
+                          setCustomMaterials(cons);
+                        } else {
+                          setCustomMaterials([]);
+                        }
+                      }}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[#1F4B36] font-sans text-gray-800"
+                      required
+                    >
+                      <option value="">-- Pilih Produk Jadi --</option>
+                      {getFilteredProducts().map(p => (
+                        <option key={p.id} value={p.id}>{p.name} ({p.variant})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1">Jumlah Hasil Produksi (Unit)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={productionQty}
+                      onChange={(e) => {
+                        const qty = Math.max(1, Number(e.target.value));
+                        setProductionQty(qty);
+                        if (selectedProductId && RECIPES[selectedProductId]) {
+                          const cons = RECIPES[selectedProductId].map(recipe => ({
+                            material_id: recipe.material_id,
+                            qty: recipe.qtyPerUnit * qty
+                          }));
+                          setCustomMaterials(cons);
+                        }
+                      }}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono font-bold text-gray-800"
+                      required
+                    />
+                  </div>
+
+                  {/* Formula display helper */}
+                  {selectedProductId && (
+                    <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 space-y-2">
+                      <span className="text-[10px] font-black text-[#1F4B36] block uppercase tracking-wide">Estimasi Bahan Baku yang Akan Dikonsumsi:</span>
+                      <div className="space-y-2">
+                        {customMaterials.map((mat, idx) => {
+                          const m = rawMaterials.find(x => x.id === mat.material_id)!;
+                          const isSufficient = m.current_stock >= mat.qty;
+                          return (
+                            <div key={idx} className="flex justify-between items-center text-xs font-medium">
+                              <span className="text-gray-600 font-sans">{m.name}</span>
+                              <span className={isSufficient ? 'text-gray-800 font-mono' : 'text-rose-600 font-bold font-mono'}>
+                                {mat.qty} {m.unit} <span className="text-[10px] text-gray-400 block sm:inline">(Tersedia: {m.current_stock} {m.unit})</span>
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    className="w-full bg-[#1F4B36] hover:bg-[#163826] text-white py-2.5 rounded-lg font-bold text-xs shadow-md flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+                  >
+                    <Hammer className="w-4 h-4" />
+                    Selesaikan Produksi &amp; Potong Bahan
+                  </button>
+                </form>
+              </div>
+            ) : (
+              <div className="bg-amber-50 text-[#1F4B36] border border-amber-200 rounded-xl p-6 text-center space-y-3">
+                <Hammer className="w-12 h-12 mx-auto text-[#1F4B36] opacity-75" />
+                <h3 className="font-bold text-base">Hanya Bisa Mengamati</h3>
+                <p className="text-xs text-gray-600">
+                  Menu pencatatan konversi bahan baku ini dinonaktifkan untuk role akun marketing / keuangan Anda.
+                </p>
+              </div>
+            )}
+
+            {/* Raw Materials Monitoring (Critical Stock Warning) */}
+            <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
+              <div>
+                <h3 className="font-bold text-sm text-gray-800">Status Stok Bahan Baku</h3>
+                <p className="text-xs text-gray-400">Monitoring sisa bahan baku di pabrik ARI SPORTINDO</p>
+              </div>
+
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {rawMaterials.map((mat) => {
+                  const isCritical = mat.current_stock <= mat.stock_minimum;
+                  return (
+                    <div
+                      key={mat.id}
+                      className={`p-3 rounded-lg border text-xs flex justify-between items-center transition-all ${
+                        isCritical ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-100'
+                      }`}
+                    >
+                      <div>
+                        <p className="font-bold text-gray-800 font-sans">{mat.name}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">Min: {mat.stock_minimum} {mat.unit}</p>
+                      </div>
+
+                      <div className="text-right">
+                        <span className={`font-mono font-bold text-xs ${isCritical ? 'text-amber-700' : 'text-[#1F4B36]'}`}>
+                          {mat.current_stock} {mat.unit}
+                        </span>
+                        {isCritical && (
+                          <span className="block text-[8px] font-black text-amber-700 uppercase mt-0.5 tracking-wider">stok kritis!</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* RIGHT COLUMN: Active stock of Finished Goods & movements */}
+          <div className="lg:col-span-7 space-y-6">
+            
+            {/* Products Stock */}
+            <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
+              <div>
+                <h3 className="font-bold text-sm text-gray-800 font-sans">Sisa Stok Barang Jadi</h3>
+                <p className="text-xs text-gray-400">Stok siap kirim hasil produksi gudang ARI SPORTINDO</p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-60 overflow-y-auto">
+                {products.map((p) => {
+                  const isCritical = p.stock <= 15;
+                  return (
+                    <div
+                      key={p.id}
+                      className={`p-3.5 rounded-lg border text-xs flex justify-between items-center transition-all ${
+                        isCritical ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-100'
+                      }`}
+                    >
+                      <div>
+                        <p className="font-bold text-gray-800 font-sans">{p.name}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">{p.variant}</p>
+                      </div>
+
+                      <div className="text-right">
+                        <p className="font-mono font-bold text-sm text-gray-800">{p.stock} Unit</p>
+                        {isCritical && (
+                          <span className="text-[9px] font-black text-amber-700 uppercase tracking-wide block mt-0.5">Kritis</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Audit History Log */}
+            <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
+              <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+                <div>
+                  <h3 className="font-bold text-sm text-gray-800 font-sans">Riwayat Mutasi Stok</h3>
+                  <p className="text-xs text-gray-400">Log audit real-time sirkulasi bahan dan barang jadi</p>
+                </div>
+                <History className="w-4.5 h-4.5 text-gray-400" />
+              </div>
+
+              <div className="space-y-2.5 max-h-[300px] overflow-y-auto">
+                {movements.slice(0, 15).map((mov) => {
+                  const isIncoming = mov.type.includes('masuk');
+                  const isProduct = mov.type.includes('barang_jadi');
+                  const timeString = new Date(mov.created_at).toLocaleDateString('id-ID', { hour: '2-digit', minute: '2-digit' });
+
+                  return (
+                    <div key={mov.id} className="flex justify-between items-center text-xs p-3 bg-gray-50 rounded-lg border border-gray-100">
+                      <div className="space-y-0.5">
+                        <p className="font-bold text-gray-800 font-sans">{mov.item_name}</p>
+                        <p className="text-[10px] text-gray-400">Ref: {mov.reference} | {timeString}</p>
+                      </div>
+
+                      <div className="text-right flex items-center gap-1.5 font-mono font-bold text-[11px]">
+                        {isIncoming ? (
+                          <span className="text-emerald-700 flex items-center">
+                            <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
+                            +{mov.amount}
+                          </span>
+                        ) : (
+                          <span className="text-rose-700 flex items-center">
+                            <ArrowDownLeft className="w-3.5 h-3.5 shrink-0" />
+                            -{mov.amount}
+                          </span>
+                        )}
+                        <span className="text-[9px] font-normal text-gray-400 uppercase">
+                          {isProduct ? 'Unit' : 'Bahan'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Helper tiny subcomponent for PlayButtonIcon to keep imports clean
+const PlayButtonIcon: React.FC<{ className?: string }> = ({ className }) => {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="5 3 19 12 5 21 5 3" fill="currentColor"></polygon>
+    </svg>
+  );
+};

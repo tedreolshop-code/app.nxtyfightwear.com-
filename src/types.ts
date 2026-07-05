@@ -1,0 +1,334 @@
+export interface Department {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+}
+
+export type EmployeeRole = 'karyawan' | 'leader';
+
+export interface Employee {
+  id: string;
+  username?: string; // Username login (unik, huruf kecil); diisi otomatis dari nama bila kosong
+  name: string;
+  department_id: string;
+  role: EmployeeRole;
+  rate_harian: number;
+  rate_lembur_per_jam: number;
+  status_aktif: boolean;
+  phone_number: string;
+  pin: string; // Stored securely (can be simulated hash)
+  pin_hashed?: boolean; // Flags that PIN is stored as simulated SHA-256
+  allowed_tabs?: string[]; // Custom tabs this employee is allowed to see (Row Level Security / RLS)
+  access_role?: UserRole; // Akses sistem karyawan ini (owner/admin/gudang); kosong = karyawan biasa
+  photo_url?: string; // Foto profil (data URL kecil, diunggah dari halaman Profil Saya)
+}
+
+export type AttendanceWorkStatus = 'hadir' | 'terlambat' | 'izin' | 'sakit' | 'cuti' | 'alpha' | 'lembur' | 'pulang_cepat';
+
+export interface Shift {
+  id: string;
+  name: string;
+  start_time: string; // "HH:MM" e.g., "08:00"
+  end_time: string;   // "HH:MM" e.g., "17:00"
+}
+
+export interface LeaveRequest {
+  id: string;
+  employee_id: string;
+  employee_name: string;
+  type: 'izin' | 'sakit' | 'cuti';
+  start_date: string;
+  end_date: string;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected';
+}
+
+export interface Product {
+  id: string;
+  department_id: string;
+  name: string;
+  category: string;
+  variant: string;
+  harga_jual: number;
+  stock: number;
+}
+
+export interface RawMaterial {
+  id: string;
+  name: string;
+  unit: string;
+  stock_minimum: number;
+  current_stock: number;
+}
+
+export type MovementType = 'bahan_masuk' | 'bahan_keluar' | 'barang_jadi_masuk' | 'barang_jadi_keluar';
+
+export interface StockMovement {
+  id: string;
+  type: MovementType;
+  item_id: string; // can be raw_material_id or product_id
+  item_name: string;
+  amount: number;
+  reference: string; // e.g. "Produksi #123", "Penjualan #456", "Pembelian Bahan"
+  created_at: string;
+}
+
+export interface ProductionLog {
+  id: string;
+  department_id: string;
+  product_id: string;
+  product_name: string;
+  qty_produced: number;
+  materials_used: Array<{
+    material_id: string;
+    material_name: string;
+    qty: number;
+  }>;
+  date: string;
+}
+
+export type AttendanceType = 'masuk' | 'pulang';
+export type AttendanceStatus = 'normal' | 'anomaly';
+
+export interface Attendance {
+  id: string;
+  employee_id: string;
+  employee_name: string;
+  timestamp: string;
+  type_scan: AttendanceType;
+  latitude: number;
+  longitude: number;
+  distance_meters: number;
+  selfie_url: string;
+  device_token: string;
+  is_mock_location_flag: boolean;
+  status: AttendanceStatus;
+  note?: string;
+}
+
+export interface CashAdvance {
+  id: string;
+  employee_id: string;
+  employee_name: string;
+  amount: number;
+  date: string;
+  remaining_balance: number;
+}
+
+export interface PayrollWeekly {
+  id: string;
+  employee_id: string;
+  employee_name: string;
+  period_start: string;
+  period_end: string;
+  days_worked: number;
+  overtime_hours: number;
+  base_pay: number;
+  bonus: number;
+  cash_advance_deduction: number;
+  total_pay: number;
+  is_printed: boolean;
+}
+
+export interface Customer {
+  id: string;
+  name: string;
+  address: string;
+  contact: string;
+}
+
+export interface InvoiceItem {
+  id: string;
+  product_id: string;
+  product_name: string;
+  variant: string;
+  qty: number;
+  price: number;
+  subtotal: number;
+}
+
+export interface Invoice {
+  id: string;
+  customer_id: string;
+  customer_name: string;
+  invoice_number: string;
+  date: string;
+  due_date: string;
+  items: InvoiceItem[];
+  subtotal: number;
+  dp: number;
+  tax: number;
+  total: number;
+  payment_status: 'lunas' | 'belum_lunas';
+}
+
+export interface DeliveryNote {
+  id: string;
+  customer_id: string;
+  customer_name: string;
+  delivery_number: string;
+  date: string;
+  expedition: string;
+  items: Array<{
+    product_id: string;
+    product_name: string;
+    variant: string;
+    qty: number;
+  }>;
+  status: 'dikirim' | 'diterima';
+}
+
+export interface Return {
+  id: string;
+  invoice_id: string;
+  invoice_number: string;
+  date: string;
+  reason: string;
+  product_id: string;
+  product_name: string;
+  qty: number;
+}
+
+export interface MarketplaceSale {
+  id: string;
+  channel: 'tokopedia' | 'tiktok' | 'shopee';
+  date: string;
+  order_count: number;
+  revenue: number;
+  admin_name: string;
+}
+
+export interface MarketplaceItemSale {
+  id: string;
+  product_id?: string; // Link opsional ke produk gudang; jika terisi, stok produk jadi dipotong otomatis
+  date: string;
+  order_number: string;
+  marketplace_ref: string; // e.g., Tokopedia, Shopee, TikTok Shop, etc.
+  description: string;
+  qty: number;
+  price: number;
+  subtotal: number;
+  admin_fee: number; // Biaya potongan admin marketplace
+  total: number; // Subtotal - admin_fee
+  admin_staff: string; // Staf penginput
+}
+
+export interface PurchaseOrderItem {
+  id: string;
+  description: string;
+  qty: number;
+  price: number;
+  subtotal: number;
+  material_id?: string; // Link opsional ke inventory bahan baku
+}
+
+export interface Purchase {
+  id: string;
+  po_number: string; // e.g. "08/TA/14/26"
+  supplier: string; // e.g. "Toko anyar"
+  date: string; // Tanggal transaksi
+  items: PurchaseOrderItem[];
+  total_price: number; // Total harga PO
+  status: 'pending' | 'completed' | 'cancelled';
+  admin_staff?: string;
+}
+
+export interface DailyExpense {
+  id: string;
+  date: string;
+  category: string;
+  description: string;
+  amount: number; // Ini adalah total/subtotal
+  admin_name: string;
+  qty?: number;
+  price?: number;
+}
+
+export interface NotificationLog {
+  id: string;
+  type: 'attendance_anomaly' | 'low_stock' | 'due_invoice' | 'new_return';
+  message: string;
+  target_role: string;
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface PrinterCalibration {
+  offset_x: number;
+  offset_y: number;
+}
+
+export type UserRole =
+  | 'owner' 
+  | 'admin_penjualan' 
+  | 'admin_produksi' 
+  | 'admin_gudang' 
+  | 'admin_keuangan' 
+  | 'admin_hrd'
+  | 'karyawan'
+  | 'admin_eva_foam' 
+  | 'admin_konveksi' 
+  | 'admin_marketplace' 
+  | 'admin_keuangan_hr';
+
+export interface ProductionStageProgress {
+  stage: string; // e.g. "Formulation", "Molding", "Cutting", "Sablon", "Jahit", "Finishing"
+  status: 'pending' | 'ongoing' | 'completed';
+  updated_at?: string;
+  updated_by?: string;
+  notes?: string;
+}
+
+export interface ProductionJob {
+  id: string;
+  order_id?: string;
+  order_number?: string;
+  product_id: string;
+  product_name: string;
+  variant: string;
+  qty: number;
+  department_id: 'dept-eva-foam' | 'dept-konveksi';
+  stages: ProductionStageProgress[];
+  current_stage: string; // The stage currently in progress/completed last
+  status: 'pending' | 'ongoing' | 'completed';
+  notes?: string;
+  created_at: string;
+}
+
+export interface OrderItem {
+  id: string;
+  product_id: string;
+  product_name: string;
+  variant: string;
+  qty: number;
+  price: number;
+  subtotal: number;
+}
+
+export interface Order {
+  id: string;
+  order_number: string;
+  customer_name: string;
+  customer_phone?: string;
+  source: 'online' | 'offline'; // online (Shopee/Tokopedia/TikTok) or offline (Direct/Custom)
+  marketplace_name?: string; // Shopee, Tokopedia, TikTok Shop, etc.
+  date: string;
+  items: OrderItem[];
+  total: number;
+  status: 'pending' | 'production' | 'completed' | 'cancelled';
+  notes?: string;
+}
+
+export interface Asset {
+  id: string;
+  name: string;
+  category: string;
+  department_id: string; // e.g. dept-eva-foam, dept-konveksi, atau general
+  department_name: string;
+  purchase_date: string;
+  cost: number;
+  status: 'baik' | 'diservis' | 'rusak';
+  notes?: string;
+}
+

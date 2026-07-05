@@ -1,0 +1,11 @@
+{
+  "name": "Remix: NXTY Production System",
+  "description": "Sistem Manajemen Produksi Real-Time NXTY Fightwear untuk Absensi GPS, Selfie, Payroll, Invoice \u0026 Surat Jalan, Inventory, dan Dashboard Owner.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
