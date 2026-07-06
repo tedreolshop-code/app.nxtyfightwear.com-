@@ -13,3 +13,12 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </StrictMode>,
 );
+
+// Service worker hanya aktif pada build produksi agar cache tidak mengganggu HMR.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((error) => {
+      console.error('Service worker gagal didaftarkan:', error);
+    });
+  });
+}

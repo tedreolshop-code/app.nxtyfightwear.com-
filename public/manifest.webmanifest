@@ -1,0 +1,29 @@
+{
+  "id": "/",
+  "name": "ARI SPORTINDO — Sistem Produksi",
+  "short_name": "ARI Sportindo",
+  "description": "Sistem produksi dan manajemen ARI SPORTINDO",
+  "lang": "id-ID",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#F3F4F6",
+  "theme_color": "#1F4B36",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/app-icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
