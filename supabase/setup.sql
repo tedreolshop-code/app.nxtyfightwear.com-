@@ -28,3 +28,38 @@ create policy "ari_store_write" on public.ari_store
 drop policy if exists "ari_store_update" on public.ari_store;
 create policy "ari_store_update" on public.ari_store
   for update using (true);
+
+-- ============================================================
+-- Tabel absensi: SATU BARIS PER SCAN (bukan satu array utuh).
+-- Insert per baris tidak pernah saling timpa walau banyak karyawan
+-- absen bersamaan dari HP masing-masing.
+-- ============================================================
+create table if not exists public.ari_attendance (
+  id text primary key,
+  value jsonb not null,
+  created_at timestamptz not null default now()
+);
+
+alter publication supabase_realtime add table public.ari_attendance;
+
+alter table public.ari_attendance enable row level security;
+
+drop policy if exists "ari_attendance_read" on public.ari_attendance;
+create policy "ari_attendance_read" on public.ari_attendance
+  for select using (true);
+
+drop policy if exists "ari_attendance_write" on public.ari_attendance;
+create policy "ari_attendance_write" on public.ari_attendance
+  for insert with check (true);
+
+drop policy if exists "ari_attendance_update" on public.ari_attendance;
+create policy "ari_attendance_update" on public.ari_attendance
+  for update using (true);
+
+-- Delete dibutuhkan tombol "Hapus Semua Data Contoh" (mulai data bersih).
+drop policy if exists "ari_attendance_delete" on public.ari_attendance;
+create policy "ari_attendance_delete" on public.ari_attendance
+  for delete using (true);
+
+-- Hapus sisa data absensi model lama (array utuh) dari ari_store bila ada.
+delete from public.ari_store where key = 'attendance';

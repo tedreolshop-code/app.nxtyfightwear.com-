@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { dataStore } from '../dataStore';
+import { dataStore, wibNowISO, wibTodayStr } from '../dataStore';
 import { Employee, Attendance, PayrollWeekly } from '../types';
 import { Clock, Calendar, FileText, CheckCircle2, AlertCircle, MapPin, Navigation, User, ExternalLink } from 'lucide-react';
 
@@ -13,18 +13,17 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
   const [dayName, setDayName] = useState<string>('');
   const [attendanceLogs, setAttendanceLogs] = useState<Attendance[]>([]);
   const [payrolls, setPayrolls] = useState<PayrollWeekly[]>([]);
-  const [gpsSimulation, setGpsSimulation] = useState<'inside' | 'outside'>('inside');
-  const [selfieOption, setSelfieOption] = useState<string>('https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200');
+  const [isScanning, setIsScanning] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    // Clock tick
+    // Clock tick — selalu WIB (GMT+7), tidak tergantung zona waktu HP
     const updateTime = () => {
       const now = new Date();
-      setTime(now.toLocaleTimeString('id-ID', { hour12: false }));
-      setDateStr(now.toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' }));
-      setDayName(now.toLocaleDateString('id-ID', { weekday: 'long' }));
+      setTime(now.toLocaleTimeString('id-ID', { hour12: false, timeZone: 'Asia/Jakarta' }));
+      setDateStr(now.toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Jakarta' }));
+      setDayName(now.toLocaleDateString('id-ID', { weekday: 'long', timeZone: 'Asia/Jakarta' }));
     };
 
     updateTime();
@@ -47,7 +46,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
     };
   }, []);
 
-  const todayIso = new Date().toISOString().split('T')[0];
+  const todayIso = wibTodayStr();
 
   // Filters
   const myLogs = attendanceLogs.filter(log => log.employee_id === loggedEmployee.id);
@@ -66,45 +65,48 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
     setErrorMsg(null);
     setSuccessMsg(null);
 
-    // Get coordinating coordinates from department
-    const depts = dataStore.getDepartments();
-    const myDept = depts.find(d => d.id === loggedEmployee.department_id);
-    
-    // Default coordinates (ARI SPORTINDO Matras Division coords in Bandung)
-    let lat = -6.9174;
-    let lon = 107.6191;
-
-    if (myDept) {
-      lat = myDept.latitude;
-      lon = myDept.longitude;
+    if (!navigator.geolocation) {
+      setErrorMsg('Perangkat/browser ini tidak mendukung GPS. Gunakan browser lain atau hubungi admin.');
+      return;
     }
 
-    if (gpsSimulation === 'outside') {
-      // Simulate 500 meters offset to trigger geofence anomaly
-      lat += 0.005; 
-      lon += 0.005;
-    }
+    setIsScanning(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        try {
+          const record = dataStore.recordAttendance({
+            employee_id: loggedEmployee.id,
+            timestamp: wibNowISO(),
+            type_scan: type,
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            device_token: `${navigator.userAgent}`.slice(0, 80),
+            selfie_url: '',
+            note: `Presensi mandiri dari Portal Staff (GPS perangkat, akurasi ±${Math.round(pos.coords.accuracy)} m)`
+          });
 
-    try {
-      const record = dataStore.recordAttendance({
-        employee_id: loggedEmployee.id,
-        timestamp: new Date().toISOString(),
-        type_scan: type,
-        latitude: lat,
-        longitude: lon,
-        device_token: 'BROWSER_TOKEN_' + loggedEmployee.id,
-        selfie_url: selfieOption,
-        note: `Presensi mandiri dari Portal Staff (${gpsSimulation === 'inside' ? 'Dalam Radius' : 'Luar Radius Pabrik'})`
-      });
-
-      if (record.status === 'anomaly') {
-        setSuccessMsg(`Peringatan: Absen ${type.toUpperCase()} berhasil direkam, namun ditandai ANOMALI karena jarak terdeteksi di luar radius pabrik.`);
-      } else {
-        setSuccessMsg(`Sukses! Absen ${type.toUpperCase()} berhasil disimpan pada jam ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB.`);
-      }
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Gagal merekam absensi');
-    }
+          const jam = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' });
+          if (record.status === 'anomaly') {
+            setSuccessMsg(`Peringatan: Absen ${type.toUpperCase()} direkam jam ${jam} WIB, namun ditandai ANOMALI karena posisi ${Math.round(record.distance_meters)} m dari kantor (batas 100 m).`);
+          } else {
+            setSuccessMsg(`Sukses! Absen ${type.toUpperCase()} disimpan jam ${jam} WIB (${Math.round(record.distance_meters)} m dari kantor).`);
+          }
+        } catch (err: any) {
+          setErrorMsg(err.message || 'Gagal merekam absensi');
+        } finally {
+          setIsScanning(false);
+        }
+      },
+      (err) => {
+        setIsScanning(false);
+        if (err.code === err.PERMISSION_DENIED) {
+          setErrorMsg('Akses lokasi ditolak. Izinkan akses lokasi untuk situs ini di pengaturan browser HP Anda, lalu coba lagi.');
+        } else {
+          setErrorMsg(`Gagal membaca lokasi GPS (${err.message}). Pastikan GPS aktif dan coba lagi di area terbuka.`);
+        }
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
   };
 
   // Calendar setup (Current month)
@@ -158,37 +160,18 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
               <span className="text-[10px] text-gray-400 font-semibold">{dateStr}</span>
             </div>
 
-            {/* GPS Simulation Selector */}
-            <div className="space-y-3 bg-gray-50 p-4 rounded-xl border border-gray-100 text-xs">
-              <span className="font-bold text-gray-700 block">Pengaturan Simulasi Lokasi (GPS)</span>
-              
-              <div className="space-y-2">
-                <label className="flex items-center gap-2 cursor-pointer font-medium text-gray-600">
-                  <input
-                    type="radio"
-                    name="gps_sim"
-                    checked={gpsSimulation === 'inside'}
-                    onChange={() => setGpsSimulation('inside')}
-                    className="text-[#1F4B36] focus:ring-[#1F4B36]"
-                  />
-                  <span>Di dalam Pabrik (Radius 10 Meter)</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer font-medium text-rose-600">
-                  <input
-                    type="radio"
-                    name="gps_sim"
-                    checked={gpsSimulation === 'outside'}
-                    onChange={() => setGpsSimulation('outside')}
-                    className="text-[#1F4B36] focus:ring-[#1F4B36]"
-                  />
-                  <span>Di luar Pabrik (Anomali Geofence 500m)</span>
-                </label>
-              </div>
-
-              <div className="border-t border-gray-200/60 pt-2 flex items-center gap-1.5 text-[10px] text-gray-400">
-                <MapPin className="w-3.5 h-3.5 shrink-0" />
-                <span>Radius Geofence pabrik aman: 100 Meter.</span>
-              </div>
+            {/* Info lokasi GPS */}
+            <div className="space-y-2 bg-gray-50 p-4 rounded-xl border border-gray-100 text-xs flex flex-col justify-center">
+              <span className="font-bold text-gray-700 flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-[#1F4B36] shrink-0" /> Verifikasi Lokasi GPS
+              </span>
+              <p className="text-gray-500 leading-relaxed">
+                Saat menekan tombol absen, lokasi diambil dari <b>GPS HP Anda</b> dan dicocokkan dengan
+                titik kantor. Absen di luar radius <b>100 meter</b> tetap tercatat namun ditandai anomali.
+              </p>
+              <p className="text-[10px] text-gray-400">
+                Pastikan GPS aktif dan izinkan akses lokasi saat browser meminta.
+              </p>
             </div>
           </div>
 
@@ -209,9 +192,9 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
           <div className="grid grid-cols-2 gap-3">
             <button
               onClick={() => handleScanAttendance('masuk')}
-              disabled={hasCheckedInToday}
+              disabled={hasCheckedInToday || isScanning}
               className={`py-3 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 border transition-all ${
-                hasCheckedInToday
+                hasCheckedInToday || isScanning
                   ? 'bg-gray-150 border-gray-200 text-gray-400 cursor-not-allowed'
                   : 'bg-emerald-600 hover:bg-emerald-700 text-white border-transparent cursor-pointer shadow-xs'
               }`}
@@ -221,9 +204,9 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
 
             <button
               onClick={() => handleScanAttendance('pulang')}
-              disabled={!hasCheckedInToday || hasCheckedOutToday}
+              disabled={!hasCheckedInToday || hasCheckedOutToday || isScanning}
               className={`py-3 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 border transition-all ${
-                !hasCheckedInToday || hasCheckedOutToday
+                !hasCheckedInToday || hasCheckedOutToday || isScanning
                   ? 'bg-gray-150 border-gray-200 text-gray-400 cursor-not-allowed'
                   : 'bg-rose-600 hover:bg-rose-700 text-white border-transparent cursor-pointer shadow-xs'
               }`}
@@ -288,7 +271,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
             
             {/* Calendar Days */}
             {daysInMonth.map((date, idx) => {
-              const dayStr = date.toISOString().split('T')[0];
+              const dayStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
               const logOnDay = myLogs.find(l => l.timestamp.split('T')[0] === dayStr);
               const isToday = dayStr === todayIso;
 

@@ -22,7 +22,7 @@ import {
   ProductionJob,
   Asset
 } from './types';
-import { pushKeyToCloud } from './cloudSync';
+import { pushKeyToCloud, pushAttendanceToCloud, clearAttendanceInCloud } from './cloudSync';
 
 // Helper to generate UUIDs
 const uuid = () => Math.random().toString(36).substring(2, 11);
@@ -61,10 +61,18 @@ export const RECIPES: Record<string, Array<{ material_id: string; qtyPerUnit: nu
 };
 
 // Standard GPS coordinates for ARI SPORTINDO HQ in Bandung, Indonesia
+// Koordinat kantor/pabrik ARI SPORTINDO (acuan geofence absensi, radius 100 m)
+// Sumber: Google Maps 6°48'33.2"S 107°36'05.7"E
 const COORDS = {
-  eva_foam: { lat: -6.914744, lng: 107.609810 },
-  konveksi: { lat: -6.915800, lng: 107.610500 },
+  eva_foam: { lat: -6.8092099, lng: 107.6015847 },
+  konveksi: { lat: -6.8092099, lng: 107.6015847 },
 };
+
+// Waktu WIB (GMT+7) — dipatok tetap supaya absensi konsisten di semua perangkat,
+// tidak tergantung pengaturan zona waktu HP masing-masing.
+export const wibNowISO = (): string =>
+  new Date(Date.now() + 7 * 3600 * 1000).toISOString().replace('Z', '+07:00');
+export const wibTodayStr = (): string => wibNowISO().split('T')[0];
 
 const INITIAL_DEPARTMENTS: Department[] = [
   { id: 'dept-eva-foam', name: 'Eva Foam', latitude: COORDS.eva_foam.lat, longitude: COORDS.eva_foam.lng },
@@ -82,78 +90,9 @@ const INITIAL_EMPLOYEES: Employee[] = [
   { id: 'emp-budi', username: 'budi', name: 'Budi Hartono', department_id: 'dept-konveksi', role: 'karyawan', rate_harian: 140000, rate_lembur_per_jam: 18000, status_aktif: true, phone_number: '085711223344', pin: hashPin('5678'), pin_hashed: true },
 ];
 
-const INITIAL_ORDERS: Order[] = [
-  {
-    id: 'ord-1',
-    order_number: 'ORD/2026/06/001',
-    customer_name: 'Dojo Garuda Bandung',
-    customer_phone: '08122334455',
-    source: 'offline',
-    date: '2026-06-28',
-    total: 3300000,
-    status: 'production',
-    notes: 'Matras beladiri 2cm merah-biru custom logo Dojo',
-    items: [
-      { id: uuid(), product_id: 'prod-matras-2cm', product_name: 'Matras Beladiri Eva Foam 2cm', variant: 'Merah-Biru', qty: 20, price: 165000, subtotal: 3300000 }
-    ]
-  },
-  {
-    id: 'ord-2',
-    order_number: 'ORD/2026/06/002',
-    customer_name: 'Dwi Saputro',
-    customer_phone: '08775566332',
-    source: 'online',
-    marketplace_name: 'Shopee',
-    date: '2026-06-29',
-    total: 1050000,
-    status: 'pending',
-    notes: 'Samsak premium 120cm',
-    items: [
-      { id: uuid(), product_id: 'prod-samsak-120', product_name: 'Samsak Gantung 120cm', variant: 'Premium Hitam', qty: 3, price: 350000, subtotal: 1050000 }
-    ]
-  }
-];
+const INITIAL_ORDERS: Order[] = [];
 
-const INITIAL_PRODUCTION_JOBS: ProductionJob[] = [
-  {
-    id: 'job-1',
-    order_id: 'ord-1',
-    order_number: 'ORD/2026/06/001',
-    product_id: 'prod-matras-2cm',
-    product_name: 'Matras Beladiri Eva Foam 2cm',
-    variant: 'Merah-Biru',
-    qty: 20,
-    department_id: 'dept-eva-foam',
-    status: 'ongoing',
-    current_stage: 'Molding',
-    created_at: '2026-06-28T09:00:00.000Z',
-    stages: [
-      { stage: 'Formulation', status: 'completed', updated_at: '2026-06-28T10:00:00.000Z', updated_by: 'Siti Rahma', notes: 'Bahan EVA Foam grade A dicampur rata' },
-      { stage: 'Molding', status: 'ongoing', updated_at: '2026-06-28T11:00:00.000Z', updated_by: 'Asep Saputra', notes: 'Proses pengepresan panas matras' },
-      { stage: 'Cutting', status: 'pending' },
-      { stage: 'Finishing', status: 'pending' }
-    ]
-  },
-  {
-    id: 'job-2',
-    order_id: 'ord-2',
-    order_number: 'ORD/2026/06/002',
-    product_id: 'prod-samsak-120',
-    product_name: 'Samsak Gantung 120cm',
-    variant: 'Premium Hitam',
-    qty: 3,
-    department_id: 'dept-konveksi',
-    status: 'pending',
-    current_stage: 'Cutting',
-    created_at: '2026-06-29T14:30:00.000Z',
-    stages: [
-      { stage: 'Cutting', status: 'ongoing', updated_at: '2026-06-29T15:00:00.000Z', updated_by: 'Budi Hartono', notes: 'Pemotongan bahan Cordura heavy duty' },
-      { stage: 'Sablon', status: 'pending' },
-      { stage: 'Jahit', status: 'pending' },
-      { stage: 'Finishing', status: 'pending' }
-    ]
-  }
-];
+const INITIAL_PRODUCTION_JOBS: ProductionJob[] = [];
 
 const INITIAL_ASSETS: Asset[] = [
   {
@@ -224,254 +163,32 @@ const INITIAL_CUSTOMERS: Customer[] = [
   { id: 'cust-persatuan', name: 'Persatuan Silat Surabaya', address: 'Komp. Olahraga Kertajaya Indah, Surabaya', contact: '08571122334' },
 ];
 
-const today = new Date().toISOString().split('T')[0];
-const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-const threeDaysAgo = new Date(Date.now() - 3 * 86400000).toISOString().split('T')[0];
 
-const INITIAL_STOCK_MOVEMENTS: StockMovement[] = [
-  { id: uuid(), type: 'bahan_masuk', item_id: 'mat-foam-2cm', item_name: 'Eva Foam Sheet 2cm Raw', amount: 300, reference: 'Pembelian #P-001', created_at: `${threeDaysAgo}T09:00:00.000Z` },
-  { id: uuid(), type: 'bahan_keluar', item_id: 'mat-foam-2cm', item_name: 'Eva Foam Sheet 2cm Raw', amount: 50, reference: 'Produksi #PR-001', created_at: `${yesterday}T10:15:00.000Z` },
-  { id: uuid(), type: 'barang_jadi_masuk', item_id: 'prod-matras-2cm', item_name: 'Matras Beladiri Eva Foam 2cm', amount: 50, reference: 'Produksi #PR-001', created_at: `${yesterday}T16:45:00.000Z` },
-  { id: uuid(), type: 'barang_jadi_keluar', item_id: 'prod-matras-2cm', item_name: 'Matras Beladiri Eva Foam 2cm', amount: 15, reference: 'Invoice #INV-26001', created_at: `${today}T11:30:00.000Z` },
-];
+const INITIAL_STOCK_MOVEMENTS: StockMovement[] = [];
 
-const INITIAL_PRODUCTION_LOGS: ProductionLog[] = [
-  {
-    id: 'pr-001',
-    department_id: 'dept-eva-foam',
-    product_id: 'prod-matras-2cm',
-    product_name: 'Matras Beladiri Eva Foam 2cm',
-    qty_produced: 50,
-    materials_used: [
-      { material_id: 'mat-foam-2cm', material_name: 'Eva Foam Sheet 2cm Raw', qty: 50 }
-    ],
-    date: yesterday
-  }
-];
+const INITIAL_PRODUCTION_LOGS: ProductionLog[] = [];
 
-const INITIAL_ATTENDANCE: Attendance[] = [
-  {
-    id: uuid(),
-    employee_id: 'emp-asep',
-    employee_name: 'Asep Saputra',
-    timestamp: `${yesterday}T07:15:22.000Z`,
-    type_scan: 'masuk',
-    latitude: -6.914740,
-    longitude: 107.609820,
-    distance_meters: 1.5,
-    selfie_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-    device_token: 'dev-token-asep-123',
-    is_mock_location_flag: false,
-    status: 'normal',
-    note: 'Tepat waktu'
-  },
-  {
-    id: uuid(),
-    employee_id: 'emp-asep',
-    employee_name: 'Asep Saputra',
-    timestamp: `${yesterday}T16:02:44.000Z`,
-    type_scan: 'pulang',
-    latitude: -6.914750,
-    longitude: 107.609800,
-    distance_meters: 2.1,
-    selfie_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-    device_token: 'dev-token-asep-123',
-    is_mock_location_flag: false,
-    status: 'normal',
-    note: 'Pulang kerja reguler'
-  },
-  {
-    id: uuid(),
-    employee_id: 'emp-budi',
-    employee_name: 'Budi Hartono',
-    timestamp: `${yesterday}T08:45:10.000Z`,
-    type_scan: 'masuk',
-    latitude: -6.918900, // Outside radius
-    longitude: 107.615200,
-    distance_meters: 610.5,
-    selfie_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
-    device_token: 'dev-token-budi-999',
-    is_mock_location_flag: false,
-    status: 'anomaly',
-    note: 'Absen di luar radius (~610m dari Konveksi)'
-  }
-];
+const INITIAL_ATTENDANCE: Attendance[] = [];
 
-const INITIAL_CASH_ADVANCES: CashAdvance[] = [
-  { id: uuid(), employee_id: 'emp-asep', employee_name: 'Asep Saputra', amount: 150000, date: threeDaysAgo, remaining_balance: 100000 }
-];
+const INITIAL_CASH_ADVANCES: CashAdvance[] = [];
 
-const INITIAL_PAYROLL_WEEKLY: PayrollWeekly[] = [
-  {
-    id: uuid(),
-    employee_id: 'emp-asep',
-    employee_name: 'Asep Saputra',
-    period_start: '2026-06-22',
-    period_end: '2026-06-28',
-    days_worked: 6,
-    overtime_hours: 4,
-    base_pay: 900000, // 6 x 150.000
-    bonus: 50000,
-    cash_advance_deduction: 50000,
-    total_pay: 930000, // 900k + (4 * 20k = 80k) + 50k - 50k
-    is_printed: true
-  }
-];
+const INITIAL_PAYROLL_WEEKLY: PayrollWeekly[] = [];
 
-const INITIAL_INVOICES: Invoice[] = [
-  {
-    id: 'inv-1',
-    customer_id: 'cust-dojo',
-    customer_name: 'Dojo Garuda Bandung',
-    invoice_number: 'INV/2026/06/001',
-    date: `${yesterday}`,
-    due_date: new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0],
-    items: [
-      { id: uuid(), product_id: 'prod-matras-2cm', product_name: 'Matras Beladiri Eva Foam 2cm', variant: 'Merah-Biru', qty: 15, price: 165000, subtotal: 2475000 }
-    ],
-    subtotal: 2475000,
-    dp: 500000,
-    tax: 247500, // 10%
-    total: 2222500, // 2,475,000 + 247,500 - 500,000
-    payment_status: 'belum_lunas'
-  },
-  {
-    id: 'inv-2',
-    customer_id: 'cust-sasana',
-    customer_name: 'Sasana Muay Thai Jakarta',
-    invoice_number: 'INV/2026/06/002',
-    date: threeDaysAgo,
-    due_date: `${yesterday}`,
-    items: [
-      { id: uuid(), product_id: 'prod-samsak-120', product_name: 'Samsak Gantung 120cm', variant: 'Premium Hitam', qty: 2, price: 350000, subtotal: 700000 }
-    ],
-    subtotal: 700000,
-    dp: 0,
-    tax: 0,
-    total: 700000,
-    payment_status: 'lunas'
-  }
-];
+const INITIAL_INVOICES: Invoice[] = [];
 
-const INITIAL_DELIVERY_NOTES: DeliveryNote[] = [
-  {
-    id: 'sj-1',
-    customer_id: 'cust-dojo',
-    customer_name: 'Dojo Garuda Bandung',
-    delivery_number: 'SJ/2026/06/001',
-    date: `${yesterday}`,
-    expedition: 'JNE Trucking (JTR)',
-    items: [
-      { product_id: 'prod-matras-2cm', product_name: 'Matras Beladiri Eva Foam 2cm', variant: 'Merah-Biru', qty: 15 }
-    ],
-    status: 'dikirim'
-  }
-];
+const INITIAL_DELIVERY_NOTES: DeliveryNote[] = [];
 
-const INITIAL_RETURNS: Return[] = [
-  {
-    id: uuid(),
-    invoice_id: 'inv-1',
-    invoice_number: 'INV/2026/06/001',
-    date: today,
-    reason: 'Satu matras ada cacat permukaan foam di sudut kiri atas',
-    product_id: 'prod-matras-2cm',
-    product_name: 'Matras Beladiri Eva Foam 2cm',
-    qty: 1
-  }
-];
+const INITIAL_RETURNS: Return[] = [];
 
-const INITIAL_MARKETPLACE_SALES: MarketplaceSale[] = [
-  { id: uuid(), channel: 'tokopedia', date: yesterday, order_count: 14, revenue: 1540000, admin_name: 'Admin Online Siska' },
-  { id: uuid(), channel: 'shopee', date: yesterday, order_count: 22, revenue: 2150000, admin_name: 'Admin Online Siska' },
-  { id: uuid(), channel: 'tiktok', date: yesterday, order_count: 8, revenue: 980000, admin_name: 'Admin Online Siska' },
-  { id: uuid(), channel: 'tokopedia', date: today, order_count: 18, revenue: 2240000, admin_name: 'Admin Online Siska' },
-  { id: uuid(), channel: 'shopee', date: today, order_count: 25, revenue: 2780000, admin_name: 'Admin Online Siska' }
-];
+const INITIAL_MARKETPLACE_SALES: MarketplaceSale[] = [];
 
-const INITIAL_MARKETPLACE_ITEM_SALES: MarketplaceItemSale[] = [
-  { id: uuid(), date: today, order_number: '583776129442416403', marketplace_ref: 'Tokopedia', description: 'Pecing pad 50x30 rosegold', qty: 1, price: 120000, subtotal: 120000, admin_fee: 25850, total: 94150, admin_staff: 'Admin Online Siska' },
-  { id: uuid(), date: today, order_number: '583789590635578944', marketplace_ref: 'Shopee', description: 'Pelampung berenang anak', qty: 1, price: 19900, subtotal: 19900, admin_fee: 5330, total: 14570, admin_staff: 'Admin Online Siska' },
-  { id: uuid(), date: today, order_number: '583774569685157446', marketplace_ref: 'TikTok Shop', description: 'Body taekwondo No. 1', qty: 1, price: 110000, subtotal: 110000, admin_fee: 34800, total: 75200, admin_staff: 'Admin Online Siska' },
-  { id: uuid(), date: yesterday, order_number: '583780696599725207', marketplace_ref: 'Tokopedia', description: 'Deker tangan putih M', qty: 1, price: 45000, subtotal: 45000, admin_fee: 0, total: 45000, admin_staff: 'Admin Online Siska' },
-  { id: uuid(), date: yesterday, order_number: '583773892121429096', marketplace_ref: 'Shopee', description: 'Deker kaki putih M', qty: 1, price: 50000, subtotal: 50000, admin_fee: 0, total: 50000, admin_staff: 'Admin Online Siska' },
-  { id: uuid(), date: yesterday, order_number: '583775555425698874', marketplace_ref: 'TikTok Shop', description: 'Gentle cup putih M', qty: 1, price: 55000, subtotal: 55000, admin_fee: 0, total: 55000, admin_staff: 'Admin Online Siska' },
-  { id: uuid(), date: yesterday, order_number: '583790874127140854', marketplace_ref: 'Tokopedia', description: 'Body taekwondo No. 2', qty: 1, price: 110000, subtotal: 110000, admin_fee: 59905, total: 50095, admin_staff: 'Admin Online Siska' },
-  { id: uuid(), date: yesterday, order_number: '583802843230799026', marketplace_ref: 'Shopee', description: 'Body taekwondo No. 3', qty: 1, price: 110000, subtotal: 110000, admin_fee: 34100, total: 75900, admin_staff: 'Admin Online Siska' }
-];
+const INITIAL_MARKETPLACE_ITEM_SALES: MarketplaceItemSale[] = [];
 
-const INITIAL_PURCHASES: Purchase[] = [
-  {
-    id: uuid(),
-    po_number: '08/TA/14/26',
-    supplier: 'Toko anyar',
-    date: '2026-06-08',
-    status: 'completed',
-    total_price: 6688000,
-    admin_staff: 'Dewi Lestari',
-    items: [
-      { id: uuid(), description: 'Liverpool hitam', qty: 1, price: 1475000, subtotal: 1475000 },
-      { id: uuid(), description: 'Liverpool biru', qty: 10, price: 60000, subtotal: 600000 },
-      { id: uuid(), description: 'Liverpool merah', qty: 10, price: 60000, subtotal: 600000 },
-      { id: uuid(), description: 'Jersy hitam', qty: 2, price: 815000, subtotal: 1630000 },
-      { id: uuid(), description: 'Lem', qty: 4, price: 347000, subtotal: 1388000 },
-      { id: uuid(), description: 'Condura', qty: 1, price: 995000, subtotal: 995000 }
-    ]
-  },
-  {
-    id: uuid(),
-    po_number: '08/TN/10/26',
-    supplier: 'Toko nasional',
-    date: '2026-06-12',
-    status: 'completed',
-    total_price: 3450000,
-    admin_staff: 'Siti Rahma',
-    items: [
-      { id: uuid(), description: 'Eva Foam Sheet 2cm Raw', qty: 50, price: 45000, subtotal: 2250000, material_id: 'mat-foam-2cm' },
-      { id: uuid(), description: 'Resleting YKK Jumbo', qty: 100, price: 12000, subtotal: 1200000 }
-    ]
-  },
-  {
-    id: uuid(),
-    po_number: '06/SB/04/26',
-    supplier: 'PT Sumber Busaindo',
-    date: threeDaysAgo,
-    status: 'completed',
-    total_price: 4500000,
-    admin_staff: 'Dewi Lestari',
-    items: [
-      { id: uuid(), description: 'Eva Foam Sheet 2cm Raw', qty: 100, price: 45000, subtotal: 4500000, material_id: 'mat-foam-2cm' }
-    ]
-  }
-];
+const INITIAL_PURCHASES: Purchase[] = [];
 
-const INITIAL_DAILY_EXPENSES: DailyExpense[] = [
-  { id: uuid(), date: '2026-06-05', category: 'Lain-lain / Overhead', description: 'Fitting pipa Maspion & aksesoris', amount: 90000, admin_name: 'Dewi Lestari', qty: 3, price: 30000 },
-  { id: uuid(), date: '2026-06-08', category: 'Perbaikan & Maintenance', description: 'Kipas angin dinding Maspion', amount: 256000, admin_name: 'Dewi Lestari', qty: 2, price: 128000 },
-  { id: uuid(), date: '2026-06-15', category: 'Lain-lain / Overhead', description: 'Galon Air mineral kantor', amount: 63000, admin_name: 'Siti Rahma', qty: 3, price: 21000 },
-  { id: uuid(), date: '2026-06-15', category: 'Biaya Transportasi & BBM', description: 'Bensin kurir pengiriman barang', amount: 200000, admin_name: 'Siti Rahma', qty: 10, price: 20000 },
-  { id: uuid(), date: '2026-06-16', category: 'Lain-lain / Overhead', description: 'Tali rapia pengikat packing', amount: 40000, admin_name: 'Dewi Lestari', qty: 2, price: 20000 },
-  { id: uuid(), date: '2026-06-18', category: 'Lain-lain / Overhead', description: 'Tali rapia pengikat packing jumbo', amount: 40000, admin_name: 'Siti Rahma', qty: 2, price: 20000 }
-];
+const INITIAL_DAILY_EXPENSES: DailyExpense[] = [];
 
-const INITIAL_NOTIFICATIONS: NotificationLog[] = [
-  {
-    id: uuid(),
-    type: 'attendance_anomaly',
-    message: 'Absensi anomali: Karyawan Budi Hartono absen masuk di luar radius kantor (~610m dari Departemen Konveksi)',
-    target_role: 'owner',
-    is_read: false,
-    created_at: `${yesterday}T08:45:15.000Z`
-  },
-  {
-    id: uuid(),
-    type: 'low_stock',
-    message: 'Stok kritis: Eva Foam Sheet 3cm Raw tersisa 35 Lembar (Batas minimum: 80 Lembar)',
-    target_role: 'admin_gudang',
-    is_read: false,
-    created_at: `${yesterday}T12:00:00.000Z`
-  }
-];
+const INITIAL_NOTIFICATIONS: NotificationLog[] = [];
 
 const INITIAL_CALIBRATION: PrinterCalibration = {
   offset_x: 0,
@@ -732,6 +449,7 @@ class DataStore {
     this.setReturns([]);
     this.setStockMovements([]);
     this.setAttendance([]);
+    clearAttendanceInCloud();
     this.setPayrollWeekly([]);
     this.setCashAdvances([]);
     this.setNotifications([]);
@@ -1058,6 +776,8 @@ class DataStore {
 
     attendanceLogs.unshift(newAttendance);
     this.setAttendance(attendanceLogs);
+    // Kirim per baris ke cloud (bebas tabrakan antar perangkat, dengan antrean offline)
+    pushAttendanceToCloud(newAttendance);
     return newAttendance;
   };
 }

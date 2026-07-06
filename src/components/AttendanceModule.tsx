@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Employee, Attendance, AttendanceType } from '../types';
-import { dataStore } from '../dataStore';
+import { dataStore, wibNowISO } from '../dataStore';
 import { 
   MapPin, 
   Camera, 
@@ -46,16 +46,8 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
   const [pin, setPin] = useState('');
   const [scanType, setScanType] = useState<AttendanceType>('masuk');
   
-  // Custom states for geofence and photo
-  const [gpsSource, setGpsSource] = useState<'simulated' | 'real'>('real');
-  const [selectedGpsPreset, setSelectedGpsPreset] = useState<'eva_foam' | 'konveksi' | 'anomali_rumah'>('eva_foam');
-  const [currentCoords, setCurrentCoords] = useState({ lat: -6.914744, lng: 107.609810 });
-  const [gpsError, setGpsError] = useState<string | null>(null);
-
-  const [selfieOption, setSelfieOption] = useState<'simulated' | 'real'>('simulated');
-  const [selectedSelfiePreset, setSelectedSelfiePreset] = useState('https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&q=80');
-  const [capturedImage, setCapturedImage] = useState<string | null>(null);
-  const [cameraActive, setCameraActive] = useState(false);
+  // Status pembacaan GPS saat kirim scan
+  const [isScanning, setIsScanning] = useState(false);
 
   // Status message and successful scan overlay state
   const [statusMessage, setStatusMessage] = useState<{ text: string; error: boolean } | null>(null);
@@ -68,34 +60,13 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
     time: string;
   } | null>(null);
 
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-
   // Real-time Clock for Kiosk mode
   const [currentTime, setCurrentTime] = useState(new Date());
-
-  // Preset locations
-  const PRESET_COORDS = {
-    eva_foam: { lat: -6.914744, lng: 107.609810, name: 'Pabrik Eva Foam (Aman)' },
-    konveksi: { lat: -6.915800, lng: 107.610500, name: 'Pabrik Konveksi (Aman)' },
-    anomali_rumah: { lat: -6.919500, lng: 107.618500, name: 'Rumah Karyawan (Anomali - Jarak ~1 Km)' },
-  };
-
-  // Predefined selfie placeholders
-  const SELFIE_PRESETS = [
-    { name: 'Asep Saputra', id: 'emp-asep', url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=250&h=250&fit=crop&q=80' },
-    { name: 'Siti Rahma', id: 'emp-siti', url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=250&h=250&fit=crop&q=80' },
-    { name: 'Budi Hartono', id: 'emp-budi', url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=250&h=250&fit=crop&q=80' },
-    { name: 'Dewi Lestari', id: 'emp-dewi', url: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=250&h=250&fit=crop&q=80' }
-  ];
 
   useEffect(() => {
     loadData();
     // Start real-time clock
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-
-    // Default preset coordinate
-    setCurrentCoords({ lat: PRESET_COORDS.eva_foam.lat, lng: PRESET_COORDS.eva_foam.lng });
 
     const handleStorageChange = () => {
       loadData();
@@ -121,35 +92,6 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
     }
   }, [lockedEmployee]);
 
-  // Handle GPS coordination sync
-  useEffect(() => {
-    if (gpsSource === 'real') {
-      if (!navigator.geolocation) {
-        setGpsError('Geolocation tidak didukung oleh browser Anda.');
-        setGpsSource('simulated');
-        return;
-      }
-      setGpsError(null);
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setCurrentCoords({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude
-          });
-        },
-        (error) => {
-          console.error(error);
-          setGpsError(`Gagal akses GPS Browser: ${error.message}. Iframe membatasi akses Geolocation.`);
-          setGpsSource('simulated');
-        },
-        { enableHighAccuracy: true, timeout: 5000 }
-      );
-    } else {
-      const preset = PRESET_COORDS[selectedGpsPreset];
-      setCurrentCoords({ lat: preset.lat, lng: preset.lng });
-    }
-  }, [gpsSource, selectedGpsPreset]);
-
   // Numpad key triggers for Kiosk mode PIN Pad
   const handleNumpadClick = (num: string) => {
     if (pin.length < 4) {
@@ -163,54 +105,6 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
 
   const handleNumpadBackspace = () => {
     setPin(prev => prev.slice(0, -1));
-  };
-
-  // Web Camera logic
-  const startCamera = async () => {
-    setCameraActive(true);
-    setCapturedImage(null);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 320, height: 240 } });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-    } catch (err) {
-      console.error('Camera access failed', err);
-      setGpsError('Kamera tidak bisa diakses di lingkungan ini. Otomatis beralih ke simulasi foto.');
-      setSelfieOption('simulated');
-      setCameraActive(false);
-    }
-  };
-
-  const stopCamera = () => {
-    if (videoRef.current && videoRef.current.srcObject) {
-      const stream = videoRef.current.srcObject as MediaStream;
-      stream.getTracks().forEach(track => track.stop());
-      videoRef.current.srcObject = null;
-    }
-    setCameraActive(false);
-  };
-
-  const capturePhoto = () => {
-    if (videoRef.current && canvasRef.current) {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      const context = canvas.getContext('2d');
-      if (context) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/jpeg');
-        setCapturedImage(dataUrl);
-        stopCamera();
-      }
-    }
-  };
-
-  const handlePresetLocationChange = (presetKey: 'eva_foam' | 'konveksi' | 'anomali_rumah') => {
-    setSelectedGpsPreset(presetKey);
-    const coords = PRESET_COORDS[presetKey];
-    setCurrentCoords({ lat: coords.lat, lng: coords.lng });
   };
 
   // Submit scan handler
@@ -239,58 +133,69 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
       }
     }
 
-    // Determine photo
-    let selfieUrl = '';
-    if (selfieOption === 'real' && capturedImage) {
-      selfieUrl = capturedImage;
-    } else {
-      selfieUrl = selectedSelfiePreset;
-    }
-
-    // Bind simulated hardware device token
+    // Penanda perangkat (untuk audit dari perangkat mana scan dilakukan)
     let deviceToken = localStorage.getItem(`nxty_device_token_${emp.id}`);
     if (!deviceToken) {
       deviceToken = `device-bind-${emp.id}-${Math.random().toString(36).substring(7)}`;
       localStorage.setItem(`nxty_device_token_${emp.id}`, deviceToken);
     }
 
-    try {
-      const result = dataStore.recordAttendance({
-        employee_id: emp.id,
-        timestamp: new Date().toISOString(),
-        type_scan: scanType,
-        latitude: currentCoords.lat,
-        longitude: currentCoords.lng,
-        selfie_url: selfieUrl,
-        device_token: deviceToken,
-        note: currentCoords.lat === PRESET_COORDS.anomali_rumah.lat ? 'Geofence Anomali (Absen Luar Pabrik)' : 'Kiosk Terminal Scan'
-      });
-
-      // Launch Big Success Overlay (Auto disappears in 3 seconds)
-      const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-      setSuccessOverlay({
-        visible: true,
-        employeeName: emp.name,
-        type: scanType,
-        status: result.status,
-        distance: Math.round(result.distance_meters),
-        time: nowStr
-      });
-
-      // Clear states for next check-in (portal karyawan tetap terkunci ke dirinya)
-      setPin('');
-      setSelectedEmpId(lockedEmployee ? lockedEmployee.id : '');
-      setCapturedImage(null);
-      loadData();
-
-      // Auto dismiss success overlay after 3.5 seconds
-      setTimeout(() => {
-        setSuccessOverlay(null);
-      }, 3500);
-
-    } catch (err: any) {
-      setStatusMessage({ text: err.message || 'Gagal menyimpan absensi.', error: true });
+    if (!navigator.geolocation) {
+      setStatusMessage({ text: 'Perangkat/browser ini tidak mendukung GPS. Gunakan browser lain.', error: true });
+      return;
     }
+
+    setIsScanning(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        try {
+          const result = dataStore.recordAttendance({
+            employee_id: emp.id,
+            timestamp: wibNowISO(),
+            type_scan: scanType,
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            selfie_url: '',
+            device_token: deviceToken!,
+            note: `Kiosk Terminal Scan (GPS perangkat, akurasi ±${Math.round(pos.coords.accuracy)} m)`
+          });
+
+          // Launch Big Success Overlay (Auto disappears in 3 seconds)
+          const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' });
+          setSuccessOverlay({
+            visible: true,
+            employeeName: emp.name,
+            type: scanType,
+            status: result.status,
+            distance: Math.round(result.distance_meters),
+            time: nowStr
+          });
+
+          // Clear states for next check-in (portal karyawan tetap terkunci ke dirinya)
+          setPin('');
+          setSelectedEmpId(lockedEmployee ? lockedEmployee.id : '');
+          loadData();
+
+          // Auto dismiss success overlay after 3.5 seconds
+          setTimeout(() => {
+            setSuccessOverlay(null);
+          }, 3500);
+        } catch (err: any) {
+          setStatusMessage({ text: err.message || 'Gagal menyimpan absensi.', error: true });
+        } finally {
+          setIsScanning(false);
+        }
+      },
+      (err) => {
+        setIsScanning(false);
+        if (err.code === err.PERMISSION_DENIED) {
+          setStatusMessage({ text: 'Akses lokasi ditolak. Izinkan akses lokasi untuk situs ini di pengaturan browser, lalu coba lagi.', error: true });
+        } else {
+          setStatusMessage({ text: `Gagal membaca lokasi GPS (${err.message}). Pastikan GPS aktif lalu coba lagi.`, error: true });
+        }
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
   };
 
   // Filter employees for the list view
@@ -422,155 +327,33 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
            ------------------------------------------------------------- */
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           
-          {/* LEFT SIDE: INSTRUCTIONS & SIMULATOR FOR TESTING (12 Columns on Mobile / 4 on Desktop) */}
+          {/* LEFT SIDE: PANDUAN PENGGUNAAN (4 Columns on Desktop) */}
           <div className="lg:col-span-4 space-y-4 no-print">
-            
-            {/* Quick Testing Portal Info */}
-            <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl border border-amber-200/60 p-5 space-y-4 shadow-xs text-left">
+            <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4 shadow-xs text-left">
               <div className="flex items-center gap-2">
-                <HelpCircle className="w-5 h-5 text-amber-600" />
-                <h3 className="font-extrabold text-sm text-amber-900">Cara Test Absensi</h3>
+                <HelpCircle className="w-5 h-5 text-[#1F4B36]" />
+                <h3 className="font-extrabold text-sm text-gray-800">Cara Absen</h3>
               </div>
-              
-              <div className="text-xs text-amber-800 space-y-3 leading-relaxed font-medium">
-                <p>Mesin absensi ini mensimulasikan alat tablet fisik yang diletakkan di pintu masuk pabrik. Ikuti langkah ini:</p>
-                
-                <ol className="list-decimal pl-4 space-y-1.5">
-                  <li>
-                    <span className="font-bold">Pilih Karyawan</span> di daftar sebelah kanan dengan mengklik kartu namanya.
-                  </li>
-                  <li>
-                    <span className="font-bold">Pilih Tipe Absen</span>: Masuk atau Pulang kerja.
-                  </li>
-                  <li>
-                    <span className="font-bold">Atur Lokasi GPS</span> pada kotak simulator untuk tes radius (di dalam atau di luar pabrik).
-                  </li>
-                  <li>
-                    <span className="font-bold">Masukkan PIN</span> 4-digit menggunakan tombol Numpad layar:
-                    <ul className="list-disc pl-4 mt-1 font-mono text-[10px] space-y-0.5">
-                      <li>Asep Saputra &rarr; <span className="underline font-bold text-gray-900">1234</span></li>
-                      <li>Siti Rahma &rarr; <span className="underline font-bold text-gray-900">4321</span></li>
-                      <li>Budi Hartono &rarr; <span className="underline font-bold text-gray-900">5678</span></li>
-                      <li>Dewi Lestari &rarr; <span className="underline font-bold text-gray-900">8765</span></li>
-                    </ul>
-                  </li>
-                  <li>
-                    Klik tombol <span className="font-bold">KIRIM SCAN ABSEN</span> untuk melihat pop-up konfirmasi dan mendeteksi anomali!
-                  </li>
-                </ol>
-              </div>
+              <ol className="list-decimal pl-4 space-y-1.5 text-xs text-gray-600 leading-relaxed font-medium">
+                <li><span className="font-bold">Pilih nama Anda</span> pada daftar karyawan di sebelah kanan.</li>
+                <li><span className="font-bold">Pilih tipe absen</span>: Masuk atau Pulang kerja.</li>
+                <li><span className="font-bold">Masukkan PIN pribadi</span> 4 digit lewat tombol angka.</li>
+                <li>Tekan <span className="font-bold">KIRIM SCAN ABSENSI</span> dan izinkan akses lokasi bila diminta.</li>
+              </ol>
             </div>
 
-            {/* GPS & Camera Simulation Controls */}
-            <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4 shadow-xs text-left">
+            <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-2 shadow-xs text-left">
               <h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-[#1F4B36]" /> Simulator Sensor Alat
+                <MapPin className="w-4 h-4 text-[#1F4B36]" /> Verifikasi Lokasi GPS
               </h3>
-
-              {/* Geofence Simulator Selector */}
-              <div className="space-y-2 text-xs">
-                <span className="font-bold text-gray-500 block">Mode Lokasi (pilih GPS Asli untuk pemakaian nyata):</span>
-                <div className="grid grid-cols-1 gap-1.5">
-                  {(Object.keys(PRESET_COORDS) as Array<keyof typeof PRESET_COORDS>).map((key) => {
-                    const preset = PRESET_COORDS[key];
-                    const isSelected = selectedGpsPreset === key && gpsSource === 'simulated';
-                    return (
-                      <button
-                        key={key}
-                        onClick={() => {
-                          setGpsSource('simulated');
-                          handlePresetLocationChange(key);
-                        }}
-                        className={`px-3 py-2 rounded-lg text-left border text-[11px] font-bold transition-all flex items-center justify-between ${
-                          isSelected 
-                            ? 'bg-[#1F4B36] text-white border-transparent' 
-                            : 'bg-gray-50 hover:bg-gray-100 border-gray-200 text-gray-600'
-                        }`}
-                      >
-                        <span>{preset.name}</span>
-                        {isSelected && <Check className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
-                      </button>
-                    );
-                  })}
-                  <button
-                    onClick={() => setGpsSource('real')}
-                    className={`px-3 py-2 rounded-lg text-left border text-[11px] font-bold transition-all flex items-center justify-between ${
-                      gpsSource === 'real' 
-                        ? 'bg-[#1F4B36] text-white border-transparent' 
-                        : 'bg-gray-50 hover:bg-gray-100 border-gray-200 text-gray-600'
-                    }`}
-                  >
-                    <span>GPS Perangkat Asli (Kamera HP/Laptop)</span>
-                    {gpsSource === 'real' && <Check className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
-                  </button>
-                </div>
-              </div>
-
-              {/* Selfie Camera Simulation Selector */}
-              <div className="space-y-2 text-xs pt-1 border-t border-gray-100">
-                <span className="font-bold text-gray-500 block">Kamera & Verifikasi Wajah:</span>
-                <div className="flex bg-gray-100 p-0.5 rounded-lg text-[10px] font-bold">
-                  <button
-                    onClick={() => {
-                      setSelfieOption('simulated');
-                      stopCamera();
-                    }}
-                    className={`flex-1 py-1 rounded-md text-center ${selfieOption === 'simulated' ? 'bg-white text-[#1F4B36] shadow-xs' : 'text-gray-500'}`}
-                  >
-                    Simulasi Foto
-                  </button>
-                  <button
-                    onClick={() => {
-                      setSelfieOption('real');
-                      startCamera();
-                    }}
-                    className={`flex-1 py-1 rounded-md text-center ${selfieOption === 'real' ? 'bg-white text-[#1F4B36] shadow-xs' : 'text-gray-500'}`}
-                  >
-                    Kamera Aktif (Webcam)
-                  </button>
-                </div>
-
-                {selfieOption === 'real' ? (
-                  <div className="mt-2 bg-gray-900 rounded-lg overflow-hidden h-36 flex flex-col justify-between items-center p-2 relative">
-                    {cameraActive ? (
-                      <video ref={videoRef} autoPlay playsInline className="h-full rounded bg-gray-950 w-auto transform scale-x-[-1]"></video>
-                    ) : capturedImage ? (
-                      <img src={capturedImage} alt="Captured" className="h-full rounded object-cover transform scale-x-[-1]" />
-                    ) : (
-                      <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-1">
-                        <Camera className="w-6 h-6" />
-                        <span className="text-[10px]">Kamera belum aktif</span>
-                      </div>
-                    )}
-                    <button
-                      type="button"
-                      onClick={cameraActive ? capturePhoto : startCamera}
-                      className="absolute bottom-2 bg-emerald-700 text-white font-bold text-[10px] px-3 py-1 rounded hover:bg-emerald-600 shadow-sm"
-                    >
-                      {cameraActive ? 'AMBIL FOTO' : 'BUKA KAMERA'}
-                    </button>
-                    <canvas ref={canvasRef} className="hidden" />
-                  </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    <span className="text-[10px] text-gray-400 block">Contoh Foto Selfie di Lapangan (Auto Sinkron):</span>
-                    <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-                      {SELFIE_PRESETS.map((preset, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => setSelectedSelfiePreset(preset.url)}
-                          className={`relative shrink-0 w-11 h-11 rounded-lg overflow-hidden border-2 transition-all ${
-                            selectedSelfiePreset === preset.url ? 'border-[#1F4B36] scale-105 shadow-xs' : 'border-transparent opacity-70'
-                          }`}
-                        >
-                          <img src={preset.url} alt={preset.name} className="w-full h-full object-cover" />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
+              <p className="text-xs text-gray-500 leading-relaxed">
+                Lokasi diambil otomatis dari <b>GPS perangkat ini</b> saat tombol absen ditekan,
+                lalu dicocokkan dengan titik kantor. Absen di luar radius <b>100 meter</b> tetap
+                tercatat namun ditandai <b>anomali</b> dan dilaporkan ke owner.
+              </p>
+              <p className="text-[10px] text-gray-400">
+                Pastikan GPS aktif dan izinkan akses lokasi saat browser meminta. Jaga kerahasiaan PIN Anda.
+              </p>
             </div>
           </div>
 
@@ -592,10 +375,10 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
               {/* Digital Live Clock Widget */}
               <div className="text-center sm:text-right bg-black/20 px-4 py-2 rounded-xl border border-white/5 font-mono">
                 <div className="text-lg font-black tracking-widest text-amber-400">
-                  {currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  {currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Jakarta' })}
                 </div>
                 <div className="text-[8px] uppercase font-bold tracking-wider text-emerald-200">
-                  {currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' })}
+                  {currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Jakarta' })}
                 </div>
               </div>
             </div>
@@ -648,10 +431,6 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                   ) : (
                     filteredEmployees.map((emp) => {
                       const isSelected = selectedEmpId === emp.id;
-                      
-                      // Find matching default avatar if available
-                      const defaultPreset = SELFIE_PRESETS.find(p => p.id === emp.id);
-                      const avatarUrl = defaultPreset ? defaultPreset.url : 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop&q=80';
 
                       return (
                         <button
@@ -660,19 +439,17 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                           onClick={() => {
                             setSelectedEmpId(emp.id);
                             setStatusMessage(null);
-                            // Auto assign match preset photo
-                            if (defaultPreset) {
-                              setSelectedSelfiePreset(defaultPreset.url);
-                            }
                           }}
                           className={`p-3 rounded-2xl flex items-center gap-3 text-left transition-all cursor-pointer border ${
-                            isSelected 
-                              ? 'bg-[#1F4B36] border-amber-400 text-white shadow-md shadow-black/20 ring-1 ring-amber-400' 
+                            isSelected
+                              ? 'bg-[#1F4B36] border-amber-400 text-white shadow-md shadow-black/20 ring-1 ring-amber-400'
                               : 'bg-[#163826]/60 border-[#1c4731] hover:bg-[#163826] hover:border-[#24593e] text-emerald-100'
                           }`}
                         >
-                          <div className={`w-9 h-9 rounded-full overflow-hidden border-2 shrink-0 ${isSelected ? 'border-amber-400' : 'border-emerald-700'}`}>
-                            <img src={avatarUrl} alt={emp.name} className="w-full h-full object-cover" />
+                          <div className={`w-9 h-9 rounded-full border-2 shrink-0 flex items-center justify-center font-black text-sm ${
+                            isSelected ? 'border-amber-400 bg-amber-100 text-amber-800' : 'border-emerald-700 bg-emerald-900/60 text-emerald-200'
+                          }`}>
+                            {emp.name.charAt(0)}
                           </div>
                           <div className="min-w-0">
                             <p className="text-xs font-bold truncate leading-tight">{emp.name}</p>
@@ -812,15 +589,15 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                 <button
                   type="button"
                   onClick={() => handleAttendanceSubmit()}
-                  disabled={!selectedEmpId || (!lockedEmployee && pin.length < 4)}
+                  disabled={!selectedEmpId || (!lockedEmployee && pin.length < 4) || isScanning}
                   className={`w-full py-3.5 rounded-xl text-xs uppercase font-extrabold tracking-widest flex items-center justify-center gap-2 border transition-all ${
-                    (!selectedEmpId || (!lockedEmployee && pin.length < 4))
+                    (!selectedEmpId || (!lockedEmployee && pin.length < 4) || isScanning)
                       ? 'bg-emerald-950/60 border-emerald-900/40 text-emerald-200/30 cursor-not-allowed'
                       : 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-transparent shadow-md active:scale-[0.98] cursor-pointer'
                   }`}
                 >
                   <ShieldCheck className="w-4 h-4 shrink-0" />
-                  KIRIM SCAN ABSENSI
+                  {isScanning ? 'MEMBACA LOKASI GPS…' : 'KIRIM SCAN ABSENSI'}
                 </button>
               </div>
 
@@ -992,8 +769,10 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                       >
                         <div className="flex gap-3 items-center min-w-0">
                           {/* Face Selfie Thumbnail */}
-                          <div className="shrink-0 w-11 h-11 rounded-full overflow-hidden border border-gray-200/80 bg-white">
-                            <img src={log.selfie_url} alt="Selfie" className="w-full h-full object-cover" />
+                          <div className="shrink-0 w-11 h-11 rounded-full overflow-hidden border border-gray-200/80 bg-emerald-50 flex items-center justify-center">
+                            {log.selfie_url
+                              ? <img src={log.selfie_url} alt="Selfie" className="w-full h-full object-cover" />
+                              : <span className="text-sm font-black text-emerald-700">{(log.employee_name || '?').charAt(0)}</span>}
                           </div>
 
                           <div className="min-w-0 space-y-1">
