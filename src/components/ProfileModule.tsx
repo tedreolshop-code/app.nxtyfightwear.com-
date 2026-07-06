@@ -1,7 +1,8 @@
 import React, { useRef, useState } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import { Employee } from '../types';
 import { dataStore, hashPin } from '../dataStore';
-import { Camera, KeyRound, Phone, Save, User } from 'lucide-react';
+import { Camera, Eye, EyeOff, KeyRound, Phone, Printer, QrCode, Save, User } from 'lucide-react';
 
 interface ProfileModuleProps {
   employee: Employee;
@@ -17,6 +18,7 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ employee, onUpdate
   const [newPin, setNewPin] = useState('');
   const [newPin2, setNewPin2] = useState('');
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
+  const [showAttendanceQr, setShowAttendanceQr] = useState(false);
 
   const departments = dataStore.getDepartments();
   const deptName = departments.find(d => d.id === employee.department_id)?.name || 'Umum';
@@ -78,6 +80,15 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ employee, onUpdate
     setOldPin('');
     setNewPin('');
     setNewPin2('');
+  };
+
+  const handlePrintQr = () => {
+    if (!employee.attendance_qr_token) return;
+    document.body.classList.add('qr-printing');
+    const cleanup = () => document.body.classList.remove('qr-printing');
+    window.addEventListener('afterprint', cleanup, { once: true });
+    window.print();
+    window.setTimeout(cleanup, 1000);
   };
 
   return (
@@ -174,6 +185,26 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ employee, onUpdate
             <User className="w-4 h-4" /> Ganti PIN
           </button>
         </form>
+      </div>
+
+      {/* QR pribadi hanya untuk identifikasi saat absensi dibantu admin. */}
+      <div className="qr-print-card bg-white rounded-2xl border border-gray-200 p-5 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 no-print">
+          <div>
+            <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2"><QrCode className="w-4 h-4 text-[#1F4B36]" /> QR Absensi Saya</h3>
+            <p className="text-xs text-gray-500 mt-1">Tunjukkan kepada admin hanya saat absensi bantuan diperlukan.</p>
+          </div>
+          {employee.attendance_qr_token && <button type="button" onClick={() => setShowAttendanceQr(value => !value)} className="px-3 py-2 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-100 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer">{showAttendanceQr ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}{showAttendanceQr ? 'Sembunyikan QR' : 'Tampilkan QR'}</button>}
+        </div>
+
+        {!employee.attendance_qr_token ? <p className="mt-4 p-3 rounded-lg bg-amber-50 border border-amber-100 text-xs text-amber-700">QR belum tersedia. Silakan hubungi owner untuk memperbarui akun.</p> : showAttendanceQr ? (
+          <div className="mt-5 flex flex-col items-center text-center gap-3">
+            <div className="bg-white p-3 border border-gray-200 rounded-xl shadow-sm"><QRCodeSVG value={`ARI-ATTENDANCE:${employee.attendance_qr_token}`} size={220} level="H" /></div>
+            <div><p className="font-black text-gray-900">{employee.name}</p><p className="text-xs text-gray-500 font-mono">@{employee.username} · {deptName}</p></div>
+            <p className="max-w-sm text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-2 no-print">QR ini bersifat pribadi. Jangan dikirim atau dipinjamkan kepada orang lain. Hubungi owner jika QR diduga bocor.</p>
+            <button type="button" onClick={handlePrintQr} className="no-print px-4 py-2 rounded-lg bg-[#1F4B36] text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"><Printer className="w-3.5 h-3.5" /> Cetak Kartu QR</button>
+          </div>
+        ) : <div className="mt-4 p-5 rounded-xl bg-gray-50 border border-dashed border-gray-200 text-center no-print"><QrCode className="w-8 h-8 mx-auto text-gray-300" /><p className="text-xs text-gray-400 mt-2">QR disembunyikan untuk keamanan.</p></div>}
       </div>
     </div>
   );
