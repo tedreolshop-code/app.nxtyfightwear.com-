@@ -22,6 +22,7 @@ export interface Employee {
   allowed_tabs?: string[]; // Custom tabs this employee is allowed to see (Row Level Security / RLS)
   access_role?: UserRole; // Akses sistem karyawan ini (owner/admin/gudang); kosong = karyawan biasa
   photo_url?: string; // Foto profil (data URL kecil, diunggah dari halaman Profil Saya)
+  attendance_qr_token?: string; // Token acak untuk kartu QR absensi; bukan PIN atau data pribadi
 }
 
 export type AttendanceWorkStatus = 'hadir' | 'terlambat' | 'izin' | 'sakit' | 'cuti' | 'alpha' | 'lembur' | 'pulang_cepat';
@@ -105,6 +106,36 @@ export interface Attendance {
   is_mock_location_flag: boolean;
   status: AttendanceStatus;
   note?: string;
+  verification_method?: 'gps_self' | 'admin_qr';
+  assisted_by_id?: string;
+  assisted_by_name?: string;
+  assistance_reason?: string;
+}
+
+export interface AuditEntry {
+  id: string;
+  timestamp: string;
+  actor_id?: string;
+  actor_name: string;
+  actor_role: UserRole | 'system';
+  action: 'login' | 'logout' | 'create' | 'update' | 'delete' | 'restore' | 'permanent_delete';
+  entity_type: string;
+  entity_id?: string;
+  description: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface RecycleEntry {
+  id: string;
+  entity_type: string;
+  entity_id: string;
+  label: string;
+  data: Record<string, unknown>;
+  deleted_at: string;
+  deleted_by_id?: string;
+  deleted_by_name: string;
+  reason: string;
+  expires_at: string;
 }
 
 export interface CashAdvance {
@@ -331,4 +362,3 @@ export interface Asset {
   status: 'baik' | 'diservis' | 'rusak';
   notes?: string;
 }
-

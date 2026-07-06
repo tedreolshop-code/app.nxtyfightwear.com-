@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useId } from 'react';
+import { Html5QrcodeScanner } from 'html5-qrcode';
 import { Employee, Attendance, AttendanceType } from '../types';
 import { dataStore, wibNowISO } from '../dataStore';
 import { 
@@ -22,15 +23,38 @@ import {
   ShieldCheck, 
   Calendar,
   AlertCircle
+  ,QrCode, X
 } from 'lucide-react';
 
 interface AttendanceModuleProps {
   isAdmin: boolean;
   // Portal karyawan: kiosk terkunci ke karyawan ini (sudah terautentikasi PIN saat login, tanpa PIN ulang)
   lockedEmployee?: Employee | null;
+  assistingAdmin?: Employee | null;
 }
 
-export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, lockedEmployee }) => {
+const EmployeeQrScanner: React.FC<{ onScan: (value: string) => void }> = ({ onScan }) => {
+  const rawId = useId();
+  const elementId = `employee-qr-reader-${rawId.replace(/:/g, '')}`;
+
+  useEffect(() => {
+    const scanner = new Html5QrcodeScanner(elementId, {
+      fps: 10,
+      qrbox: { width: 240, height: 240 },
+      rememberLastUsedCamera: true,
+      supportedScanTypes: [0]
+    }, false);
+    scanner.render((decodedText) => {
+      onScan(decodedText);
+      void scanner.clear();
+    }, () => undefined);
+    return () => { void scanner.clear().catch(() => undefined); };
+  }, [elementId, onScan]);
+
+  return <div id={elementId} className="overflow-hidden rounded-xl" />;
+};
+
+export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, lockedEmployee, assistingAdmin }) => {
   // Navigation Mode
   const [activeMode, setActiveMode] = useState<'pola_a_kiosk' | 'pola_b_dashboard'>('pola_a_kiosk');
 
@@ -48,6 +72,9 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
   
   // Status pembacaan GPS saat kirim scan
   const [isScanning, setIsScanning] = useState(false);
+  const [showAssistedScan, setShowAssistedScan] = useState(false);
+  const [assistedEmployee, setAssistedEmployee] = useState<Employee | null>(null);
+  const [assistanceReason, setAssistanceReason] = useState('GPS karyawan tidak tersedia');
 
   // Status message and successful scan overlay state
   const [statusMessage, setStatusMessage] = useState<{ text: string; error: boolean } | null>(null);
@@ -157,7 +184,8 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
             longitude: pos.coords.longitude,
             selfie_url: '',
             device_token: deviceToken!,
-            note: `Kiosk Terminal Scan (GPS perangkat, akurasi ±${Math.round(pos.coords.accuracy)} m)`
+            note: `Kiosk Terminal Scan (GPS perangkat, akurasi ±${Math.round(pos.coords.accuracy)} m)`,
+            verification_method: 'gps_self'
           });
 
           // Launch Big Success Overlay (Auto disappears in 3 seconds)
@@ -196,6 +224,46 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
+  };
+
+  const handleEmployeeQr = (rawValue: string) => {
+    const prefix = 'ARI-ATTENDANCE:';
+    const token = rawValue.startsWith(prefix) ? rawValue.slice(prefix.length) : '';
+    const employee = employees.find(item => item.attendance_qr_token === token);
+    if (!employee) {
+      setStatusMessage({ text: 'QR karyawan tidak valid atau sudah tidak berlaku.', error: true });
+      return;
+    }
+    setAssistedEmployee(employee);
+    setStatusMessage(null);
+  };
+
+  const submitAssistedAttendance = () => {
+    if (!assistedEmployee || !assistanceReason.trim() || !assistingAdmin) return;
+    try {
+      const dept = dataStore.getDepartments().find(d => d.id === assistedEmployee.department_id);
+      if (!dept) throw new Error('Lokasi departemen karyawan tidak ditemukan.');
+      dataStore.recordAttendance({
+        employee_id: assistedEmployee.id,
+        timestamp: wibNowISO(),
+        type_scan: scanType,
+        latitude: dept.latitude,
+        longitude: dept.longitude,
+        selfie_url: '',
+        device_token: `admin-assisted-${assistingAdmin.id}`,
+        verification_method: 'admin_qr',
+        assisted_by_id: assistingAdmin.id,
+        assisted_by_name: assistingAdmin.name,
+        assistance_reason: assistanceReason.trim(),
+        note: `Absensi dibantu admin melalui QR pribadi. Alasan: ${assistanceReason.trim()}`
+      });
+      setStatusMessage({ text: `Absensi ${scanType} ${assistedEmployee.name} berhasil dicatat dengan bantuan ${assistingAdmin.name}.`, error: false });
+      setAssistedEmployee(null);
+      setShowAssistedScan(false);
+      loadData();
+    } catch (err: any) {
+      setStatusMessage({ text: err.message || 'Gagal mencatat absensi bantuan.', error: true });
+    }
   };
 
   // Filter employees for the list view
@@ -263,6 +331,41 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
       </div>
 
       {/* 2. SUCCESS OVERLAY MODAL (Real kiosk experience!) */}
+      {isAdmin && (
+        <div className="no-print bg-amber-50 border border-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-extrabold text-amber-950 flex items-center gap-2"><QrCode className="w-4 h-4" /> Absensi Dibantu Admin</p>
+            <p className="text-xs text-amber-800 mt-1">Gunakan hanya jika GPS karyawan bermasalah. Identitas admin dan alasan akan tersimpan pada riwayat.</p>
+          </div>
+          <button type="button" onClick={() => { setShowAssistedScan(true); setAssistedEmployee(null); }} className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-xl text-xs font-bold cursor-pointer">
+            Scan QR Karyawan
+          </button>
+        </div>
+      )}
+
+      {showAssistedScan && (
+        <div className="fixed inset-0 z-50 bg-black/70 p-4 flex items-center justify-center no-print">
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[92vh] overflow-y-auto p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div><h3 className="font-black text-gray-900">Scan QR Pribadi Karyawan</h3><p className="text-xs text-gray-500">Petugas: {assistingAdmin?.name || 'Identitas admin tidak tersedia'}</p></div>
+              <button type="button" onClick={() => setShowAssistedScan(false)} className="p-2 rounded-lg hover:bg-gray-100 cursor-pointer"><X className="w-4 h-4" /></button>
+            </div>
+            {!assistedEmployee ? <EmployeeQrScanner onScan={handleEmployeeQr} /> : (
+              <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4">
+                <p className="text-[10px] uppercase font-bold text-emerald-600">QR Terverifikasi</p>
+                <p className="font-black text-emerald-950">{assistedEmployee.name}</p>
+                <p className="text-xs text-emerald-700">@{assistedEmployee.username}</p>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              {(['masuk', 'pulang'] as AttendanceType[]).map(type => <button key={type} type="button" onClick={() => setScanType(type)} className={`py-2 rounded-lg text-xs font-bold uppercase border cursor-pointer ${scanType === type ? 'bg-[#1F4B36] text-white border-[#1F4B36]' : 'bg-white text-gray-600 border-gray-200'}`}>{type}</button>)}
+            </div>
+            <div><label className="text-xs font-bold text-gray-700">Alasan bantuan</label><textarea value={assistanceReason} onChange={e => setAssistanceReason(e.target.value)} rows={2} className="mt-1 w-full border border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:border-emerald-600" /></div>
+            <button type="button" disabled={!assistedEmployee || !assistanceReason.trim() || !assistingAdmin} onClick={submitAssistedAttendance} className="w-full py-3 rounded-xl bg-[#1F4B36] disabled:bg-gray-300 text-white text-xs font-black uppercase cursor-pointer disabled:cursor-not-allowed">Konfirmasi Absensi Dibantu Admin</button>
+          </div>
+        </div>
+      )}
+
       {successOverlay && (
         <div className="fixed inset-0 bg-[#0F291D]/80 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-fade-in no-print">
           <div className="bg-white rounded-3xl p-8 max-w-md w-full border border-emerald-500/30 text-center space-y-6 shadow-2xl relative overflow-hidden">

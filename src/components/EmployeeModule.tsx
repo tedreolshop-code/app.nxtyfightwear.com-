@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Employee, Department, PayrollWeekly, CashAdvance, Attendance } from '../types';
 import { dataStore, hashPin } from '../dataStore';
-import { Users, Plus, ShieldCheck, Key, Lock, LogIn, LogOut, Check, Save, DollarSign, X, Calendar, Clock, Printer, Trash2, History, Calculator } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
+import { Users, Plus, ShieldCheck, Key, Lock, LogIn, LogOut, Check, Save, DollarSign, X, Calendar, Clock, Printer, Trash2, History, Calculator, QrCode } from 'lucide-react';
 
 interface EmployeeModuleProps {
   currentLoggedEmployee: Employee | null;
@@ -47,6 +48,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
   const [selectedLoginEmpId, setSelectedLoginEmpId] = useState('');
   const [loginPin, setLoginPin] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [qrEmployee, setQrEmployee] = useState<Employee | null>(null);
 
   // Editing RLS State
   const [editingEmpId, setEditingEmpId] = useState<string | null>(null);
@@ -856,6 +858,12 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                     <td className="p-3 text-center">
                       <div className="flex items-center justify-center gap-1.5">
                         <button
+                          onClick={() => setQrEmployee(emp)}
+                          className="bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 font-bold text-[10px] px-2.5 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
+                        >
+                          <QrCode className="w-3 h-3" /> QR
+                        </button>
+                        <button
                           onClick={() => handleOpenProfileModal(emp)}
                           className="bg-[#1F4B36] hover:bg-[#122d20] text-white font-bold text-[10px] px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition-colors cursor-pointer shadow-xs"
                         >
@@ -882,6 +890,17 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
           </table>
         </div>
       </div>
+
+      {qrEmployee && qrEmployee.attendance_qr_token && (
+        <div className="fixed inset-0 z-50 bg-black/60 p-4 flex items-center justify-center no-print">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm text-center space-y-4 shadow-2xl">
+            <div><h3 className="font-black text-gray-900">QR Absensi Karyawan</h3><p className="text-sm text-gray-600">{qrEmployee.name}</p><p className="text-xs text-gray-400">@{qrEmployee.username}</p></div>
+            <div className="inline-flex bg-white border-8 border-white shadow-md"><QRCodeSVG value={`ARI-ATTENDANCE:${qrEmployee.attendance_qr_token}`} size={220} level="H" /></div>
+            <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-2">QR bersifat pribadi. Cetak dan berikan hanya kepada karyawan terkait. QR tidak menyimpan PIN.</p>
+            <div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => window.print()} className="py-2.5 bg-[#1F4B36] text-white rounded-xl text-xs font-bold cursor-pointer"><Printer className="w-3.5 h-3.5 inline mr-1" /> Cetak</button><button type="button" onClick={() => setQrEmployee(null)} className="py-2.5 bg-gray-100 text-gray-700 rounded-xl text-xs font-bold cursor-pointer">Tutup</button></div>
+          </div>
+        </div>
+      )}
 
       {/* ============================================== */}
       {/* CONSOLIDATED PROFIL & GAJI MODAL */}

@@ -21,6 +21,9 @@ import {
   Order,
   ProductionJob,
   Asset
+  ,AuditEntry,
+  RecycleEntry,
+  UserRole
 } from './types';
 import { pushKeyToCloud, pushAttendanceToCloud, clearAttendanceInCloud } from './cloudSync';
 
@@ -197,6 +200,66 @@ const INITIAL_CALIBRATION: PrinterCalibration = {
 
 // Main DataStore wrapper class to synchronize with LocalStorage
 class DataStore {
+  private auditKey = 'audit_logs';
+  private recycleKey = 'recycle_bin';
+
+  private currentActor = (): { id?: string; name: string; role: UserRole | 'system' } => {
+    try {
+      const session = JSON.parse(localStorage.getItem('nxty_session') || 'null');
+      return session ? { id: session.employeeId, name: session.name || 'Pengguna', role: session.role || 'system' } : { name: 'Sistem', role: 'system' };
+    } catch { return { name: 'Sistem', role: 'system' }; }
+  };
+
+  private safeSnapshot = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(item => this.safeSnapshot(item));
+    if (!value || typeof value !== 'object') return value;
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, item]) => {
+      if (['pin', 'password', 'attendance_qr_token', 'token', 'selfie_url'].includes(key)) return [key, '[REDACTED]'];
+      return [key, this.safeSnapshot(item)];
+    }));
+  };
+
+  private appendAudit = (entry: Omit<AuditEntry, 'id' | 'timestamp' | 'actor_name' | 'actor_role' | 'actor_id'>): void => {
+    const actor = this.currentActor();
+    const current = this.get<AuditEntry[]>(this.auditKey, []);
+    const audit: AuditEntry = { ...entry, id: uuid(), timestamp: wibNowISO(), actor_id: actor.id, actor_name: actor.name, actor_role: actor.role };
+    const next = [audit, ...current].slice(0, 5000);
+    localStorage.setItem(`nxty_${this.auditKey}`, JSON.stringify(next));
+    pushKeyToCloud(this.auditKey, next);
+  };
+
+  private captureChanges = <T>(key: string, previous: T, next: T): void => {
+    if (key === this.auditKey || key === this.recycleKey || !Array.isArray(previous) || !Array.isArray(next)) return;
+    const oldItems = previous.filter(item => item && typeof item === 'object' && 'id' in item) as Array<Record<string, unknown>>;
+    const newItems = next.filter(item => item && typeof item === 'object' && 'id' in item) as Array<Record<string, unknown>>;
+    if (!oldItems.length && !newItems.length) return;
+    const oldMap = new Map(oldItems.map(item => [String(item.id), item]));
+    const newMap = new Map(newItems.map(item => [String(item.id), item]));
+    const actor = this.currentActor();
+
+    for (const [id, item] of oldMap) {
+      if (newMap.has(id)) continue;
+      const recycle = this.get<RecycleEntry[]>(this.recycleKey, []).filter(entry => entry.id !== `${key}:${id}`);
+      const deletedAt = wibNowISO();
+      recycle.unshift({
+        id: `${key}:${id}`, entity_type: key, entity_id: id,
+        label: String(item.name || item.employee_name || item.invoice_number || item.order_number || item.description || id),
+        data: item, deleted_at: deletedAt, deleted_by_id: actor.id, deleted_by_name: actor.name,
+        reason: `Dihapus melalui modul ${key}`,
+        expires_at: new Date(Date.now() + 30 * 86400000).toISOString()
+      });
+      localStorage.setItem(`nxty_${this.recycleKey}`, JSON.stringify(recycle));
+      pushKeyToCloud(this.recycleKey, recycle);
+      this.appendAudit({ action: 'delete', entity_type: key, entity_id: id, description: `Menghapus ${key}: ${String(item.name || item.description || id)}`, metadata: { before: this.safeSnapshot(item), recycle_expires_at: recycle[0].expires_at } });
+    }
+
+    for (const [id, item] of newMap) {
+      const old = oldMap.get(id);
+      if (!old) this.appendAudit({ action: 'create', entity_type: key, entity_id: id, description: `Membuat data ${key}: ${String(item.name || item.description || id)}` });
+      else if (JSON.stringify(old) !== JSON.stringify(item)) this.appendAudit({ action: 'update', entity_type: key, entity_id: id, description: `Memperbarui data ${key}: ${String(item.name || item.description || id)}`, metadata: { before: this.safeSnapshot(old), after: this.safeSnapshot(item) } });
+    }
+  };
+
   private get<T>(key: string, initial: T): T {
     try {
       const stored = localStorage.getItem(`nxty_${key}`);
@@ -208,6 +271,8 @@ class DataStore {
 
   private set<T>(key: string, data: T): void {
     try {
+      const previous = this.get<T>(key, data);
+      this.captureChanges(key, previous, data);
       localStorage.setItem(`nxty_${key}`, JSON.stringify(data));
       // Dispatch a storage event so components can listen to changes in real-time
       window.dispatchEvent(new Event('nxty_storage_change'));
@@ -217,6 +282,51 @@ class DataStore {
       console.error('Failed to write to localStorage', e);
     }
   }
+
+  getAuditLogs = (): AuditEntry[] => this.get(this.auditKey, []);
+  getRecycleBin = (): RecycleEntry[] => {
+    const now = Date.now();
+    const current = this.get<RecycleEntry[]>(this.recycleKey, []);
+    const active = current.filter(entry => new Date(entry.expires_at).getTime() > now);
+    if (active.length !== current.length) {
+      localStorage.setItem(`nxty_${this.recycleKey}`, JSON.stringify(active));
+      pushKeyToCloud(this.recycleKey, active);
+    }
+    return active;
+  };
+
+  logAudit = (action: AuditEntry['action'], entityType: string, description: string, entityId?: string, metadata?: Record<string, unknown>) =>
+    this.appendAudit({ action, entity_type: entityType, entity_id: entityId, description, metadata: this.safeSnapshot(metadata) as Record<string, unknown> | undefined });
+
+  restoreRecycleEntry = (recycleId: string): boolean => {
+    const recycle = this.getRecycleBin();
+    const entry = recycle.find(item => item.id === recycleId);
+    if (!entry) return false;
+    const records = this.get<Array<Record<string, unknown>>>(entry.entity_type, []);
+    if (records.some(item => String(item.id) === entry.entity_id)) throw new Error('Data dengan ID yang sama sudah aktif.');
+    const restored = [entry.data, ...records];
+    localStorage.setItem(`nxty_${entry.entity_type}`, JSON.stringify(restored));
+    pushKeyToCloud(entry.entity_type, restored);
+    if (entry.entity_type === 'attendance') pushAttendanceToCloud(entry.data as unknown as Attendance);
+    const nextRecycle = recycle.filter(item => item.id !== recycleId);
+    localStorage.setItem(`nxty_${this.recycleKey}`, JSON.stringify(nextRecycle));
+    pushKeyToCloud(this.recycleKey, nextRecycle);
+    this.appendAudit({ action: 'restore', entity_type: entry.entity_type, entity_id: entry.entity_id, description: `Memulihkan ${entry.entity_type}: ${entry.label}` });
+    window.dispatchEvent(new Event('nxty_storage_change'));
+    return true;
+  };
+
+  permanentlyDeleteRecycleEntry = (recycleId: string): boolean => {
+    const recycle = this.getRecycleBin();
+    const entry = recycle.find(item => item.id === recycleId);
+    if (!entry) return false;
+    const next = recycle.filter(item => item.id !== recycleId);
+    localStorage.setItem(`nxty_${this.recycleKey}`, JSON.stringify(next));
+    pushKeyToCloud(this.recycleKey, next);
+    this.appendAudit({ action: 'permanent_delete', entity_type: entry.entity_type, entity_id: entry.entity_id, description: `Menghapus permanen ${entry.entity_type}: ${entry.label}` });
+    window.dispatchEvent(new Event('nxty_storage_change'));
+    return true;
+  };
 
   getDepartments = (): Department[] => this.get('departments', INITIAL_DEPARTMENTS);
   setDepartments = (data: Department[]) => this.set('departments', data);
@@ -236,14 +346,24 @@ class DataStore {
     // Migrasi: isi username yang kosong dari kata pertama nama (huruf kecil, unik)
     const taken = new Set(employees.map(e => e.username).filter(Boolean) as string[]);
     employees = employees.map(e => {
-      if (e.username) return e;
-      const base = (e.name.split(' ')[0] || 'user').toLowerCase().replace(/[^a-z0-9]/g, '') || 'user';
-      let candidate = base;
-      let i = 2;
-      while (taken.has(candidate)) candidate = `${base}${i++}`;
-      taken.add(candidate);
-      migrated = true;
-      return { ...e, username: candidate };
+      let next = e;
+      if (!next.username) {
+        const base = (next.name.split(' ')[0] || 'user').toLowerCase().replace(/[^a-z0-9]/g, '') || 'user';
+        let candidate = base;
+        let i = 2;
+        while (taken.has(candidate)) candidate = `${base}${i++}`;
+        taken.add(candidate);
+        next = { ...next, username: candidate };
+        migrated = true;
+      }
+      if (!next.attendance_qr_token) {
+        const random = typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+        next = { ...next, attendance_qr_token: random };
+        migrated = true;
+      }
+      return next;
     });
 
     if (migrated) this.setEmployees(employees);

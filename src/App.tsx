@@ -10,6 +10,7 @@ import { isCloudEnabled, getCloudStatus, CloudStatus } from './cloudSync';
 import { MainDashboard } from './components/MainDashboard';
 import { EmployeeDashboard } from './components/EmployeeDashboard';
 import { AttendanceModule } from './components/AttendanceModule';
+import { AuditRecycleModule } from './components/AuditRecycleModule';
 import { PayrollModule } from './components/PayrollModule';
 import { ProductionInventoryModule } from './components/ProductionInventoryModule';
 import { WarehouseInventoryModule } from './components/WarehouseInventoryModule';
@@ -32,6 +33,7 @@ import {
   Activity,
   LogOut,
   User,
+  ShieldCheck,
 } from 'lucide-react';
 
 // 4 role aktif (label disederhanakan; id tetap kompatibel dengan modul lama)
@@ -55,6 +57,7 @@ const MENUS: Array<{ id: string; label: string; icon: React.ComponentType<{ clas
   { id: 'absensi', label: 'Absensi', icon: Activity, roles: ['owner', 'admin_penjualan', 'admin_gudang', 'karyawan'] },
   { id: 'gaji', label: 'Slip Gaji', icon: FileText, roles: ['owner', 'admin_penjualan', 'admin_gudang', 'karyawan'] },
   { id: 'profil', label: 'Profil Saya', icon: User, roles: ['owner', 'admin_penjualan', 'admin_gudang', 'karyawan'] },
+  { id: 'audit', label: 'Audit & Recycle Bin', icon: ShieldCheck, roles: ['owner'] },
 ];
 
 // Kartu login: username + PIN (satu pintu untuk semua akses)
@@ -68,6 +71,7 @@ function KaryawanLoginCard({ onLogin }: { onLogin: (emp: Employee) => void }) {
     setError('');
     const emp = dataStore.verifyLogin(username, pin);
     if (!emp) {
+      dataStore.logAudit('login', 'session', `Login gagal untuk username ${username.trim().toLowerCase() || '(kosong)'}`, undefined, { success: false });
       setError('Username atau PIN salah.');
       setPin('');
       return;
@@ -185,7 +189,7 @@ export default function App() {
     // Pulihkan karyawan yang login dari sesi tersimpan
     try {
       const s: Session | null = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
-      if (s?.role === 'karyawan' && s.employeeId) {
+      if (s?.employeeId) {
         return dataStore.getEmployees().find(e => e.id === s.employeeId) || null;
       }
     } catch { /* abaikan sesi rusak */ }
@@ -196,10 +200,12 @@ export default function App() {
     localStorage.setItem(SESSION_KEY, JSON.stringify(s));
     setSession(s);
     if (emp) setLoggedEmployee(emp);
+    dataStore.logAudit('login', 'session', `Login berhasil sebagai ${s.name}`, s.employeeId);
     setActiveTab('dashboard');
   };
 
   const handleLogout = () => {
+    dataStore.logAudit('logout', 'session', `Logout akun ${session?.name || 'pengguna'}`, session?.employeeId);
     localStorage.removeItem(SESSION_KEY);
     setSession(null);
     setLoggedEmployee(null);
@@ -561,7 +567,7 @@ export default function App() {
                     allTabs={MENUS.map(m => ({ id: m.id, label: m.label, icon: m.icon, roles: m.roles as string[] }))}
                   />
                 )}
-                {karyawanSubTab === 'absensi' && <AttendanceModule isAdmin={true} />}
+                {karyawanSubTab === 'absensi' && <AttendanceModule isAdmin={true} assistingAdmin={loggedEmployee} />}
                 {karyawanSubTab === 'payroll' && <PayrollModule isAdmin={true} loggedEmployee={null} />}
               </div>
             )}
@@ -584,6 +590,8 @@ export default function App() {
                 ? <ProfileModule employee={loggedEmployee} onUpdated={setLoggedEmployee} />
                 : <KaryawanLoginCard onLogin={(emp) => handleLogin(sessionForEmployee(emp), emp)} />
             )}
+
+            {activeTab === 'audit' && <AuditRecycleModule />}
 
             {/* LAPORAN (owner): ekspor CSV */}
             {activeTab === 'laporan' && (
