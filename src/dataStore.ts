@@ -192,6 +192,13 @@ const INITIAL_PURCHASES: Purchase[] = [];
 const INITIAL_DAILY_EXPENSES: DailyExpense[] = [];
 
 const INITIAL_NOTIFICATIONS: NotificationLog[] = [];
+const INITIAL_EXPENSE_CATEGORIES = [
+  'Konsumsi & Lembur',
+  'Listrik & Utilitas',
+  'Biaya Transportasi & BBM',
+  'Perbaikan & Maintenance',
+  'Lain-lain / Overhead'
+];
 
 const INITIAL_CALIBRATION: PrinterCalibration = {
   offset_x: 0,
@@ -418,6 +425,9 @@ class DataStore {
 
   getNotifications = (): NotificationLog[] => this.get('notifications', INITIAL_NOTIFICATIONS);
   setNotifications = (data: NotificationLog[]) => this.set('notifications', data);
+
+  getExpenseCategories = (): string[] => this.get('expense_categories', INITIAL_EXPENSE_CATEGORIES);
+  setExpenseCategories = (data: string[]) => this.set('expense_categories', data);
 
   getCalibration = (): PrinterCalibration => this.get('calibration', INITIAL_CALIBRATION);
   setCalibration = (data: PrinterCalibration) => this.set('calibration', data);

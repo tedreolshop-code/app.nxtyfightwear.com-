@@ -60,6 +60,9 @@ export const PurchasesExpensesModule: React.FC = () => {
   const [expensePrice, setExpensePrice] = useState<number>(0);
   const [expenseStaff, setExpenseStaff] = useState('Admin Keuangan');
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
+  const [expenseCategories, setExpenseCategories] = useState<string[]>([]);
+  const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
 
   // General Filter & Search states
   const [deleteTarget, setDeleteTarget] = useState<{ id: string, type: 'purchase' | 'expense' } | null>(null);
@@ -100,6 +103,7 @@ export const PurchasesExpensesModule: React.FC = () => {
     const allPurchases = dataStore.getPurchases();
     setPurchases(allPurchases);
     setExpenses(dataStore.getDailyExpenses());
+    setExpenseCategories(dataStore.getExpenseCategories());
     setRawMaterials(dataStore.getRawMaterials());
 
     if (allPurchases.length > 0 && !selectedPoId) {
@@ -354,7 +358,10 @@ export const PurchasesExpensesModule: React.FC = () => {
   // Handle Expenses Actions
   const handlePostExpense = (e: React.FormEvent) => {
     e.preventDefault();
-    if (expensePrice <= 0 || expenseQty <= 0 || !expenseDesc.trim()) return;
+    if (expensePrice <= 0 || expenseQty <= 0 || !expenseDesc.trim() || !expenseCategory.trim()) {
+      alert('Lengkapi kategori, nama pengeluaran, qty, dan harga dengan benar!');
+      return;
+    }
 
     const computedSubtotal = expenseQty * expensePrice;
     const currentExpenses = dataStore.getDailyExpenses();
@@ -398,6 +405,27 @@ export const PurchasesExpensesModule: React.FC = () => {
     setExpenseQty(1);
     setExpensePrice(0);
     loadData();
+    setIsExpenseModalOpen(false);
+  };
+
+  const handleAddExpenseCategory = () => {
+    const name = newCategoryName.trim().replace(/\s+/g, ' ');
+    if (!name) return alert('Nama kategori wajib diisi.');
+    const current = dataStore.getExpenseCategories();
+    const existing = current.find(item => item.toLowerCase() === name.toLowerCase());
+    if (existing) {
+      setExpenseCategory(existing);
+      setShowNewCategoryInput(false);
+      setNewCategoryName('');
+      return alert('Kategori tersebut sudah tersedia.');
+    }
+    const updated = [...current, name].sort((a, b) => a.localeCompare(b, 'id'));
+    dataStore.setExpenseCategories(updated);
+    dataStore.logAudit('create', 'expense_category', `Menambahkan kategori pengeluaran: ${name}`, name);
+    setExpenseCategories(updated);
+    setExpenseCategory(name);
+    setShowNewCategoryInput(false);
+    setNewCategoryName('');
   };
 
   const handleStartEditExpense = (e: DailyExpense) => {
@@ -538,13 +566,10 @@ export const PurchasesExpensesModule: React.FC = () => {
   const totalExpenseCost = expenses.reduce((sum, e) => sum + e.amount, 0);
   const activeSelectedPo = purchases.find(p => p.id === selectedPoId) || purchases[0];
 
-  const categoriesList = [
-    'Konsumsi & Lembur',
-    'Listrik & Utilitas',
-    'Biaya Transportasi & BBM',
-    'Perbaikan & Maintenance',
-    'Lain-lain / Overhead'
-  ];
+  // Gabungkan master kategori dengan kategori historis agar data impor/lama tetap dapat difilter dan diedit.
+  const categoriesList = Array.from(new Set([...expenseCategories, ...expenses.map(item => item.category)]))
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, 'id'));
 
   const supplierList = Array.from(new Set(purchases.map(p => p.supplier))).sort();
   const availablePoMonths = Array.from(new Set(purchases.map(p => p.date.substring(0, 7)))).sort().reverse() as string[];
@@ -936,17 +961,18 @@ export const PurchasesExpensesModule: React.FC = () => {
                     <X className="w-5 h-5" />
                   </button>
                 </div>
-                <form onSubmit={(e) => { e.preventDefault(); handlePostExpense(e); setIsExpenseModalOpen(false); }} className="grid grid-cols-2 gap-4 text-xs">
+                <form onSubmit={handlePostExpense} className="grid grid-cols-2 gap-4 text-xs">
                   <div className="col-span-1">
                     <label className="block text-[10px] font-bold text-emerald-800 uppercase tracking-wider mb-1">Tanggal</label>
                     <input type="date" value={expenseDate} onChange={(e) => setExpenseDate(e.target.value)} className="w-full bg-emerald-50/15 border border-emerald-800/25 rounded-lg px-3 py-2 font-sans focus:bg-white focus:border-emerald-700 focus:outline-none font-semibold text-emerald-950" required />
                   </div>
                   <div className="col-span-1">
                     <label className="block text-[10px] font-bold text-emerald-800 uppercase tracking-wider mb-1">Kategori</label>
-                    <select value={expenseCategory} onChange={(e) => setExpenseCategory(e.target.value)} className="w-full bg-emerald-50/15 border border-emerald-800/25 rounded-lg px-3 py-2 focus:bg-white focus:border-emerald-700 focus:outline-none font-semibold text-emerald-950 cursor-pointer" required>
+                    <div className="flex gap-1.5"><select value={expenseCategory} onChange={(e) => setExpenseCategory(e.target.value)} className="min-w-0 flex-1 bg-emerald-50/15 border border-emerald-800/25 rounded-lg px-3 py-2 focus:bg-white focus:border-emerald-700 focus:outline-none font-semibold text-emerald-950 cursor-pointer" required>
                       {categoriesList.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                    </select>
+                    </select><button type="button" onClick={() => setShowNewCategoryInput(value => !value)} className="shrink-0 px-2.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-800/20 hover:bg-emerald-100 cursor-pointer" title="Tambah kategori baru"><Plus className="w-4 h-4" /></button></div>
                   </div>
+                  {showNewCategoryInput && <div className="col-span-2 bg-emerald-50/30 border border-emerald-800/15 rounded-xl p-3"><label className="block text-[10px] font-bold text-emerald-800 uppercase tracking-wider mb-1">Kategori Baru</label><div className="flex gap-2"><input value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddExpenseCategory(); } }} placeholder="Contoh: ATK & Perlengkapan Kantor" className="min-w-0 flex-1 bg-white border border-emerald-800/25 rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-700 font-semibold text-emerald-950" autoFocus /><button type="button" onClick={handleAddExpenseCategory} className="bg-emerald-800 text-white px-4 rounded-lg font-bold cursor-pointer">Tambah</button></div></div>}
                   <div className="col-span-2">
                     <label className="block text-[10px] font-bold text-emerald-800 uppercase tracking-wider mb-1">Nama Barang / Pengeluaran</label>
                     <input type="text" value={expenseDesc} onChange={(e) => setExpenseDesc(e.target.value)} placeholder="Contoh: Galon air" className="w-full bg-emerald-50/15 border border-emerald-800/25 rounded-lg px-3 py-2 focus:bg-white focus:border-emerald-700 focus:outline-none font-semibold text-emerald-950" required />
