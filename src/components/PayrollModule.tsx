@@ -91,7 +91,28 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
       });
 
       const uniqueDates = new Set(empAtt.map(a => a.timestamp.split('T')[0]));
-      setDaysWorked(uniqueDates.size || 5); // default to 5 if no attendance recorded
+      const dayFractions = Array.from(uniqueDates).map(date => {
+        const checkout = empAtt.find(log => log.timestamp.startsWith(date) && log.type_scan === 'pulang');
+        return checkout?.work_fraction ?? 1;
+      });
+      setDaysWorked(dayFractions.length ? dayFractions.reduce((sum, value) => sum + value, 0) : 5);
+
+      // Lembur otomatis adalah waktu setelah jam pulang dikurangi menit keterlambatan.
+      const computedOvertime = empAtt.reduce((sum, log) => sum + (log.overtime_minutes || 0), 0) / 60;
+      setOvertimeHours(Math.round(computedOvertime * 100) / 100);
+
+      // Bonus bulanan hanya diprefill pada slip yang berakhir di hari terakhir bulan.
+      const settings = dataStore.getWorkSettings();
+      const end = new Date(`${periodEnd}T00:00:00+07:00`);
+      const nextDay = new Date(end.getTime() + 86400000);
+      const isMonthEnd = nextDay.getMonth() !== end.getMonth();
+      if (isMonthEnd) {
+        const monthPrefix = periodEnd.slice(0, 7);
+        const monthLogs = attendance.filter(log => log.employee_id === selectedEmpId && log.timestamp.startsWith(monthPrefix));
+        const monthDays = new Set(monthLogs.filter(log => log.type_scan === 'masuk').map(log => log.timestamp.slice(0, 10))).size;
+        const totalLate = monthLogs.reduce((sum, log) => sum + (log.late_minutes || 0), 0);
+        setBonus(monthDays >= settings.monthly_bonus_min_days && totalLate === 0 ? settings.monthly_bonus_amount : 0);
+      } else setBonus(0);
 
       // Find cash advance balance to pre-populate deduction
       const advances = cashAdvances.filter(c => c.employee_id === selectedEmpId);
@@ -1386,6 +1407,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                   <label className="block font-bold text-emerald-800 uppercase tracking-wider mb-1">Hari Kerja (Auto)</label>
                   <input
                     type="number"
+                    step="0.5"
                     value={daysWorked}
                     onChange={(e) => setDaysWorked(Number(e.target.value))}
                     className="w-full bg-emerald-50/10 border border-emerald-800/25 rounded-lg px-3 py-2 text-emerald-950 font-semibold focus:bg-white focus:outline-none focus:border-emerald-700"

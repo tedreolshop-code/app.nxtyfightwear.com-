@@ -31,6 +31,22 @@
     box-shadow: none !important;
   }
 
+  body.location-qr-printing * {
+    visibility: hidden !important;
+  }
+
+  body.location-qr-printing .location-qr-print-card,
+  body.location-qr-printing .location-qr-print-card * {
+    visibility: visible !important;
+  }
+
+  body.location-qr-printing .location-qr-print-card {
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    border: 0 !important;
+  }
+
   body {
     background: white !important;
     color: black !important;

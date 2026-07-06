@@ -111,6 +111,20 @@ export interface Attendance {
   assisted_by_id?: string;
   assisted_by_name?: string;
   assistance_reason?: string;
+  late_minutes?: number;
+  worked_minutes?: number;
+  work_fraction?: 0.5 | 1;
+  overtime_minutes?: number;
+}
+
+export interface WorkSettings {
+  start_time: string;
+  end_time: string;
+  timezone: 'Asia/Jakarta';
+  half_day_max_hours: number;
+  monthly_bonus_amount: number;
+  monthly_bonus_min_days: number;
+  location_qr_token: string;
 }
 
 export interface AuditEntry {

@@ -170,31 +170,15 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
 
     // 1. Calculate unique dates worked
     const uniqueDates = Array.from(new Set(scans.map(s => s.timestamp.split('T')[0])));
-    const daysCount = uniqueDates.length || 6; // default to 6 if no scans, but calculated if scans exist
+    const daysCount = uniqueDates.length
+      ? uniqueDates.reduce((sum, date) => {
+          const checkout = scans.find(scan => scan.timestamp.startsWith(date) && scan.type_scan === 'pulang');
+          return sum + (checkout?.work_fraction ?? 1);
+        }, 0)
+      : 6;
 
-    // 2. Calculate overtime hours based on daily scan in/out duration
-    let computedOvertimeHours = 0;
-    uniqueDates.forEach(dateStr => {
-      const dailyScans = scans.filter(s => s.timestamp.startsWith(dateStr));
-      if (dailyScans.length >= 2) {
-        const sorted = [...dailyScans].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-        const firstScan = new Date(sorted[0].timestamp);
-        const lastScan = new Date(sorted[sorted.length - 1].timestamp);
-
-        const diffMs = lastScan.getTime() - firstScan.getTime();
-        const diffHours = diffMs / (1000 * 60 * 60);
-
-        let netHours = diffHours;
-        if (diffHours > 5) {
-          netHours -= 1;
-        }
-
-        if (netHours > 8) {
-          const over = Math.round((netHours - 8) * 10) / 10;
-          computedOvertimeHours += over;
-        }
-      }
-    });
+    // Lembur tersimpan sudah dikurangi menit keterlambatan pada hari yang sama.
+    const computedOvertimeHours = Math.round(scans.reduce((sum, scan) => sum + (scan.overtime_minutes || 0), 0) / 60 * 100) / 100;
 
     // 3. Outstanding Kasbon deduction prefill
     const advances = dataStore.getCashAdvances().filter(c => c.employee_id === empId);
@@ -205,7 +189,15 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
     setModalOvertimeHours(computedOvertimeHours);
     setModalKasbonDeduction(suggestedDeduction);
     setModalOutstandingKasbon(totalOutstanding);
-    setModalBonus(0);
+    const settings = dataStore.getWorkSettings();
+    const periodEndDate = new Date(`${modalPeriodEnd}T00:00:00+07:00`);
+    const nextDay = new Date(periodEndDate.getTime() + 86400000);
+    const isMonthEnd = nextDay.getMonth() !== periodEndDate.getMonth();
+    const monthPrefix = modalPeriodEnd.slice(0, 7);
+    const monthScans = dataStore.getAttendance().filter(scan => scan.employee_id === empId && scan.timestamp.startsWith(monthPrefix));
+    const monthDays = new Set(monthScans.filter(scan => scan.type_scan === 'masuk').map(scan => scan.timestamp.slice(0, 10))).size;
+    const totalLate = monthScans.reduce((sum, scan) => sum + (scan.late_minutes || 0), 0);
+    setModalBonus(isMonthEnd && monthDays >= settings.monthly_bonus_min_days && totalLate === 0 ? settings.monthly_bonus_amount : 0);
 
     showNotification(`Sukses sinkronisasi data absensi! - Hari Kerja Terhitung: ${daysCount} Hari - Estimasi Jam Lembur: ${computedOvertimeHours} Jam`, 'success');
   };
@@ -1134,6 +1126,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                           <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider">Jumlah Hari Kerja</label>
                           <input 
                             type="number" 
+                            step="0.5"
                             value={modalDaysWorked} 
                             onChange={(e) => setModalDaysWorked(Number(e.target.value))}
                             className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono font-bold text-gray-800 w-full"

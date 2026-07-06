@@ -24,6 +24,7 @@ import {
   ,AuditEntry,
   RecycleEntry,
   UserRole
+  ,WorkSettings
 } from './types';
 import { pushKeyToCloud, pushAttendanceToCloud, clearAttendanceInCloud } from './cloudSync';
 
@@ -199,6 +200,15 @@ const INITIAL_EXPENSE_CATEGORIES = [
   'Perbaikan & Maintenance',
   'Lain-lain / Overhead'
 ];
+const INITIAL_WORK_SETTINGS: WorkSettings = {
+  start_time: '08:00',
+  end_time: '16:00',
+  timezone: 'Asia/Jakarta',
+  half_day_max_hours: 4,
+  monthly_bonus_amount: 0,
+  monthly_bonus_min_days: 20,
+  location_qr_token: 'ari-hq-' + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)
+};
 
 const INITIAL_CALIBRATION: PrinterCalibration = {
   offset_x: 0,
@@ -428,6 +438,13 @@ class DataStore {
 
   getExpenseCategories = (): string[] => this.get('expense_categories', INITIAL_EXPENSE_CATEGORIES);
   setExpenseCategories = (data: string[]) => this.set('expense_categories', data);
+
+  getWorkSettings = (): WorkSettings => {
+    const settings = this.get<WorkSettings>('work_settings', INITIAL_WORK_SETTINGS);
+    if (!localStorage.getItem('nxty_work_settings')) this.setWorkSettings(settings);
+    return settings;
+  };
+  setWorkSettings = (data: WorkSettings) => this.set('work_settings', data);
 
   getCalibration = (): PrinterCalibration => this.get('calibration', INITIAL_CALIBRATION);
   setCalibration = (data: PrinterCalibration) => this.set('calibration', data);
@@ -882,8 +899,32 @@ class DataStore {
     // Radius check: anomaly if > 100m
     const status = distance > 100 ? 'anomaly' : 'normal';
 
+    const workSettings = this.getWorkSettings();
+    const clockMinutes = (value: string) => {
+      const [hours, minutes] = value.split(':').map(Number);
+      return hours * 60 + minutes;
+    };
+    const timestampClock = att.timestamp.slice(11, 16);
+    let attendanceMetrics: Partial<Attendance> = {};
+    if (att.type_scan === 'masuk') {
+      attendanceMetrics.late_minutes = Math.max(0, clockMinutes(timestampClock) - clockMinutes(workSettings.start_time));
+    } else {
+      const checkIn = sameDayLogs.find(log => log.type_scan === 'masuk');
+      if (checkIn) {
+        const workedMinutes = Math.max(0, Math.round((new Date(att.timestamp).getTime() - new Date(checkIn.timestamp).getTime()) / 60000));
+        const lateMinutes = checkIn.late_minutes ?? Math.max(0, clockMinutes(checkIn.timestamp.slice(11, 16)) - clockMinutes(workSettings.start_time));
+        const afterWorkMinutes = Math.max(0, clockMinutes(timestampClock) - clockMinutes(workSettings.end_time));
+        attendanceMetrics = {
+          worked_minutes: workedMinutes,
+          work_fraction: workedMinutes <= workSettings.half_day_max_hours * 60 ? 0.5 : 1,
+          overtime_minutes: Math.max(0, afterWorkMinutes - lateMinutes)
+        };
+      }
+    }
+
     const newAttendance: Attendance = {
       ...att,
+      ...attendanceMetrics,
       id: uuid(),
       employee_name: emp.name,
       distance_meters: Math.round(distance * 10) / 10,

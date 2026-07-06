@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useId } from 'react';
 import { Html5QrcodeScanner } from 'html5-qrcode';
-import { Employee, Attendance, AttendanceType } from '../types';
+import { QRCodeSVG } from 'qrcode.react';
+import { Employee, Attendance, AttendanceType, WorkSettings } from '../types';
 import { dataStore, wibNowISO } from '../dataStore';
 import { 
   MapPin, 
@@ -24,6 +25,7 @@ import {
   Calendar,
   AlertCircle
   ,QrCode, X
+  ,Settings, Printer
 } from 'lucide-react';
 
 interface AttendanceModuleProps {
@@ -75,6 +77,10 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
   const [showAssistedScan, setShowAssistedScan] = useState(false);
   const [assistedEmployee, setAssistedEmployee] = useState<Employee | null>(null);
   const [assistanceReason, setAssistanceReason] = useState('GPS karyawan tidak tersedia');
+  const [locationVerified, setLocationVerified] = useState(false);
+  const [showLocationScanner, setShowLocationScanner] = useState(false);
+  const [showWorkSettings, setShowWorkSettings] = useState(false);
+  const [workSettings, setWorkSettings] = useState<WorkSettings>(() => dataStore.getWorkSettings());
 
   // Status message and successful scan overlay state
   const [statusMessage, setStatusMessage] = useState<{ text: string; error: boolean } | null>(null);
@@ -109,6 +115,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
   const loadData = () => {
     setEmployees(dataStore.getEmployees().filter(e => e.status_aktif));
     setAttendanceLogs(dataStore.getAttendance());
+    setWorkSettings(dataStore.getWorkSettings());
   };
 
   // Portal karyawan: kunci pilihan ke diri sendiri & paksa mode kiosk
@@ -146,6 +153,11 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
 
     const emp = employees.find(x => x.id === selectedEmpId);
     if (!emp) return;
+
+    if (lockedEmployee && !locationVerified) {
+      setStatusMessage({ text: 'Scan QR lokasi pabrik terlebih dahulu sebelum absen.', error: true });
+      return;
+    }
 
     // Karyawan yang login lewat portal sudah terverifikasi PIN — tidak perlu PIN ulang
     if (!lockedEmployee) {
@@ -201,6 +213,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
 
           // Clear states for next check-in (portal karyawan tetap terkunci ke dirinya)
           setPin('');
+          setLocationVerified(false);
           setSelectedEmpId(lockedEmployee ? lockedEmployee.id : '');
           loadData();
 
@@ -224,6 +237,40 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
+  };
+
+  const handleLocationQr = (rawValue: string) => {
+    if (rawValue !== `ARI-LOCATION:${workSettings.location_qr_token}`) {
+      setStatusMessage({ text: 'QR lokasi tidak valid atau sudah diganti.', error: true });
+      return;
+    }
+    setLocationVerified(true);
+    setShowLocationScanner(false);
+    setStatusMessage({ text: 'QR lokasi terverifikasi. Silakan lanjutkan absensi.', error: false });
+  };
+
+  const saveWorkSettings = () => {
+    if (!workSettings.start_time || !workSettings.end_time || workSettings.end_time <= workSettings.start_time) return alert('Jam kerja tidak valid.');
+    if (workSettings.half_day_max_hours <= 0) return alert('Batas setengah hari harus lebih dari nol.');
+    dataStore.setWorkSettings(workSettings);
+    dataStore.logAudit('update', 'work_settings', `Mengubah aturan kerja menjadi ${workSettings.start_time}-${workSettings.end_time} WIB`);
+    setShowWorkSettings(false);
+  };
+
+  const regenerateLocationQr = () => {
+    if (!window.confirm('Ganti QR lokasi? QR cetak lama langsung tidak berlaku.')) return;
+    const updated = { ...workSettings, location_qr_token: `ari-hq-${crypto.randomUUID()}` };
+    setWorkSettings(updated);
+    dataStore.setWorkSettings(updated);
+    dataStore.logAudit('update', 'work_settings', 'Mengganti token QR lokasi absensi');
+  };
+
+  const printLocationQr = () => {
+    document.body.classList.add('location-qr-printing');
+    const cleanup = () => document.body.classList.remove('location-qr-printing');
+    window.addEventListener('afterprint', cleanup, { once: true });
+    window.print();
+    window.setTimeout(cleanup, 1000);
   };
 
   const handleEmployeeQr = (rawValue: string) => {
@@ -337,11 +384,15 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
             <p className="text-sm font-extrabold text-amber-950 flex items-center gap-2"><QrCode className="w-4 h-4" /> Absensi Dibantu Admin</p>
             <p className="text-xs text-amber-800 mt-1">Gunakan hanya jika GPS karyawan bermasalah. Identitas admin dan alasan akan tersimpan pada riwayat.</p>
           </div>
-          <button type="button" onClick={() => { setShowAssistedScan(true); setAssistedEmployee(null); }} className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-xl text-xs font-bold cursor-pointer">
-            Scan QR Karyawan
-          </button>
+          <div className="flex flex-wrap gap-2"><button type="button" onClick={() => setShowWorkSettings(true)} className="shrink-0 bg-white hover:bg-amber-100 text-amber-800 border border-amber-300 px-3 py-2 rounded-xl text-xs font-bold cursor-pointer"><Settings className="w-3.5 h-3.5 inline mr-1" /> Jam Kerja & QR Lokasi</button><button type="button" onClick={() => { setShowAssistedScan(true); setAssistedEmployee(null); }} className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-xl text-xs font-bold cursor-pointer">Scan QR Karyawan</button></div>
         </div>
       )}
+
+      {lockedEmployee && <div className={`no-print rounded-2xl border p-4 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between ${locationVerified ? 'bg-emerald-50 border-emerald-200' : 'bg-sky-50 border-sky-200'}`}><div><p className={`text-sm font-extrabold ${locationVerified ? 'text-emerald-900' : 'text-sky-900'}`}><QrCode className="w-4 h-4 inline mr-1" /> {locationVerified ? 'Lokasi Terverifikasi' : 'Scan QR Lokasi Pabrik'}</p><p className="text-xs text-gray-600 mt-1">QR lokasi wajib dipindai sebelum mengirim absensi.</p></div><button type="button" onClick={() => setShowLocationScanner(true)} className="bg-[#1F4B36] text-white px-4 py-2 rounded-xl text-xs font-bold cursor-pointer">{locationVerified ? 'Scan Ulang' : 'Buka Kamera QR'}</button></div>}
+
+      {showLocationScanner && <div className="fixed inset-0 z-50 bg-black/70 p-4 flex items-center justify-center no-print"><div className="bg-white rounded-2xl w-full max-w-md p-5 space-y-4"><div className="flex justify-between"><div><h3 className="font-black">Scan QR Lokasi</h3><p className="text-xs text-gray-500">Arahkan kamera ke QR yang ditempel di pabrik.</p></div><button onClick={() => setShowLocationScanner(false)} className="cursor-pointer"><X className="w-4 h-4" /></button></div><EmployeeQrScanner onScan={handleLocationQr} /></div></div>}
+
+      {showWorkSettings && <div className="fixed inset-0 z-50 bg-black/70 p-4 flex items-center justify-center no-print"><div className="bg-white rounded-2xl w-full max-w-2xl max-h-[94vh] overflow-y-auto p-5 space-y-4"><div className="flex justify-between"><div><h3 className="font-black text-gray-900">Jam Kerja & QR Lokasi</h3><p className="text-xs text-gray-500">Seluruh waktu menggunakan WIB (GMT+7).</p></div><button onClick={() => setShowWorkSettings(false)} className="cursor-pointer"><X className="w-4 h-4" /></button></div><div className="grid grid-cols-2 gap-3"><div><label className="text-xs font-bold">Jam Masuk</label><input type="time" value={workSettings.start_time} onChange={e => setWorkSettings({...workSettings, start_time:e.target.value})} className="w-full mt-1 border rounded-lg p-2" /></div><div><label className="text-xs font-bold">Jam Pulang</label><input type="time" value={workSettings.end_time} onChange={e => setWorkSettings({...workSettings, end_time:e.target.value})} className="w-full mt-1 border rounded-lg p-2" /></div><div><label className="text-xs font-bold">Batas Setengah Hari (jam)</label><input type="number" min="1" step="0.5" value={workSettings.half_day_max_hours} onChange={e => setWorkSettings({...workSettings, half_day_max_hours:Number(e.target.value)})} className="w-full mt-1 border rounded-lg p-2" /></div><div><label className="text-xs font-bold">Bonus Rajin Bulanan</label><input type="number" min="0" value={workSettings.monthly_bonus_amount} onChange={e => setWorkSettings({...workSettings, monthly_bonus_amount:Number(e.target.value)})} className="w-full mt-1 border rounded-lg p-2" /></div><div className="col-span-2"><label className="text-xs font-bold">Minimum Kehadiran untuk Bonus (hari)</label><input type="number" min="1" value={workSettings.monthly_bonus_min_days} onChange={e => setWorkSettings({...workSettings, monthly_bonus_min_days:Number(e.target.value)})} className="w-full mt-1 border rounded-lg p-2" /></div></div><div className="location-qr-print-card border rounded-2xl p-4 text-center space-y-3"><p className="font-black">QR LOKASI ABSENSI · ARI SPORTINDO</p><div className="inline-flex bg-white p-2"><QRCodeSVG value={`ARI-LOCATION:${workSettings.location_qr_token}`} size={220} level="H" /></div><p className="text-xs">Scan QR ini melalui menu Absensi pada akun karyawan.</p></div><div className="flex flex-wrap gap-2"><button onClick={regenerateLocationQr} className="px-3 py-2 bg-rose-50 text-rose-700 rounded-lg text-xs font-bold cursor-pointer">Ganti QR Lokasi</button><button onClick={printLocationQr} className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-xs font-bold cursor-pointer"><Printer className="w-3.5 h-3.5 inline mr-1" /> Cetak QR</button><button onClick={saveWorkSettings} className="ml-auto px-4 py-2 bg-[#1F4B36] text-white rounded-lg text-xs font-bold cursor-pointer">Simpan Pengaturan</button></div></div></div>}
 
       {showAssistedScan && (
         <div className="fixed inset-0 z-50 bg-black/70 p-4 flex items-center justify-center no-print">
@@ -692,9 +743,9 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                 <button
                   type="button"
                   onClick={() => handleAttendanceSubmit()}
-                  disabled={!selectedEmpId || (!lockedEmployee && pin.length < 4) || isScanning}
+                  disabled={!selectedEmpId || (!!lockedEmployee && !locationVerified) || (!lockedEmployee && pin.length < 4) || isScanning}
                   className={`w-full py-3.5 rounded-xl text-xs uppercase font-extrabold tracking-widest flex items-center justify-center gap-2 border transition-all ${
-                    (!selectedEmpId || (!lockedEmployee && pin.length < 4) || isScanning)
+                    (!selectedEmpId || (!!lockedEmployee && !locationVerified) || (!lockedEmployee && pin.length < 4) || isScanning)
                       ? 'bg-emerald-950/60 border-emerald-900/40 text-emerald-200/30 cursor-not-allowed'
                       : 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-transparent shadow-md active:scale-[0.98] cursor-pointer'
                   }`}
