@@ -26,6 +26,7 @@ import {
   AlertCircle
   ,QrCode, X
   ,Settings, Printer
+  ,Download, ChevronLeft, ChevronRight
 } from 'lucide-react';
 
 interface AttendanceModuleProps {
@@ -66,6 +67,14 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
   
   // Search state for employee selector
   const [searchQuery, setSearchQuery] = useState('');
+  const [historySearch, setHistorySearch] = useState('');
+  const [historyPeriod, setHistoryPeriod] = useState<'today' | 'week' | 'month' | 'custom'>('today');
+  const [historyStart, setHistoryStart] = useState(wibNowISO().slice(0, 10));
+  const [historyEnd, setHistoryEnd] = useState(wibNowISO().slice(0, 10));
+  const [historyType, setHistoryType] = useState<'all' | AttendanceType>('all');
+  const [historyStatus, setHistoryStatus] = useState<'all' | 'normal' | 'late' | 'anomaly'>('all');
+  const [historyMethod, setHistoryMethod] = useState<'all' | 'gps_self' | 'admin_qr'>('all');
+  const [historyPage, setHistoryPage] = useState(1);
 
   // Selected Employee & Scan Details
   const [selectedEmpId, setSelectedEmpId] = useState('');
@@ -141,6 +150,14 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
     setPin(prev => prev.slice(0, -1));
   };
 
+  const inferEmployeeScanType = (employeeId: string): AttendanceType | null => {
+    const today = wibNowISO().slice(0, 10);
+    const todayLogs = dataStore.getAttendance().filter(log => log.employee_id === employeeId && log.timestamp.slice(0, 10) === today);
+    if (!todayLogs.some(log => log.type_scan === 'masuk')) return 'masuk';
+    if (!todayLogs.some(log => log.type_scan === 'pulang')) return 'pulang';
+    return null;
+  };
+
   // Submit scan handler
   const handleAttendanceSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -153,6 +170,11 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
 
     const emp = employees.find(x => x.id === selectedEmpId);
     if (!emp) return;
+    const effectiveScanType = lockedEmployee ? inferEmployeeScanType(emp.id) : scanType;
+    if (!effectiveScanType) {
+      setStatusMessage({ text: 'Absensi hari ini sudah lengkap: masuk dan pulang sudah tercatat.', error: true });
+      return;
+    }
 
     if (lockedEmployee && !locationVerified) {
       setStatusMessage({ text: 'Scan QR lokasi pabrik terlebih dahulu sebelum absen.', error: true });
@@ -191,7 +213,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
           const result = dataStore.recordAttendance({
             employee_id: emp.id,
             timestamp: wibNowISO(),
-            type_scan: scanType,
+            type_scan: effectiveScanType,
             latitude: pos.coords.latitude,
             longitude: pos.coords.longitude,
             selfie_url: '',
@@ -205,7 +227,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
           setSuccessOverlay({
             visible: true,
             employeeName: emp.name,
-            type: scanType,
+            type: effectiveScanType,
             status: result.status,
             distance: Math.round(result.distance_meters),
             time: nowStr
@@ -318,13 +340,59 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
     emp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     emp.id.toLowerCase().includes(searchQuery.toLowerCase())
   );
+  const automaticScanType = lockedEmployee ? inferEmployeeScanType(lockedEmployee.id) : null;
+
+  const todayWib = wibNowISO().slice(0, 10);
+  const periodBounds = (() => {
+    if (historyPeriod === 'custom') return { start: historyStart, end: historyEnd };
+    if (historyPeriod === 'today') return { start: todayWib, end: todayWib };
+    const today = new Date(`${todayWib}T00:00:00+07:00`);
+    if (historyPeriod === 'week') {
+      const day = today.getDay() || 7;
+      const monday = new Date(today.getTime() - (day - 1) * 86400000);
+      return { start: monday.toISOString().slice(0, 10), end: todayWib };
+    }
+    return { start: `${todayWib.slice(0, 7)}-01`, end: todayWib };
+  })();
+
+  const filteredHistory = [...attendanceLogs]
+    .filter(log => {
+      const date = log.timestamp.slice(0, 10);
+      const matchesDate = date >= periodBounds.start && date <= periodBounds.end;
+      const query = historySearch.trim().toLowerCase();
+      const employee = employees.find(item => item.id === log.employee_id);
+      const matchesSearch = !query || `${log.employee_name} ${employee?.username || ''}`.toLowerCase().includes(query);
+      const matchesType = historyType === 'all' || log.type_scan === historyType;
+      const matchesStatus = historyStatus === 'all' || (historyStatus === 'late' ? (log.late_minutes || 0) > 0 : log.status === historyStatus);
+      const method = log.verification_method || 'gps_self';
+      const matchesMethod = historyMethod === 'all' || method === historyMethod;
+      return matchesDate && matchesSearch && matchesType && matchesStatus && matchesMethod;
+    })
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  const historyPageSize = 50;
+  const historyTotalPages = Math.max(1, Math.ceil(filteredHistory.length / historyPageSize));
+  const pagedHistory = filteredHistory.slice((historyPage - 1) * historyPageSize, historyPage * historyPageSize);
+
+  useEffect(() => { setHistoryPage(1); }, [historySearch, historyPeriod, historyStart, historyEnd, historyType, historyStatus, historyMethod]);
+
+  const exportAttendanceCsv = () => {
+    const rows = [['Tanggal', 'Waktu WIB', 'Nama', 'Jenis', 'Status', 'Terlambat (menit)', 'Durasi Kerja (menit)', 'Porsi Hari', 'Lembur (menit)', 'Metode', 'Dibantu Oleh', 'Alasan']];
+    filteredHistory.forEach(log => rows.push([log.timestamp.slice(0, 10), log.timestamp.slice(11, 16), log.employee_name, log.type_scan, log.status, String(log.late_minutes || 0), String(log.worked_minutes || 0), String(log.work_fraction || ''), String(log.overtime_minutes || 0), log.verification_method || 'gps_self', log.assisted_by_name || '', log.assistance_reason || '']));
+    const csv = '\uFEFF' + rows.map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Riwayat_Absensi_${periodBounds.start}_sd_${periodBounds.end}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   // Stats calculation for Pola B Dashboard
   const stats = {
     totalKaryawan: employees.length,
-    hadirHariIni: attendanceLogs.filter(l => l.type_scan === 'masuk').length,
-    anomaliHariIni: attendanceLogs.filter(l => l.status === 'anomaly').length,
-    pulangHariIni: attendanceLogs.filter(l => l.type_scan === 'pulang').length
+    hadirHariIni: attendanceLogs.filter(l => l.timestamp.slice(0, 10) === todayWib && l.type_scan === 'masuk').length,
+    anomaliHariIni: attendanceLogs.filter(l => l.timestamp.slice(0, 10) === todayWib && l.status === 'anomaly').length,
+    pulangHariIni: attendanceLogs.filter(l => l.timestamp.slice(0, 10) === todayWib && l.type_scan === 'pulang').length
   };
 
   return (
@@ -619,8 +687,14 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
 
                 {/* Tipe Scan Selector */}
                 <div className="space-y-2 pt-2 border-t border-[#1a422d]/60">
-                  <h4 className="text-xs font-black uppercase text-emerald-300 tracking-wider">{lockedEmployee ? 'Pilih Tipe Scan' : 'Langkah 2: Pilih Tipe Scan'}</h4>
-                  <div className="grid grid-cols-2 gap-3">
+                  <h4 className="text-xs font-black uppercase text-emerald-300 tracking-wider">{lockedEmployee ? 'Jenis Absensi Otomatis' : 'Langkah 2: Pilih Tipe Scan'}</h4>
+                  {lockedEmployee ? (
+                    <div className={`rounded-xl border p-4 text-center ${automaticScanType === 'masuk' ? 'bg-emerald-950/50 border-emerald-600/40' : automaticScanType === 'pulang' ? 'bg-rose-950/30 border-rose-600/40' : 'bg-gray-900/40 border-gray-600/40'}`}>
+                      <p className="text-[10px] uppercase tracking-wider text-emerald-300">Scan berikutnya tercatat sebagai</p>
+                      <p className="text-lg font-black uppercase mt-1">{automaticScanType || 'Sudah Lengkap'}</p>
+                      <p className="text-[10px] text-emerald-200/60 mt-1">Scan pertama = masuk, scan kedua = pulang.</p>
+                    </div>
+                  ) : <div className="grid grid-cols-2 gap-3">
                     <button
                       type="button"
                       onClick={() => setScanType('masuk')}
@@ -645,7 +719,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                       <Clock className="w-4 h-4 shrink-0 text-rose-400" />
                       Scan Pulang Kerja
                     </button>
-                  </div>
+                  </div>}
                 </div>
               </div>
 
@@ -743,15 +817,15 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                 <button
                   type="button"
                   onClick={() => handleAttendanceSubmit()}
-                  disabled={!selectedEmpId || (!!lockedEmployee && !locationVerified) || (!lockedEmployee && pin.length < 4) || isScanning}
+                  disabled={!selectedEmpId || (!!lockedEmployee && (!locationVerified || !automaticScanType)) || (!lockedEmployee && pin.length < 4) || isScanning}
                   className={`w-full py-3.5 rounded-xl text-xs uppercase font-extrabold tracking-widest flex items-center justify-center gap-2 border transition-all ${
-                    (!selectedEmpId || (!!lockedEmployee && !locationVerified) || (!lockedEmployee && pin.length < 4) || isScanning)
+                    (!selectedEmpId || (!!lockedEmployee && (!locationVerified || !automaticScanType)) || (!lockedEmployee && pin.length < 4) || isScanning)
                       ? 'bg-emerald-950/60 border-emerald-900/40 text-emerald-200/30 cursor-not-allowed'
                       : 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-transparent shadow-md active:scale-[0.98] cursor-pointer'
                   }`}
                 >
                   <ShieldCheck className="w-4 h-4 shrink-0" />
-                  {isScanning ? 'MEMBACA LOKASI GPS…' : 'KIRIM SCAN ABSENSI'}
+                  {isScanning ? 'MEMBACA LOKASI GPS…' : lockedEmployee && automaticScanType ? `KIRIM ABSEN ${automaticScanType.toUpperCase()}` : 'KIRIM SCAN ABSENSI'}
                 </button>
               </div>
 
@@ -901,14 +975,24 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                 </button>
               </div>
 
+              <div className="space-y-2 no-print">
+                <div className="flex flex-wrap gap-2">
+                  {(['today', 'week', 'month', 'custom'] as const).map(period => <button key={period} onClick={() => setHistoryPeriod(period)} className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold cursor-pointer border ${historyPeriod === period ? 'bg-[#1F4B36] text-white border-[#1F4B36]' : 'bg-white text-gray-600 border-gray-200'}`}>{period === 'today' ? 'Hari Ini' : period === 'week' ? 'Minggu Ini' : period === 'month' ? 'Bulan Ini' : 'Custom'}</button>)}
+                  <button onClick={exportAttendanceCsv} className="ml-auto px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-100 cursor-pointer"><Download className="w-3 h-3 inline mr-1" /> CSV</button>
+                </div>
+                {historyPeriod === 'custom' && <div className="grid grid-cols-2 gap-2"><input type="date" value={historyStart} onChange={e => setHistoryStart(e.target.value)} className="border border-gray-200 rounded-lg p-2 text-xs" /><input type="date" value={historyEnd} min={historyStart} onChange={e => setHistoryEnd(e.target.value)} className="border border-gray-200 rounded-lg p-2 text-xs" /></div>}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2"><div className="relative"><Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-gray-400" /><input value={historySearch} onChange={e => setHistorySearch(e.target.value)} placeholder="Cari nama atau username..." className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-xs" /></div><div className="grid grid-cols-3 gap-1.5"><select value={historyType} onChange={e => setHistoryType(e.target.value as typeof historyType)} className="min-w-0 border border-gray-200 rounded-lg px-1.5 text-[10px]"><option value="all">Semua Scan</option><option value="masuk">Masuk</option><option value="pulang">Pulang</option></select><select value={historyStatus} onChange={e => setHistoryStatus(e.target.value as typeof historyStatus)} className="min-w-0 border border-gray-200 rounded-lg px-1.5 text-[10px]"><option value="all">Semua Status</option><option value="normal">Normal</option><option value="late">Terlambat</option><option value="anomaly">Anomali</option></select><select value={historyMethod} onChange={e => setHistoryMethod(e.target.value as typeof historyMethod)} className="min-w-0 border border-gray-200 rounded-lg px-1.5 text-[10px]"><option value="all">Semua Metode</option><option value="gps_self">Mandiri GPS</option><option value="admin_qr">Dibantu Admin</option></select></div></div>
+                <p className="text-[10px] text-gray-400">Menampilkan {filteredHistory.length} log · {periodBounds.start} s/d {periodBounds.end}</p>
+              </div>
+
               {/* Logs Stream Container */}
               <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
-                {attendanceLogs.length === 0 ? (
+                {pagedHistory.length === 0 ? (
                   <p className="text-xs text-gray-400 italic text-center py-16 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
-                    Belum ada data scan absensi terekam hari ini. Silakan test absen menggunakan menu Pola A.
+                    Tidak ada data absensi yang cocok dengan filter saat ini.
                   </p>
                 ) : (
-                  [...attendanceLogs].reverse().map((log) => {
+                  pagedHistory.map((log) => {
                     const isAnomaly = log.status === 'anomaly';
                     const dateObj = new Date(log.timestamp);
                     const formattedDate = dateObj.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -944,6 +1028,9 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                                 <Clock className="w-3.5 h-3.5 text-gray-400" />
                                 {formattedDate} - {timeString} WIB
                               </span>
+                              {(log.late_minutes || 0) > 0 && <span className="font-bold text-amber-700">Terlambat {log.late_minutes} menit</span>}
+                              {log.work_fraction === 0.5 && <span className="font-bold text-rose-700">Setengah Hari</span>}
+                              {(log.overtime_minutes || 0) > 0 && <span className="font-bold text-sky-700">Lembur {log.overtime_minutes} menit</span>}
                               <span className="flex items-center gap-1 font-mono text-[10px]">
                                 <MapPin className="w-3.5 h-3.5 text-gray-400" />
                                 Jarak: {log.distance_meters} Meter
@@ -972,6 +1059,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                   })
                 )}
               </div>
+              {historyTotalPages > 1 && <div className="flex items-center justify-between pt-2 border-t border-gray-100 no-print"><button disabled={historyPage === 1} onClick={() => setHistoryPage(page => Math.max(1, page - 1))} className="p-2 border rounded-lg disabled:opacity-30 cursor-pointer"><ChevronLeft className="w-3.5 h-3.5" /></button><span className="text-[10px] text-gray-500">Halaman {historyPage} dari {historyTotalPages}</span><button disabled={historyPage === historyTotalPages} onClick={() => setHistoryPage(page => Math.min(historyTotalPages, page + 1))} className="p-2 border rounded-lg disabled:opacity-30 cursor-pointer"><ChevronRight className="w-3.5 h-3.5" /></button></div>}
             </div>
 
           </div>

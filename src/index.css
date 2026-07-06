@@ -35,6 +35,12 @@
     visibility: hidden !important;
   }
 
+  /* Modal pengaturan membawa class no-print. Saat mencetak QR lokasi,
+     kontainer ini harus tetap punya layout agar SVG tidak menghasilkan halaman kosong. */
+  body.location-qr-printing .no-print {
+    display: flex !important;
+  }
+
   body.location-qr-printing .location-qr-print-card,
   body.location-qr-printing .location-qr-print-card * {
     visibility: visible !important;
