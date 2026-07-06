@@ -58,6 +58,7 @@ export interface Product {
 export interface RawMaterial {
   id: string;
   name: string;
+  department_id?: string;
   unit: string;
   stock_minimum: number;
   current_stock: number;

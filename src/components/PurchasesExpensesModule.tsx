@@ -297,6 +297,7 @@ export const PurchasesExpensesModule: React.FC = () => {
     setPoDate(new Date().toISOString().split('T')[0]);
     setDraftItems([]);
     loadData();
+    setIsPoModalOpen(false);
   };
 
   const handleStartEditPurchase = (po: Purchase) => {
@@ -732,8 +733,8 @@ export const PurchasesExpensesModule: React.FC = () => {
           
           {/* PO MODAL */}
           {isPoModalOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setIsPoModalOpen(false)}>
-              <div className="bg-white rounded-2xl p-6 w-full max-w-xl shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 sm:p-4" onClick={() => setIsPoModalOpen(false)}>
+              <div className="bg-white rounded-2xl p-4 sm:p-6 w-full max-w-5xl max-h-[94vh] overflow-y-auto shadow-2xl" onClick={(e) => e.stopPropagation()}>
                 <div className="border-b border-emerald-800/10 pb-3 flex items-center justify-between mb-4">
                   <h3 className="font-bold text-lg text-emerald-950">
                     {editingPurchaseId ? 'Edit Purchase Order' : 'Terbitkan PO Baru'}
@@ -742,7 +743,9 @@ export const PurchasesExpensesModule: React.FC = () => {
                     <X className="w-5 h-5" />
                   </button>
                 </div>
-                <form onSubmit={(e) => { e.preventDefault(); handlePostPurchaseOrder(e); setIsPoModalOpen(false); }} className="space-y-4 text-xs">
+                <form onSubmit={handlePostPurchaseOrder} className="text-xs">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-6 items-start">
+                  <div className="space-y-4">
                   <div>
                     <label className="block text-[10px] font-bold text-emerald-800 uppercase tracking-wider mb-1">Nama Supplier / Vendor *</label>
                     <input
@@ -840,6 +843,9 @@ export const PurchasesExpensesModule: React.FC = () => {
                     </button>
                   </div>
 
+                  </div>
+                  <div className="space-y-4 lg:border-l lg:border-emerald-800/10 lg:pl-6">
+
                   {/* LIST OF DRAFTED PO ITEMS */}
                   <div className="space-y-2">
                     <span className="block text-[10px] font-bold text-emerald-800 uppercase tracking-wider">Daftar Item Draft PO ({draftItems.length})</span>
@@ -911,6 +917,8 @@ export const PurchasesExpensesModule: React.FC = () => {
                   <button type="submit" className="w-full bg-emerald-800 hover:bg-emerald-900 text-white font-bold py-3 rounded-lg shadow-sm transition-all text-sm">
                     {editingPurchaseId ? 'Simpan Perubahan' : 'Posting & Terbitkan PO'}
                   </button>
+                  </div>
+                  </div>
                 </form>
               </div>
             </div>

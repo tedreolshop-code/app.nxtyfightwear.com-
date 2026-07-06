@@ -16,6 +16,7 @@ import {
   Archive,
   Wrench,
   Check
+  ,PackagePlus
 } from 'lucide-react';
 
 interface WarehouseInventoryModuleProps {
@@ -43,6 +44,19 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
   const [adjustQty, setAdjustQty] = useState(0);
   const [adjustDirection, setAdjustDirection] = useState<'in' | 'out'>('in');
   const [adjustRef, setAdjustRef] = useState('Hasil Stock Opname');
+
+  // Form master item baru
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newItemType, setNewItemType] = useState<'material' | 'product'>('material');
+  const [newItemId, setNewItemId] = useState('');
+  const [newItemName, setNewItemName] = useState('');
+  const [newDepartmentId, setNewDepartmentId] = useState('dept-eva-foam');
+  const [newUnit, setNewUnit] = useState('Kg');
+  const [newMinimumStock, setNewMinimumStock] = useState(0);
+  const [newInitialStock, setNewInitialStock] = useState(0);
+  const [newCategory, setNewCategory] = useState('Umum');
+  const [newVariant, setNewVariant] = useState('Standar');
+  const [newPrice, setNewPrice] = useState(0);
 
   // Load data helper
   const loadData = () => {
@@ -82,10 +96,75 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
 
   // Check if a material is Eva Foam or Konveksi
   const getMaterialDivision = (materialId: string) => {
+    const material = rawMaterials.find(item => item.id === materialId);
+    if (material?.department_id === 'dept-eva-foam') return 'Eva Foam';
+    if (material?.department_id === 'dept-konveksi') return 'Konveksi';
     if (materialId.includes('foam')) {
       return 'Eva Foam';
     }
     return 'Konveksi';
+  };
+
+  const makeItemId = (type: 'material' | 'product', name: string) => {
+    const slug = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 36) || Date.now().toString();
+    return `${type === 'material' ? 'mat' : 'prod'}-${slug}`;
+  };
+
+  const openCreateModal = () => {
+    const type = activeTab === 'jadi' ? 'product' : 'material';
+    setNewItemType(type);
+    setNewItemId('');
+    setNewItemName('');
+    setNewDepartmentId(selectedDept === 'konveksi' ? 'dept-konveksi' : 'dept-eva-foam');
+    setNewUnit('Kg');
+    setNewMinimumStock(0);
+    setNewInitialStock(0);
+    setNewCategory('Umum');
+    setNewVariant('Standar');
+    setNewPrice(0);
+    setShowCreateModal(true);
+  };
+
+  const handleCreateItem = (e: React.FormEvent) => {
+    e.preventDefault();
+    const id = (newItemId.trim() || makeItemId(newItemType, newItemName)).toLowerCase();
+    if (!newItemName.trim()) return alert('Nama barang wajib diisi.');
+    if (!/^[a-z0-9-]+$/.test(id)) return alert('ID hanya boleh berisi huruf kecil, angka, dan tanda minus.');
+    if (newInitialStock < 0 || newMinimumStock < 0 || newPrice < 0) return alert('Nilai stok dan harga tidak boleh negatif.');
+
+    const currentMovements = dataStore.getStockMovements();
+    if (newItemType === 'material') {
+      const current = dataStore.getRawMaterials();
+      if (current.some(item => item.id === id)) return alert(`ID bahan "${id}" sudah digunakan.`);
+      const material: RawMaterial = {
+        id,
+        name: newItemName.trim(),
+        department_id: newDepartmentId,
+        unit: newUnit.trim() || 'Unit',
+        stock_minimum: newMinimumStock,
+        current_stock: newInitialStock
+      };
+      dataStore.setRawMaterials([...current, material]);
+      if (newInitialStock > 0) currentMovements.unshift({ id: `mov-${Math.random().toString(36).slice(2, 9)}`, type: 'bahan_masuk', item_id: id, item_name: material.name, amount: newInitialStock, reference: 'Stok awal master bahan baru', created_at: new Date().toISOString() });
+    } else {
+      const current = dataStore.getProducts();
+      if (current.some(item => item.id === id)) return alert(`ID produk "${id}" sudah digunakan.`);
+      const product: Product = {
+        id,
+        department_id: newDepartmentId,
+        name: newItemName.trim(),
+        category: newCategory.trim() || 'Umum',
+        variant: newVariant.trim() || 'Standar',
+        harga_jual: newPrice,
+        stock: newInitialStock
+      };
+      dataStore.setProducts([...current, product]);
+      if (newInitialStock > 0) currentMovements.unshift({ id: `mov-${Math.random().toString(36).slice(2, 9)}`, type: 'barang_jadi_masuk', item_id: id, item_name: `${product.name} (${product.variant})`, amount: newInitialStock, reference: 'Stok awal master produk baru', created_at: new Date().toISOString() });
+    }
+    if (newInitialStock > 0) dataStore.setStockMovements(currentMovements);
+    setShowCreateModal(false);
+    loadData();
+    alert(`${newItemType === 'material' ? 'Bahan baku' : 'Barang jadi'} baru berhasil ditambahkan.`);
   };
 
   // Filter Materials
@@ -191,7 +270,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
     loadData();
   };
 
-  const isRestricted = userRole === 'admin_marketplace';
+  const isRestricted = !['owner', 'admin_gudang'].includes(userRole);
 
   return (
     <div className="space-y-6">
@@ -207,6 +286,10 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
         </div>
 
         {!isRestricted && (
+          <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={openCreateModal} className="bg-[#1F4B36] hover:bg-[#163826] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer">
+            <PackagePlus className="w-4 h-4" /> Tambah Barang Baru
+          </button>
           <button
             onClick={() => {
               setAdjustItemId('');
@@ -219,6 +302,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
             <Plus className="w-4 h-4" />
             Stock Opname (Manual)
           </button>
+          </div>
         )}
       </div>
 
@@ -593,6 +677,23 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
       )}
 
       {/* STOCK OPNAME MODAL */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[92vh] overflow-y-auto p-6 shadow-2xl border border-gray-100">
+            <div className="flex justify-between items-center border-b border-gray-100 pb-3 mb-4"><div><h3 className="text-sm font-bold text-emerald-950 flex items-center gap-2"><PackagePlus className="w-4 h-4" /> Tambah Master Barang Baru</h3><p className="text-[10px] text-gray-400 mt-1">Barang baru akan tersedia untuk transaksi gudang dan dicatat pada audit log.</p></div><button type="button" onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-gray-600 cursor-pointer">✕</button></div>
+            <form onSubmit={handleCreateItem} className="space-y-4">
+              <div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => { setNewItemType('material'); setNewItemId(''); }} className={`py-2.5 rounded-xl border text-xs font-bold cursor-pointer ${newItemType === 'material' ? 'bg-[#1F4B36] text-white border-[#1F4B36]' : 'border-gray-200 text-gray-600'}`}>Bahan Baku</button><button type="button" onClick={() => { setNewItemType('product'); setNewItemId(''); }} className={`py-2.5 rounded-xl border text-xs font-bold cursor-pointer ${newItemType === 'product' ? 'bg-[#1F4B36] text-white border-[#1F4B36]' : 'border-gray-200 text-gray-600'}`}>Barang Jadi</button></div>
+              <div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Nama Barang</label><input value={newItemName} onChange={e => setNewItemName(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-emerald-600" placeholder={newItemType === 'material' ? 'Contoh: Kain Parasut' : 'Contoh: Body Protector'} required /></div>
+              <div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">ID Barang <span className="normal-case font-normal text-gray-400">(opsional, otomatis jika kosong)</span></label><input value={newItemId} onChange={e => setNewItemId(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:border-emerald-600" placeholder={makeItemId(newItemType, newItemName || 'nama-barang')} /></div>
+              <div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Divisi</label><select value={newDepartmentId} onChange={e => setNewDepartmentId(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs bg-white"><option value="dept-eva-foam">Eva Foam</option><option value="dept-konveksi">Konveksi</option></select></div>
+              {newItemType === 'material' ? <div className="grid grid-cols-2 gap-3"><div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Satuan</label><input value={newUnit} onChange={e => setNewUnit(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" placeholder="Kg, Meter, Lembar" required /></div><div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Batas Minimum</label><input type="number" min="0" value={newMinimumStock} onChange={e => setNewMinimumStock(Number(e.target.value))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" /></div></div> : <><div className="grid grid-cols-2 gap-3"><div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Kategori</label><input value={newCategory} onChange={e => setNewCategory(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" /></div><div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Varian</label><input value={newVariant} onChange={e => setNewVariant(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" /></div></div><div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Harga Jual</label><input type="number" min="0" value={newPrice} onChange={e => setNewPrice(Number(e.target.value))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" /></div></>}
+              <div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Stok Awal</label><input type="number" min="0" value={newInitialStock} onChange={e => setNewInitialStock(Number(e.target.value))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" /><p className="text-[10px] text-gray-400 mt-1">Jika lebih dari nol, sistem otomatis membuat mutasi stok masuk.</p></div>
+              <div className="flex gap-3 pt-2"><button type="button" onClick={() => setShowCreateModal(false)} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-xs font-bold text-gray-600 cursor-pointer">Batal</button><button type="submit" className="flex-1 py-2.5 bg-[#1F4B36] text-white rounded-xl text-xs font-bold cursor-pointer">Simpan Barang Baru</button></div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {showAdjustModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-gray-100" onClick={(e) => e.stopPropagation()}>
