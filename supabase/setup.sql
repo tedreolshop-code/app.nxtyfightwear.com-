@@ -9,7 +9,16 @@ create table if not exists public.ari_store (
 );
 
 -- Aktifkan Realtime agar perubahan langsung tersebar ke semua perangkat.
-alter publication supabase_realtime add table public.ari_store;
+-- (dilewati otomatis bila sudah terdaftar, jadi skrip aman dijalankan ulang)
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'ari_store'
+  ) then
+    alter publication supabase_realtime add table public.ari_store;
+  end if;
+end $$;
 
 -- Row Level Security.
 -- CATATAN: kebijakan di bawah mengizinkan siapa pun yang memegang anon key membaca/menulis.
@@ -40,7 +49,15 @@ create table if not exists public.ari_attendance (
   created_at timestamptz not null default now()
 );
 
-alter publication supabase_realtime add table public.ari_attendance;
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'ari_attendance'
+  ) then
+    alter publication supabase_realtime add table public.ari_attendance;
+  end if;
+end $$;
 
 alter table public.ari_attendance enable row level security;
 
