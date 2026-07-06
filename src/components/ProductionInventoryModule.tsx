@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Product, RawMaterial, StockMovement, ProductionLog, ProductionJob } from '../types';
+import { Product, RawMaterial, StockMovement, ProductionLog, ProductionJob, Employee } from '../types';
+import { ProductionHandoffPanel } from './ProductionHandoffPanel';
 import { dataStore, RECIPES } from '../dataStore';
 import { 
   Box, 
@@ -27,9 +28,10 @@ import {
 
 interface ProductionInventoryModuleProps {
   userRole: string;
+  currentEmployee?: Employee | null;
 }
 
-export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps> = ({ userRole }) => {
+export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps> = ({ userRole, currentEmployee }) => {
   const [products, setProducts] = useState<Product[]>([]);
   const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>([]);
   const [movements, setMovements] = useState<StockMovement[]>([]);
@@ -269,6 +271,10 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
   };
 
   const handleUpdateJobStage = (jobId: string, stageName: string, action: 'start' | 'complete', customNote?: string) => {
+    if (action === 'complete' && dataStore.getProductionHandoffs().some(item => item.job_id === jobId)) {
+      alert('Job ini sudah memakai serah-terima hasil. Penyelesaian tahap harus melalui konfirmasi penerima agar jumlah dan pelaksana tetap tercatat.');
+      return;
+    }
     const currentJobs = dataStore.getProductionJobs();
     const job = currentJobs.find(j => j.id === jobId);
     if (!job) return;
@@ -469,10 +475,14 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
     alert(`Sukses mengembalikan status tahap "${targetStage.stage}" kembali menjadi "${newStatus === 'ongoing' ? 'Diproses' : 'Antre'}".`);
   };
 
-  const isRestrictedProduction = userRole === 'admin_marketplace' || userRole === 'admin_keuangan_hr';
+  const isEmployee = userRole === 'karyawan';
+  const isRestrictedProduction = isEmployee || userRole === 'admin_marketplace' || userRole === 'admin_keuangan_hr';
+  const scopedProductionJobs = isEmployee && currentEmployee
+    ? productionJobs.filter(job => job.department_id === currentEmployee.department_id)
+    : productionJobs;
 
   // Kanban Query Filters
-  const filteredJobs = productionJobs.filter(job => {
+  const filteredJobs = scopedProductionJobs.filter(job => {
     // 1. Search Query
     const searchLower = searchQuery.toLowerCase();
     const matchesSearch = 
@@ -505,11 +515,11 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
   // Count helper functions for quick-filter tabs
   const getFilterCounts = () => {
     return {
-      all: productionJobs.length,
-      ongoing: productionJobs.filter(j => j.status === 'ongoing').length,
-      kendala: productionJobs.filter(hasKendala).length,
-      terlambat: productionJobs.filter(isJobOverdue).length,
-      completed_today: productionJobs.filter(isCompletedToday).length,
+      all: scopedProductionJobs.length,
+      ongoing: scopedProductionJobs.filter(j => j.status === 'ongoing').length,
+      kendala: scopedProductionJobs.filter(hasKendala).length,
+      terlambat: scopedProductionJobs.filter(isJobOverdue).length,
+      completed_today: scopedProductionJobs.filter(isCompletedToday).length,
     };
   };
 
@@ -526,7 +536,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
 
       {/* Sub-Tabs navigation */}
       <div className="no-print flex border-b border-gray-200 gap-2">
-        <button
+        {!isEmployee && <button
           onClick={() => { setSubTab('tracker'); triggerLoading(); }}
           className={`px-5 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
             subTab === 'tracker'
@@ -535,7 +545,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
           }`}
         >
           <Clipboard className="w-4 h-4" /> Papan Alur Produksi
-        </button>
+        </button>}
         <button
           onClick={() => { setSubTab('stock'); triggerLoading(); }}
           className={`px-5 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
@@ -551,6 +561,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
       {/* TRACKER VIEW */}
       {subTab === 'tracker' && (
         <div className="space-y-6 animate-fadeIn">
+          <ProductionHandoffPanel jobs={scopedProductionJobs} currentEmployee={currentEmployee} isAdmin={!isEmployee} />
           
           {/* SEARCH, FILTERS & CONTROLS */}
           <div className="bg-white rounded-xl border border-gray-200 p-4 md:p-5 shadow-2xs space-y-4">
@@ -643,8 +654,8 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
             {([
               { id: 'dept-eva-foam', label: 'Alur Eva Foam', stages: ['Campur Bahan', 'Cetak', 'Potong', 'Finishing', 'Cek Kualitas', 'Packing'] },
               { id: 'dept-konveksi', label: 'Alur Konveksi (Jahit)', stages: ['Potong', 'Sablon', 'Jahit', 'Finishing', 'Cek Kualitas', 'Packing'] },
-            ] as const).map(dept => {
-              const deptJobs = productionJobs.filter(j => j.department_id === dept.id);
+            ] as const).filter(dept => !isEmployee || dept.id === currentEmployee?.department_id).map(dept => {
+              const deptJobs = scopedProductionJobs.filter(j => j.department_id === dept.id);
               const activeJobs = deptJobs.filter(j => j.status !== 'completed');
               const doneCount = deptJobs.filter(j => j.status === 'completed').length;
               return (
@@ -685,10 +696,10 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
               <p className="text-xs text-gray-500 font-medium">Memuat data alur kerja...</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+            <div className={`grid grid-cols-1 ${isEmployee ? '' : 'lg:grid-cols-2'} gap-6 items-start`}>
               
               {/* DEPARTEMEN EVA FOAM COLUMN */}
-              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-xs">
+              {(!isEmployee || currentEmployee?.department_id === 'dept-eva-foam') && <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-xs">
                 <div className="flex items-center justify-between border-b border-gray-100 p-4 bg-gray-50/50">
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full bg-emerald-600"></div>
@@ -774,7 +785,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                               </div>
 
                               {/* Tombol satu-tap untuk operator */}
-                              {(() => {
+                              {!isEmployee && (() => {
                                 const na = getNextAction(job);
                                 if (!na) return null;
                                 return (
@@ -820,10 +831,10 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                       })
                   )}
                 </div>
-              </div>
+              </div>}
 
               {/* DEPARTEMEN KONVEKSI COLUMN */}
-              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-xs">
+              {(!isEmployee || currentEmployee?.department_id === 'dept-konveksi') && <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-xs">
                 <div className="flex items-center justify-between border-b border-gray-100 p-4 bg-sky-50/20">
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full bg-sky-600"></div>
@@ -909,7 +920,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                               </div>
 
                               {/* Tombol satu-tap untuk operator */}
-                              {(() => {
+                              {!isEmployee && (() => {
                                 const na = getNextAction(job);
                                 if (!na) return null;
                                 return (
@@ -955,7 +966,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                       })
                   )}
                 </div>
-              </div>
+              </div>}
 
             </div>
           )}
@@ -992,7 +1003,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
             <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-12 gap-6">
               
               {/* LEFT COLUMN: Production Details & Progressive Stepper */}
-              <div className="md:col-span-7 space-y-6">
+              <div className={`${isEmployee ? 'md:col-span-12' : 'md:col-span-7'} space-y-6`}>
                 
                 {/* Stepper Title */}
                 <div>
@@ -1108,7 +1119,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
               </div>
 
               {/* RIGHT COLUMN: Operator Field Interaction panel */}
-              <div className="md:col-span-5 bg-gray-50 rounded-xl p-5 border border-gray-200 space-y-6 h-fit">
+              {!isEmployee && <div className="md:col-span-5 bg-gray-50 rounded-xl p-5 border border-gray-200 space-y-6 h-fit">
                 
                 <div className="space-y-1">
                   <h4 className="text-xs font-black text-gray-500 uppercase tracking-wider">Portal Operator Lapangan</h4>
@@ -1233,7 +1244,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                   </div>
                 )}
 
-              </div>
+              </div>}
 
             </div>
 

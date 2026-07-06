@@ -342,6 +342,31 @@ export interface ProductionJob {
   created_at: string;
 }
 
+export interface ProductionHandoff {
+  id: string;
+  job_id: string;
+  order_number?: string;
+  product_name: string;
+  from_stage: string;
+  to_stage: string;
+  from_department_id: string;
+  to_department_id: string;
+  from_employee_id: string;
+  from_employee_name: string;
+  to_employee_id?: string;
+  to_employee_name?: string;
+  qty_sent: number;
+  qty_rejected: number;
+  qty_received?: number;
+  status: 'pending' | 'accepted' | 'disputed';
+  notes?: string;
+  dispute_note?: string;
+  created_at: string;
+  received_at?: string;
+  received_by_id?: string;
+  received_by_name?: string;
+}
+
 export interface OrderItem {
   id: string;
   product_id: string;

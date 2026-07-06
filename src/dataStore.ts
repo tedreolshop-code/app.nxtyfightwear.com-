@@ -25,6 +25,7 @@ import {
   RecycleEntry,
   UserRole
   ,WorkSettings
+  ,ProductionHandoff
 } from './types';
 import { pushKeyToCloud, pushAttendanceToCloud, clearAttendanceInCloud } from './cloudSync';
 
@@ -97,6 +98,7 @@ const INITIAL_EMPLOYEES: Employee[] = [
 const INITIAL_ORDERS: Order[] = [];
 
 const INITIAL_PRODUCTION_JOBS: ProductionJob[] = [];
+const INITIAL_PRODUCTION_HANDOFFS: ProductionHandoff[] = [];
 
 const INITIAL_ASSETS: Asset[] = [
   {
@@ -477,6 +479,9 @@ class DataStore {
   };
   setProductionJobs = (data: ProductionJob[]) => this.set('production_jobs', data);
 
+  getProductionHandoffs = (): ProductionHandoff[] => this.get('production_handoffs', INITIAL_PRODUCTION_HANDOFFS);
+  setProductionHandoffs = (data: ProductionHandoff[]) => this.set('production_handoffs', data);
+
   getAssets = (): Asset[] => this.get('assets', INITIAL_ASSETS);
   setAssets = (data: Asset[]) => this.set('assets', data);
 
@@ -586,6 +591,7 @@ class DataStore {
   clearAllTransactions = (): void => {
     this.setOrders([]);
     this.setProductionJobs([]);
+    this.setProductionHandoffs([]);
     this.setProductionLogs([]);
     this.setMarketplaceSales([]);
     this.setMarketplaceItemSales([]);
