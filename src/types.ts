@@ -15,6 +15,9 @@ export interface Employee {
   role: EmployeeRole;
   rate_harian: number;
   rate_lembur_per_jam: number;
+  default_live_tiktok_bonus?: number;
+  default_attendance_bonus?: number;
+  default_weekly_cash_advance_deduction?: number;
   status_aktif: boolean;
   phone_number: string;
   pin: string; // Stored securely (can be simulated hash)

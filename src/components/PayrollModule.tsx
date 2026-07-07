@@ -8,6 +8,28 @@ interface PayrollModuleProps {
   loggedEmployee?: Employee | null;
 }
 
+const toDateInputValue = (date: Date) => {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getSaturdayPayrollRange = () => {
+  const today = new Date();
+  const day = today.getDay();
+  const daysUntilSaturday = (6 - day + 7) % 7;
+  const saturday = new Date(today);
+  saturday.setDate(today.getDate() + daysUntilSaturday);
+  const monday = new Date(saturday);
+  monday.setDate(saturday.getDate() - 5);
+
+  return {
+    start: toDateInputValue(monday),
+    end: toDateInputValue(saturday)
+  };
+};
+
 export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmployee }) => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [payrolls, setPayrolls] = useState<PayrollWeekly[]>([]);
@@ -43,8 +65,9 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
 
   // Creation/Edit states
   const [selectedEmpId, setSelectedEmpId] = useState('');
-  const [periodStart, setPeriodStart] = useState('2026-06-22');
-  const [periodEnd, setPeriodEnd] = useState('2026-06-28');
+  const defaultWeeklyPeriod = getSaturdayPayrollRange();
+  const [periodStart, setPeriodStart] = useState(defaultWeeklyPeriod.start);
+  const [periodEnd, setPeriodEnd] = useState(defaultWeeklyPeriod.end);
   const [daysWorked, setDaysWorked] = useState(6);
   const [overtimeHours, setOvertimeHours] = useState(0);
   const [bonus, setBonus] = useState(0);
@@ -81,6 +104,12 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     setCalibration(dataStore.getCalibration());
   };
 
+  const applyDefaultWeeklyPeriod = () => {
+    const range = getSaturdayPayrollRange();
+    setPeriodStart(range.start);
+    setPeriodEnd(range.end);
+  };
+
   // Auto calculate based on employee and attendance log
   useEffect(() => {
     if (selectedEmpId) {
@@ -99,19 +128,28 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
         const checkout = empAtt.find(log => log.timestamp.startsWith(date) && log.type_scan === 'pulang');
         return checkout?.work_fraction ?? 1;
       });
-      setDaysWorked(dayFractions.length ? dayFractions.reduce((sum, value) => sum + value, 0) : 5);
+      const computedDaysWorked = dayFractions.length ? dayFractions.reduce((sum, value) => sum + value, 0) : 6;
+      setDaysWorked(computedDaysWorked);
 
       const approvedAdjustments = adjustments.filter(item => item.employee_id === selectedEmpId && item.date >= periodStart && item.date <= periodEnd);
       const liveBonus = approvedAdjustments.filter(item => item.type === 'live_tiktok').reduce((sum, item) => sum + (item.bonus_amount || 0), 0);
       const computedOvertime = approvedAdjustments.filter(item => item.type === 'overtime').reduce((sum, item) => sum + (item.overtime_minutes || 0), 0) / 60;
       setOvertimeHours(Math.round(computedOvertime * 100) / 100);
 
-      // Bonus bulanan hanya diprefill pada slip yang berakhir di hari terakhir bulan.
+      // Bonus kehadiran otomatis mengikuti default per karyawan untuk payroll Senin-Sabtu.
       const settings = dataStore.getWorkSettings();
       const end = new Date(`${periodEnd}T00:00:00+07:00`);
+      const isSaturdayPayroll = end.getDay() === 6;
       const nextDay = new Date(end.getTime() + 86400000);
       const isMonthEnd = nextDay.getMonth() !== end.getMonth();
-      if (isMonthEnd) {
+      const periodApprovedAdjustments = adjustments.filter(item => item.employee_id === selectedEmpId && item.date >= periodStart && item.date <= periodEnd && item.type !== 'ignored');
+      const periodLate = empAtt.reduce((sum, log) => sum + (log.late_minutes || 0), 0);
+      const periodLateCompensation = periodApprovedAdjustments.reduce((sum, item) => sum + (item.late_compensation_minutes || 0), 0);
+      const periodNetLate = Math.max(0, periodLate - periodLateCompensation);
+      const employeeAttendanceBonus = emp.default_attendance_bonus ?? settings.monthly_bonus_amount;
+      const weeklyAttendanceBonus = isSaturdayPayroll && computedDaysWorked >= 6 && periodNetLate === 0 ? employeeAttendanceBonus : 0;
+      let legacyMonthlyAttendanceBonus = 0;
+      if (!isSaturdayPayroll && isMonthEnd) {
         const monthPrefix = periodEnd.slice(0, 7);
         const monthLogs = attendance.filter(log => log.employee_id === selectedEmpId && log.timestamp.startsWith(monthPrefix));
         const monthApprovedAdjustments = adjustments.filter(item => item.employee_id === selectedEmpId && item.date.startsWith(monthPrefix) && item.type !== 'ignored');
@@ -119,13 +157,14 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
         const totalLate = monthLogs.reduce((sum, log) => sum + (log.late_minutes || 0), 0);
         const approvedLateCompensation = monthApprovedAdjustments.reduce((sum, item) => sum + (item.late_compensation_minutes || 0), 0);
         const netLate = Math.max(0, totalLate - approvedLateCompensation);
-        setBonus((monthDays >= settings.monthly_bonus_min_days && netLate === 0 ? settings.monthly_bonus_amount : 0) + liveBonus);
-      } else setBonus(liveBonus);
+        legacyMonthlyAttendanceBonus = monthDays >= settings.monthly_bonus_min_days && netLate === 0 ? employeeAttendanceBonus : 0;
+      }
+      setBonus(weeklyAttendanceBonus + legacyMonthlyAttendanceBonus + liveBonus);
 
       // Find cash advance balance to pre-populate deduction
       const advances = cashAdvances.filter(c => c.employee_id === selectedEmpId);
       const totalOutstanding = advances.reduce((acc, curr) => acc + curr.remaining_balance, 0);
-      setKasbonDeduction(Math.min(totalOutstanding, 50000)); // Default auto-deduct 50k or remaining balance
+      setKasbonDeduction(Math.min(totalOutstanding, emp.default_weekly_cash_advance_deduction ?? 50000));
     }
   }, [selectedEmpId, periodStart, periodEnd, attendance, adjustments, cashAdvances, employees]);
 
@@ -304,6 +343,8 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
   const approveAdjustment = (log: Attendance, type: 'late_compensation' | 'overtime' | 'live_tiktok' | 'ignored') => {
     const actor = JSON.parse(localStorage.getItem('nxty_session') || 'null');
     const approvedLateCompensation = type === 'ignored' ? 0 : (log.late_compensation_minutes || 0);
+    const targetEmployee = employees.find(emp => emp.id === log.employee_id);
+    const liveTikTokBonus = targetEmployee?.default_live_tiktok_bonus ?? 20000;
     dataStore.approveAttendanceAdjustment({
       id: Math.random().toString(36).slice(2, 11),
       attendance_id: log.id,
@@ -314,7 +355,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
       type,
       late_compensation_minutes: approvedLateCompensation,
       overtime_minutes: type === 'overtime' ? (log.overtime_minutes || 0) : 0,
-      bonus_amount: type === 'live_tiktok' ? 20000 : 0,
+      bonus_amount: type === 'live_tiktok' ? liveTikTokBonus : 0,
       note: type === 'live_tiktok' ? 'Bonus live TikTok' : type === 'overtime' ? 'ACC lembur' : type === 'late_compensation' ? 'Pengganti telat disetujui' : 'Tidak dihitung tambahan',
       approved_by_id: actor?.employeeId,
       approved_by_name: actor?.name,
@@ -1033,7 +1074,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                     {(log.overtime_minutes || 0) > 0 && (
                       <button type="button" onClick={() => approveAdjustment(log, 'overtime')} className="px-3 py-2 rounded-lg bg-[#1F4B36] text-white font-bold cursor-pointer">ACC Lembur</button>
                     )}
-                    <button type="button" onClick={() => approveAdjustment(log, 'live_tiktok')} className="px-3 py-2 rounded-lg bg-pink-600 text-white font-bold cursor-pointer">Live TikTok Rp20.000</button>
+                    <button type="button" onClick={() => approveAdjustment(log, 'live_tiktok')} className="px-3 py-2 rounded-lg bg-pink-600 text-white font-bold cursor-pointer">Live TikTok {formatIDR(employees.find(emp => emp.id === log.employee_id)?.default_live_tiktok_bonus ?? 20000)}</button>
                     <button type="button" onClick={() => approveAdjustment(log, 'ignored')} className="px-3 py-2 rounded-lg bg-white border border-gray-200 text-gray-600 font-bold cursor-pointer">Abaikan</button>
                   </div>
                 </div>
@@ -1068,11 +1109,14 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
               </button>
               <button
                 type="button"
-                onClick={() => setIsCalculatorOpen(true)}
+                onClick={() => {
+                  applyDefaultWeeklyPeriod();
+                  setIsCalculatorOpen(true);
+                }}
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-800 hover:bg-emerald-900 text-white border border-emerald-950 rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer hover:scale-[1.02]"
               >
                 <Calculator className="w-3.5 h-3.5 text-emerald-200 animate-bounce" />
-                <span>Hitung Gaji Baru (Kalkulator)</span>
+                <span>Generate Gaji Mingguan</span>
               </button>
             </div>
           </div>
@@ -1436,7 +1480,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
           <div className="bg-white rounded-2xl w-full max-w-2xl border border-emerald-800/30 overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="bg-emerald-800 px-6 py-4 flex items-center justify-between text-white">
               <h3 className="font-bold text-sm flex items-center gap-2 uppercase tracking-wide">
-                <Calculator className="w-4 h-4 text-emerald-100 animate-pulse" /> Kalkulator &amp; Posting Gaji Mingguan
+                <Calculator className="w-4 h-4 text-emerald-100 animate-pulse" /> Generate &amp; Posting Gaji Mingguan
               </h3>
               <button 
                 type="button"
@@ -1448,6 +1492,10 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
             </div>
 
             <form onSubmit={handleCreatePayroll} className="p-6 space-y-4 text-xs text-left">
+              <div className="rounded-xl border border-emerald-100 bg-emerald-50/70 px-4 py-3 text-[11px] text-emerald-900">
+                <p className="font-black uppercase tracking-wide">Skema gaji mingguan Senin-Sabtu</p>
+                <p className="mt-1">Pilih karyawan, sistem menghitung honor dari absensi, lembur dari ACC, bonus dari default karyawan, dan kasbon dari saldo aktif. Angka tetap bisa dikoreksi sebelum slip diposting.</p>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2">
                   <label className="block font-bold text-emerald-800 uppercase tracking-wider mb-1">Pilih Karyawan</label>
@@ -1475,7 +1523,16 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-emerald-800 uppercase tracking-wider mb-1">Akhir Periode</label>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <label className="block font-bold text-emerald-800 uppercase tracking-wider">Akhir Periode</label>
+                    <button
+                      type="button"
+                      onClick={applyDefaultWeeklyPeriod}
+                      className="text-[10px] font-black text-emerald-800 bg-emerald-50 border border-emerald-100 rounded px-2 py-0.5 cursor-pointer hover:bg-emerald-100"
+                    >
+                      Senin-Sabtu
+                    </button>
+                  </div>
                   <input
                     type="date"
                     value={periodEnd}
@@ -1486,7 +1543,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                 </div>
 
                 <div>
-                  <label className="block font-bold text-emerald-800 uppercase tracking-wider mb-1">Hari Kerja (Auto)</label>
+                  <label className="block font-bold text-emerald-800 uppercase tracking-wider mb-1">Hari Kerja Otomatis</label>
                   <input
                     type="number"
                     step="0.5"
@@ -1497,7 +1554,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-emerald-800 uppercase tracking-wider mb-1">Jam Lembur</label>
+                  <label className="block font-bold text-emerald-800 uppercase tracking-wider mb-1">Jam Lembur ACC</label>
                   <input
                     type="number"
                     value={overtimeHours}
@@ -1508,7 +1565,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                 </div>
 
                 <div>
-                  <label className="block font-bold text-emerald-800 uppercase tracking-wider mb-1">Bonus Tambahan</label>
+                  <label className="block font-bold text-emerald-800 uppercase tracking-wider mb-1">Bonus Otomatis / Tambahan</label>
                   <div className="relative">
                     <span className="absolute left-3 top-2 text-emerald-800/60 font-bold">Rp</span>
                     <input
@@ -1521,7 +1578,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                   </div>
                 </div>
                 <div>
-                  <label className="block font-bold text-emerald-800 uppercase tracking-wider mb-1">Potongan Kasbon</label>
+                  <label className="block font-bold text-emerald-800 uppercase tracking-wider mb-1">Potongan Kasbon Otomatis</label>
                   <div className="relative">
                     <span className="absolute left-3 top-2 text-emerald-800/60 font-bold">Rp</span>
                     <input

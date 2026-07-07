@@ -93,11 +93,11 @@ const INITIAL_DEPARTMENTS: Department[] = [
 // menu yang terbuka: owner / admin_penjualan (Admin) / admin_gudang (Gudang & Produksi) / kosong = karyawan.
 // GANTI PIN default di bawah sebelum dipakai produksi.
 const INITIAL_EMPLOYEES: Employee[] = [
-  { id: 'emp-owner', username: 'ari', name: 'H. Ari Gunawan', department_id: 'dept-eva-foam', role: 'leader', rate_harian: 0, rate_lembur_per_jam: 0, status_aktif: true, phone_number: '081200000001', pin: hashPin('2026'), pin_hashed: true, access_role: 'owner' },
-  { id: 'emp-siti', username: 'siti', name: 'Siti Rahma', department_id: 'dept-eva-foam', role: 'leader', rate_harian: 180000, rate_lembur_per_jam: 25000, status_aktif: true, phone_number: '081234567891', pin: hashPin('4321'), pin_hashed: true, access_role: 'admin_penjualan' },
-  { id: 'emp-dewi', username: 'dewi', name: 'Dewi Lestari', department_id: 'dept-konveksi', role: 'leader', rate_harian: 175000, rate_lembur_per_jam: 22000, status_aktif: true, phone_number: '087899008877', pin: hashPin('8765'), pin_hashed: true, access_role: 'admin_gudang' },
-  { id: 'emp-asep', username: 'asep', name: 'Asep Saputra', department_id: 'dept-eva-foam', role: 'karyawan', rate_harian: 150000, rate_lembur_per_jam: 20000, status_aktif: true, phone_number: '081234567890', pin: hashPin('1234'), pin_hashed: true },
-  { id: 'emp-budi', username: 'budi', name: 'Budi Hartono', department_id: 'dept-konveksi', role: 'karyawan', rate_harian: 140000, rate_lembur_per_jam: 18000, status_aktif: true, phone_number: '085711223344', pin: hashPin('5678'), pin_hashed: true },
+  { id: 'emp-owner', username: 'ari', name: 'H. Ari Gunawan', department_id: 'dept-eva-foam', role: 'leader', rate_harian: 0, rate_lembur_per_jam: 0, default_live_tiktok_bonus: 0, default_attendance_bonus: 0, default_weekly_cash_advance_deduction: 0, status_aktif: true, phone_number: '081200000001', pin: hashPin('2026'), pin_hashed: true, access_role: 'owner' },
+  { id: 'emp-siti', username: 'siti', name: 'Siti Rahma', department_id: 'dept-eva-foam', role: 'leader', rate_harian: 180000, rate_lembur_per_jam: 25000, default_live_tiktok_bonus: 20000, default_attendance_bonus: 0, default_weekly_cash_advance_deduction: 50000, status_aktif: true, phone_number: '081234567891', pin: hashPin('4321'), pin_hashed: true, access_role: 'admin_penjualan' },
+  { id: 'emp-dewi', username: 'dewi', name: 'Dewi Lestari', department_id: 'dept-konveksi', role: 'leader', rate_harian: 175000, rate_lembur_per_jam: 22000, default_live_tiktok_bonus: 20000, default_attendance_bonus: 0, default_weekly_cash_advance_deduction: 50000, status_aktif: true, phone_number: '087899008877', pin: hashPin('8765'), pin_hashed: true, access_role: 'admin_gudang' },
+  { id: 'emp-asep', username: 'asep', name: 'Asep Saputra', department_id: 'dept-eva-foam', role: 'karyawan', rate_harian: 150000, rate_lembur_per_jam: 20000, default_live_tiktok_bonus: 20000, default_attendance_bonus: 0, default_weekly_cash_advance_deduction: 50000, status_aktif: true, phone_number: '081234567890', pin: hashPin('1234'), pin_hashed: true },
+  { id: 'emp-budi', username: 'budi', name: 'Budi Hartono', department_id: 'dept-konveksi', role: 'karyawan', rate_harian: 140000, rate_lembur_per_jam: 18000, default_live_tiktok_bonus: 20000, default_attendance_bonus: 0, default_weekly_cash_advance_deduction: 50000, status_aktif: true, phone_number: '085711223344', pin: hashPin('5678'), pin_hashed: true },
 ];
 
 const INITIAL_ORDERS: Order[] = [];
@@ -391,6 +391,16 @@ class DataStore {
           ? crypto.randomUUID()
           : `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
         next = { ...next, attendance_qr_token: random };
+        migrated = true;
+      }
+      if (next.default_live_tiktok_bonus === undefined || next.default_attendance_bonus === undefined || next.default_weekly_cash_advance_deduction === undefined) {
+        const isOwnerWithoutPayroll = next.access_role === 'owner' && next.rate_harian === 0;
+        next = {
+          ...next,
+          default_live_tiktok_bonus: next.default_live_tiktok_bonus ?? (isOwnerWithoutPayroll ? 0 : 20000),
+          default_attendance_bonus: next.default_attendance_bonus ?? 0,
+          default_weekly_cash_advance_deduction: next.default_weekly_cash_advance_deduction ?? (isOwnerWithoutPayroll ? 0 : 50000)
+        };
         migrated = true;
       }
       return next;

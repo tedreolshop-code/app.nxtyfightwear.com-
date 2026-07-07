@@ -35,6 +35,9 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
   const [role, setRole] = useState<'karyawan' | 'leader'>('karyawan');
   const [rateHarian, setRateHarian] = useState(150000);
   const [rateLembur, setRateLembur] = useState(20000);
+  const [defaultLiveTikTokBonus, setDefaultLiveTikTokBonus] = useState(20000);
+  const [defaultAttendanceBonus, setDefaultAttendanceBonus] = useState(0);
+  const [defaultWeeklyKasbonDeduction, setDefaultWeeklyKasbonDeduction] = useState(50000);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [pin, setPin] = useState('');
   const [allowedTabs, setAllowedTabs] = useState<string[]>(['attendance', 'production', 'warehouse']);
@@ -89,18 +92,26 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
   const [profileModalEmp, setProfileModalEmp] = useState<Employee | null>(null);
   const [activeModalTab, setActiveModalTab] = useState<'profile' | 'attendance' | 'payroll'>('payroll');
   
-  // Date Helpers for default current week (Senin - Minggu)
+  // Date Helpers for default weekly payroll (Senin - Sabtu)
+  const toDateInputValue = (date: Date) => {
+    const year = date.getFullYear();
+    const month = `${date.getMonth() + 1}`.padStart(2, '0');
+    const day = `${date.getDate()}`.padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const getWeekRange = () => {
     const today = new Date();
     const day = today.getDay();
-    const diffToMonday = today.getDate() - day + (day === 0 ? -6 : 1);
-    const monday = new Date(today.setDate(diffToMonday));
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
+    const daysUntilSaturday = (6 - day + 7) % 7;
+    const saturday = new Date(today);
+    saturday.setDate(today.getDate() + daysUntilSaturday);
+    const monday = new Date(saturday);
+    monday.setDate(saturday.getDate() - 5);
     
     return {
-      start: monday.toISOString().split('T')[0],
-      end: sunday.toISOString().split('T')[0]
+      start: toDateInputValue(monday),
+      end: toDateInputValue(saturday)
     };
   };
 
@@ -161,9 +172,12 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
     setModalOutstandingKasbon(totalOutstanding);
 
     // Reset default inputs for new slip
+    const weeklyRange = getWeekRange();
+    setModalPeriodStart(weeklyRange.start);
+    setModalPeriodEnd(weeklyRange.end);
     setModalDaysWorked(6);
     setModalOvertimeHours(0);
-    setModalKasbonDeduction(Math.min(totalOutstanding, 50000));
+    setModalKasbonDeduction(Math.min(totalOutstanding, emp.default_weekly_cash_advance_deduction ?? 50000));
     setModalBonus(0);
   };
 
@@ -200,7 +214,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
     // 3. Outstanding Kasbon deduction prefill
     const advances = dataStore.getCashAdvances().filter(c => c.employee_id === empId);
     const totalOutstanding = advances.reduce((sum, curr) => sum + curr.remaining_balance, 0);
-    const suggestedDeduction = Math.min(totalOutstanding, 50000);
+    const suggestedDeduction = Math.min(totalOutstanding, profileModalEmp.default_weekly_cash_advance_deduction ?? 50000);
 
     setModalDaysWorked(daysCount);
     setModalOvertimeHours(computedOvertimeHours);
@@ -216,7 +230,11 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
     const totalLate = monthScans.reduce((sum, scan) => sum + (scan.late_minutes || 0), 0);
     const totalLateCompensation = monthScans.reduce((sum, scan) => sum + (scan.late_compensation_minutes || 0), 0);
     const netLate = Math.max(0, totalLate - totalLateCompensation);
-    setModalBonus(isMonthEnd && monthDays >= settings.monthly_bonus_min_days && netLate === 0 ? settings.monthly_bonus_amount : 0);
+    const defaultAttendanceBonus = profileModalEmp.default_attendance_bonus ?? settings.monthly_bonus_amount;
+    const attendanceBonus = isMonthEnd
+      ? (monthDays >= settings.monthly_bonus_min_days && netLate === 0 ? defaultAttendanceBonus : 0)
+      : (daysCount >= 6 && netLate === 0 ? defaultAttendanceBonus : 0);
+    setModalBonus(attendanceBonus);
 
     showNotification(`Sukses sinkronisasi data absensi! - Hari Kerja Terhitung: ${daysCount} Hari - Estimasi Jam Lembur: ${computedOvertimeHours} Jam`, 'success');
   };
@@ -341,6 +359,9 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
     setRole('karyawan');
     setRateHarian(150000);
     setRateLembur(20000);
+    setDefaultLiveTikTokBonus(20000);
+    setDefaultAttendanceBonus(0);
+    setDefaultWeeklyKasbonDeduction(50000);
     setPhoneNumber('');
     setPin('');
     setAllowedTabs(['attendance', 'production', 'warehouse']);
@@ -359,6 +380,9 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
     setRole(emp.role);
     setRateHarian(emp.rate_harian);
     setRateLembur(emp.rate_lembur_per_jam);
+    setDefaultLiveTikTokBonus(emp.default_live_tiktok_bonus ?? 20000);
+    setDefaultAttendanceBonus(emp.default_attendance_bonus ?? 0);
+    setDefaultWeeklyKasbonDeduction(emp.default_weekly_cash_advance_deduction ?? 50000);
     setPhoneNumber(emp.phone_number || '');
     setPin('');
     setAccessRole(emp.access_role || '');
@@ -403,6 +427,9 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
           role,
           rate_harian: rateHarian,
           rate_lembur_per_jam: rateLembur,
+          default_live_tiktok_bonus: defaultLiveTikTokBonus,
+          default_attendance_bonus: defaultAttendanceBonus,
+          default_weekly_cash_advance_deduction: defaultWeeklyKasbonDeduction,
           phone_number: phoneNumber,
           status_aktif: statusAktif,
           access_role: (accessRole || undefined) as Employee['access_role'],
@@ -420,6 +447,9 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
         role,
         rate_harian: rateHarian,
         rate_lembur_per_jam: rateLembur,
+        default_live_tiktok_bonus: defaultLiveTikTokBonus,
+        default_attendance_bonus: defaultAttendanceBonus,
+        default_weekly_cash_advance_deduction: defaultWeeklyKasbonDeduction,
         status_aktif: true,
         phone_number: phoneNumber,
         pin: hashPin(pin),
@@ -741,6 +771,46 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                     />
                   </div>
                 </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Bonus Live TikTok Default</label>
+                  <div className="relative">
+                    <span className="absolute left-2.5 top-2 text-[10px] text-gray-400 font-bold">Rp</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={defaultLiveTikTokBonus}
+                      onChange={(e) => setDefaultLiveTikTokBonus(Number(e.target.value))}
+                      className="pl-7 w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-xs font-mono text-gray-850 focus:outline-none focus:border-emerald-600"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Bonus Kehadiran Mingguan</label>
+                  <div className="relative">
+                    <span className="absolute left-2.5 top-2 text-[10px] text-gray-400 font-bold">Rp</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={defaultAttendanceBonus}
+                      onChange={(e) => setDefaultAttendanceBonus(Number(e.target.value))}
+                      className="pl-7 w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-xs font-mono text-gray-850 focus:outline-none focus:border-emerald-600"
+                    />
+                  </div>
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Potongan Kasbon Default per Minggu</label>
+                  <div className="relative">
+                    <span className="absolute left-2.5 top-2 text-[10px] text-gray-400 font-bold">Rp</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={defaultWeeklyKasbonDeduction}
+                      onChange={(e) => setDefaultWeeklyKasbonDeduction(Number(e.target.value))}
+                      className="pl-7 w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-xs font-mono text-gray-850 focus:outline-none focus:border-emerald-600"
+                    />
+                  </div>
+                  <p className="text-[10px] text-gray-500 mt-1">Dipakai otomatis saat generate slip mingguan hari Sabtu, tetap dibatasi sisa kasbon aktif.</p>
+                </div>
               </div>
             </div>
 
@@ -1022,6 +1092,18 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                         <div>
                           <span className="text-gray-400 block text-[10px] uppercase font-bold tracking-wider">Lembur Per Jam</span>
                           <span className="font-mono font-bold text-gray-800 text-sm">{formatIDR(profileModalEmp.rate_lembur_per_jam)}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block text-[10px] uppercase font-bold tracking-wider">Bonus Live TikTok Default</span>
+                          <span className="font-mono font-bold text-gray-800 text-sm">{formatIDR(profileModalEmp.default_live_tiktok_bonus ?? 20000)}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block text-[10px] uppercase font-bold tracking-wider">Bonus Kehadiran Mingguan</span>
+                          <span className="font-mono font-bold text-gray-800 text-sm">{formatIDR(profileModalEmp.default_attendance_bonus ?? 0)}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block text-[10px] uppercase font-bold tracking-wider">Potongan Kasbon Mingguan</span>
+                          <span className="font-mono font-bold text-gray-800 text-sm">{formatIDR(profileModalEmp.default_weekly_cash_advance_deduction ?? 50000)}</span>
                         </div>
                       </div>
                     </div>
