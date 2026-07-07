@@ -112,6 +112,7 @@ export interface Attendance {
   assisted_by_name?: string;
   assistance_reason?: string;
   late_minutes?: number;
+  late_compensation_minutes?: number;
   worked_minutes?: number;
   work_fraction?: 0.5 | 1;
   overtime_minutes?: number;
@@ -122,6 +123,7 @@ export interface WorkSettings {
   end_time: string;
   timezone: 'Asia/Jakarta';
   half_day_max_hours: number;
+  attendance_radius_meters: number;
   monthly_bonus_amount: number;
   monthly_bonus_min_days: number;
   location_qr_token: string;
@@ -162,6 +164,23 @@ export interface CashAdvance {
   remaining_balance: number;
 }
 
+export type CashAdvanceTransactionType = 'create' | 'topup' | 'deduction' | 'payment' | 'adjustment';
+
+export interface CashAdvanceTransaction {
+  id: string;
+  cash_advance_id: string;
+  employee_id: string;
+  employee_name: string;
+  type: CashAdvanceTransactionType;
+  amount: number;
+  date: string;
+  note?: string;
+  payroll_id?: string;
+  created_at: string;
+  created_by_id?: string;
+  created_by_name?: string;
+}
+
 export interface PayrollWeekly {
   id: string;
   employee_id: string;
@@ -177,7 +196,7 @@ export interface PayrollWeekly {
   is_printed: boolean;
 }
 
-export type AttendanceAdjustmentType = 'overtime' | 'live_tiktok' | 'ignored';
+export type AttendanceAdjustmentType = 'late_compensation' | 'overtime' | 'live_tiktok' | 'ignored';
 
 export interface AttendanceAdjustment {
   id: string;
@@ -187,6 +206,7 @@ export interface AttendanceAdjustment {
   date: string;
   checkout_time: string;
   type: AttendanceAdjustmentType;
+  late_compensation_minutes?: number;
   overtime_minutes?: number;
   bonus_amount?: number;
   note?: string;

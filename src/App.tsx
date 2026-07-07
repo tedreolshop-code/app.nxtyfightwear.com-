@@ -19,6 +19,7 @@ import { PurchasesExpensesModule } from './components/PurchasesExpensesModule';
 import { OrderModule } from './components/OrderModule';
 import { EmployeeModule } from './components/EmployeeModule';
 import { ProfileModule } from './components/ProfileModule';
+import { CashAdvanceModule } from './components/CashAdvanceModule';
 import {
   Users,
   FileText,
@@ -287,7 +288,7 @@ export default function App() {
 
   // Sub-tab sederhana per halaman
   const [salesSubTab, setSalesSubTab] = useState<'marketplace' | 'order'>('marketplace');
-  const [karyawanSubTab, setKaryawanSubTab] = useState<'data' | 'absensi' | 'payroll'>('data');
+  const [karyawanSubTab, setKaryawanSubTab] = useState<'data' | 'absensi' | 'kasbon' | 'payroll'>('data');
 
   const permittedMenus = MENUS.filter(m => m.roles.includes(currentRole));
   const getMenuLabel = (menu: { id: string; label: string }) =>
@@ -611,6 +612,14 @@ export default function App() {
                   >
                     Payroll & Slip Gaji
                   </button>
+                  <button
+                    onClick={() => setKaryawanSubTab('kasbon')}
+                    className={`px-4 py-1.5 rounded-lg text-sm font-semibold cursor-pointer ${
+                      karyawanSubTab === 'kasbon' ? 'bg-[#1F4B36] text-white' : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    Kasbon
+                  </button>
                 </div>
 
                 {karyawanSubTab === 'data' && (
@@ -628,6 +637,7 @@ export default function App() {
                   />
                 )}
                 {karyawanSubTab === 'absensi' && <AttendanceModule isAdmin={true} assistingAdmin={loggedEmployee} />}
+                {karyawanSubTab === 'kasbon' && <CashAdvanceModule actor={loggedEmployee} />}
                 {karyawanSubTab === 'payroll' && <PayrollModule isAdmin={true} loggedEmployee={null} />}
               </div>
             )}

@@ -213,7 +213,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
                 <div
                   key={idx}
                   className={`p-2 rounded-lg text-xs font-mono font-medium transition-colors flex flex-col items-center justify-between cursor-pointer ${dayBg}`}
-                  title={logOnDay ? `Absen: ${logOnDay.status === 'anomaly' ? 'Anomali Geofence' : 'Hadir'}` : 'Tanpa Scan'}
+                  title={logOnDay ? `Absen: ${logOnDay.status === 'anomaly' ? 'Data lama luar radius' : 'Hadir'}` : 'Tanpa Scan'}
                 >
                   <span>{date.getDate()}</span>
                   {logOnDay && (
@@ -231,7 +231,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
             </div>
             <div className="flex items-center gap-1 text-amber-700">
               <span className="w-2.5 h-2.5 bg-amber-100 border border-amber-300 rounded"></span>
-              <span>Luar Radius (Anomali)</span>
+              <span>Data Lama Luar Radius</span>
             </div>
             <div className="flex items-center gap-1 text-gray-500">
               <span className="w-2.5 h-2.5 bg-gray-50 border border-gray-200 rounded"></span>

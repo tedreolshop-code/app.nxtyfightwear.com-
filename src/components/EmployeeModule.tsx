@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Employee, Department, PayrollWeekly, CashAdvance, Attendance } from '../types';
+import { Employee, Department, PayrollWeekly, CashAdvance, Attendance, UserRole } from '../types';
 import { dataStore, hashPin } from '../dataStore';
 import { QRCodeSVG } from 'qrcode.react';
 import { Users, Plus, ShieldCheck, Key, Lock, LogIn, LogOut, Check, Save, DollarSign, X, Calendar, Clock, Printer, Trash2, History, Calculator, QrCode } from 'lucide-react';
@@ -7,7 +7,7 @@ import { Users, Plus, ShieldCheck, Key, Lock, LogIn, LogOut, Check, Save, Dollar
 interface EmployeeModuleProps {
   currentLoggedEmployee: Employee | null;
   onLoginEmployee: (emp: Employee | null) => void;
-  allTabs: Array<{ id: string; label: string }>;
+  allTabs: Array<{ id: string; label: string; roles?: string[] }>;
 }
 
 export const EmployeeModule: React.FC<EmployeeModuleProps> = ({ 
@@ -43,6 +43,23 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
   // Mode edit: id karyawan yang sedang diedit (null = form tambah baru)
   const [editEmpId, setEditEmpId] = useState<string | null>(null);
   const [statusAktif, setStatusAktif] = useState(true);
+
+  const accessRoleOptions: Array<{ value: '' | UserRole; label: string; description: string }> = [
+    { value: '', label: 'Karyawan', description: 'Menu kerja pribadi karyawan.' },
+    { value: 'admin_penjualan', label: 'Admin Penjualan', description: 'Menu penjualan, pembelian, absensi, dan gaji.' },
+    { value: 'admin_gudang', label: 'Gudang & Produksi', description: 'Menu gudang, produksi, absensi, dan gaji.' },
+    { value: 'owner', label: 'Owner', description: 'Semua menu aplikasi.' },
+  ];
+  const menusForAccessRole = (value: string) => {
+    const roleForMenus = value || 'karyawan';
+    return allTabs.filter(tab => !tab.roles || tab.roles.includes(roleForMenus));
+  };
+  const accessRoleLabel = (value?: string) => accessRoleOptions.find(option => option.value === (value || ''))?.label || 'Karyawan';
+
+  const openCreateEmployeeModal = () => {
+    resetForm();
+    setShowAddForm(true);
+  };
 
   // Employee Simulation Login form states
   const [selectedLoginEmpId, setSelectedLoginEmpId] = useState('');
@@ -197,7 +214,9 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
     const monthScans = dataStore.getAttendance().filter(scan => scan.employee_id === empId && scan.timestamp.startsWith(monthPrefix));
     const monthDays = new Set(monthScans.filter(scan => scan.type_scan === 'masuk').map(scan => scan.timestamp.slice(0, 10))).size;
     const totalLate = monthScans.reduce((sum, scan) => sum + (scan.late_minutes || 0), 0);
-    setModalBonus(isMonthEnd && monthDays >= settings.monthly_bonus_min_days && totalLate === 0 ? settings.monthly_bonus_amount : 0);
+    const totalLateCompensation = monthScans.reduce((sum, scan) => sum + (scan.late_compensation_minutes || 0), 0);
+    const netLate = Math.max(0, totalLate - totalLateCompensation);
+    setModalBonus(isMonthEnd && monthDays >= settings.monthly_bonus_min_days && netLate === 0 ? settings.monthly_bonus_amount : 0);
 
     showNotification(`Sukses sinkronisasi data absensi! - Hari Kerja Terhitung: ${daysCount} Hari - Estimasi Jam Lembur: ${computedOvertimeHours} Jam`, 'success');
   };
@@ -205,6 +224,13 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
   const handleSaveModalPayroll = (e: React.FormEvent) => {
     e.preventDefault();
     if (!profileModalEmp) return;
+    const totalOutstandingKasbon = dataStore.getCashAdvances()
+      .filter(advance => advance.employee_id === profileModalEmp.id)
+      .reduce((sum, advance) => sum + advance.remaining_balance, 0);
+    if (modalKasbonDeduction > totalOutstandingKasbon) {
+      showNotification(`Potongan kasbon melebihi sisa kasbon ${profileModalEmp.name}. Sisa kasbon: ${formatIDR(totalOutstandingKasbon)}.`, 'error');
+      return;
+    }
 
     const newPayroll: PayrollWeekly = {
       id: Math.random().toString(36).substring(2, 11),
@@ -224,19 +250,17 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
     try {
       dataStore.recordPayroll(newPayroll);
 
-      // Deduct kasbon
       if (modalKasbonDeduction > 0) {
-        let remainingDeduction = modalKasbonDeduction;
-        const advances = dataStore.getCashAdvances();
-        const updatedAdvances = advances.map(adv => {
-          if (adv.employee_id === profileModalEmp.id && adv.remaining_balance > 0 && remainingDeduction > 0) {
-            const deduct = Math.min(adv.remaining_balance, remainingDeduction);
-            remainingDeduction -= deduct;
-            return { ...adv, remaining_balance: adv.remaining_balance - deduct };
-          }
-          return adv;
+        dataStore.applyCashAdvancePayment({
+          employee_id: profileModalEmp.id,
+          amount: modalKasbonDeduction,
+          type: 'deduction',
+          date: modalPeriodEnd,
+          note: `Potongan kasbon dari slip gaji ${modalPeriodStart} s/d ${modalPeriodEnd}`,
+          payroll_id: newPayroll.id,
+          created_by_id: currentLoggedEmployee?.id,
+          created_by_name: currentLoggedEmployee?.name
         });
-        dataStore.setCashAdvances(updatedAdvances);
       }
 
       showNotification(`Slip gaji untuk ${profileModalEmp.name} berhasil disimpan!`, 'success');
@@ -340,7 +364,6 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
     setAccessRole(emp.access_role || '');
     setStatusAktif(emp.status_aktif);
     setShowAddForm(true);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // Hapus permanen (riwayat absensi/payroll lama tetap tersimpan atas nama karyawan tsb)
@@ -559,40 +582,44 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
         <div>
           <h1 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
             <Users className="w-5 h-5 text-[#1F4B36]" />
-            Manajemen Karyawan & Setting Honor RLS
+            Manajemen Karyawan & Akses Menu
           </h1>
-          <p className="text-xs text-gray-400">Atur tarif harian per-karyawan (bukan borongan), atur PIN log-in, dan konfigurasi RLS (Row Level Security)</p>
+          <p className="text-xs text-gray-400">Atur data karyawan, tarif harian, PIN login, dan menu yang bisa dibuka.</p>
         </div>
 
         <button
-          onClick={() => { if (showAddForm) { resetForm(); } else { setShowAddForm(true); } }}
+          onClick={openCreateEmployeeModal}
           className="bg-[#1F4B36] hover:bg-[#163826] text-white px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 shadow-sm cursor-pointer"
         >
-          <Plus className="w-3.5 h-3.5" /> {showAddForm ? 'Tutup Form' : 'Tambah Karyawan Baru'}
+          <Plus className="w-3.5 h-3.5" /> Tambah Karyawan Baru
         </button>
       </div>
 
       {showAddForm && (
-        <form onSubmit={handleCreateEmployee} className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm grid grid-cols-1 md:grid-cols-12 gap-6 no-print">
+        <div className="fixed inset-0 z-50 bg-black/60 p-4 flex items-center justify-center no-print">
+          <form onSubmit={handleCreateEmployee} className="bg-white rounded-2xl border border-gray-200 shadow-2xl w-full max-w-5xl max-h-[92vh] overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-12 gap-6">
           <div className="md:col-span-12 border-b border-gray-100 pb-3 flex items-center justify-between">
             <h3 className="font-bold text-sm text-gray-800 flex items-center gap-1.5 uppercase tracking-wide">
               <Plus className="w-4 h-4 text-[#1F4B36]" /> {editEmpId ? `Edit Karyawan: ${name}` : 'Tambah Profil Karyawan Baru'}
             </h3>
-            {editEmpId && (
-              <div className="flex items-center gap-2">
-                <label className="text-xs font-semibold text-gray-600">Status:</label>
-                <select
-                  value={statusAktif ? 'aktif' : 'nonaktif'}
-                  onChange={(e) => setStatusAktif(e.target.value === 'aktif')}
-                  className={`border rounded px-2 py-1 text-xs font-bold focus:outline-none cursor-pointer ${
-                    statusAktif ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
-                  }`}
-                >
-                  <option value="aktif">Aktif</option>
-                  <option value="nonaktif">Nonaktif (Resign)</option>
-                </select>
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              {editEmpId && (
+                <>
+                  <label className="text-xs font-semibold text-gray-600">Status:</label>
+                  <select
+                    value={statusAktif ? 'aktif' : 'nonaktif'}
+                    onChange={(e) => setStatusAktif(e.target.value === 'aktif')}
+                    className={`border rounded px-2 py-1 text-xs font-bold focus:outline-none cursor-pointer ${
+                      statusAktif ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                    }`}
+                  >
+                    <option value="aktif">Aktif</option>
+                    <option value="nonaktif">Nonaktif (Resign)</option>
+                  </select>
+                </>
+              )}
+              <button type="button" onClick={resetForm} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 cursor-pointer"><X className="w-4 h-4" /></button>
+            </div>
           </div>
 
           {/* Left Column: Categorized Input Fields */}
@@ -663,10 +690,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                       onChange={(e) => setAccessRole(e.target.value)}
                       className="w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-xs text-gray-800 focus:outline-none focus:border-emerald-600"
                     >
-                      <option value="">Karyawan (Absensi & Gaji)</option>
-                      <option value="admin_penjualan">Admin (Penjualan & Pembelian)</option>
-                      <option value="admin_gudang">Gudang & Produksi</option>
-                      <option value="owner">Owner (Akses Penuh)</option>
+                      {accessRoleOptions.map(option => <option key={option.value || 'karyawan'} value={option.value}>{option.label}</option>)}
                     </select>
                   </div>
                 </div>
@@ -749,14 +773,19 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
           <div className="md:col-span-6 border-l border-gray-100 md:pl-6 space-y-3">
             <div>
               <span className="text-xs font-bold text-gray-700 block">Tentang Akses Sistem</span>
-              <p className="text-[10px] text-gray-400">Menu yang terbuka saat karyawan ini login ditentukan oleh pilihan "Akses Sistem" di sebelah kiri.</p>
+              <p className="text-[10px] text-gray-400">Menu di bawah mengikuti daftar menu aplikasi yang sebenarnya.</p>
             </div>
 
-            <div className="bg-gray-50 p-4 rounded border border-gray-100 space-y-2 text-xs text-gray-600">
-              <p><strong className="text-gray-800">Karyawan</strong> — Dashboard pribadi, Absensi, Slip Gaji, Profil.</p>
-              <p><strong className="text-gray-800">Admin</strong> — di atas + Penjualan, Pembelian &amp; Pengeluaran.</p>
-              <p><strong className="text-gray-800">Gudang &amp; Produksi</strong> — di atas + Gudang, Produksi.</p>
-              <p><strong className="text-gray-800">Owner</strong> — semua menu termasuk Karyawan &amp; Laporan.</p>
+            <div className="bg-gray-50 p-4 rounded border border-gray-100 space-y-3 text-xs text-gray-600">
+              <div>
+                <p className="font-black text-gray-800">{accessRoleLabel(accessRole)}</p>
+                <p className="text-[10px] text-gray-500">{accessRoleOptions.find(option => option.value === (accessRole as any))?.description || accessRoleOptions[0].description}</p>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {menusForAccessRole(accessRole).map(menu => (
+                  <span key={menu.id} className="px-2 py-1 bg-white border border-gray-200 rounded-md text-[10px] font-bold text-gray-700">{menu.label}</span>
+                ))}
+              </div>
               <p className="text-[10px] text-gray-400 pt-1 border-t border-gray-200">Login memakai <strong>username + PIN</strong>. Karyawan berstatus Nonaktif (resign) tidak bisa login, tetapi riwayat absensi &amp; gajinya tetap tersimpan.</p>
             </div>
 
@@ -776,7 +805,8 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
               </button>
             </div>
           </div>
-        </form>
+          </form>
+        </div>
       )}
 
       {/* Employees Table List */}
@@ -841,11 +871,9 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                         onChange={(e) => handleChangeAccessRole(emp.id, e.target.value)}
                         className="bg-white border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-800 focus:outline-none focus:border-emerald-600 cursor-pointer"
                       >
-                        <option value="">Karyawan (Absensi & Gaji)</option>
-                        <option value="admin_penjualan">Admin (Penjualan & Pembelian)</option>
-                        <option value="admin_gudang">Gudang & Produksi</option>
-                        <option value="owner">Owner (Akses Penuh)</option>
+                        {accessRoleOptions.map(option => <option key={option.value || 'karyawan'} value={option.value}>{option.label}</option>)}
                       </select>
+                      <p className="mt-1 text-[9px] text-gray-400">{menusForAccessRole(emp.access_role || '').length} menu</p>
                     </td>
                     <td className="p-3 text-center">
                       <div className="flex items-center justify-center gap-1.5">
@@ -999,18 +1027,15 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                     </div>
 
                     <div className="bg-gray-50 p-5 rounded-xl border border-gray-100 space-y-4">
-                      <h4 className="text-xs font-black text-[#1F4B36] uppercase tracking-wider border-b pb-2">Kebijakan Menu (RLS)</h4>
+                      <h4 className="text-xs font-black text-[#1F4B36] uppercase tracking-wider border-b pb-2">Akses Menu</h4>
                       <div className="space-y-1 text-xs">
-                        <span className="text-gray-400 block text-[10px] uppercase font-bold tracking-wider mb-1">Tab Yang Dapat Diakses</span>
+                        <span className="text-gray-400 block text-[10px] uppercase font-bold tracking-wider mb-1">{accessRoleLabel(profileModalEmp.access_role)} dapat membuka</span>
                         <div className="flex flex-wrap gap-1">
-                          {(profileModalEmp.allowed_tabs || ['attendance', 'production', 'warehouse']).map(tabId => {
-                            const matched = allTabs.find(t => t.id === tabId);
-                            return (
-                              <span key={tabId} className="px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-100 rounded-md text-[10px] font-bold">
-                                {matched ? matched.label : tabId}
-                              </span>
-                            );
-                          })}
+                          {menusForAccessRole(profileModalEmp.access_role || '').map(menu => (
+                            <span key={menu.id} className="px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-100 rounded-md text-[10px] font-bold">
+                              {menu.label}
+                            </span>
+                          ))}
                         </div>
                       </div>
                     </div>

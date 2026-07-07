@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Employee, PayrollWeekly, CashAdvance, Attendance, AttendanceAdjustment } from '../types';
+import { Employee, PayrollWeekly, CashAdvance, Attendance, AttendanceAdjustment, CashAdvanceTransaction } from '../types';
 import { dataStore, wibNowISO } from '../dataStore';
 import { Printer, Landmark, DollarSign, Plus, CheckCircle2, Sliders, History, Trash2, X, Calculator, Edit2, FileSpreadsheet } from 'lucide-react';
 
@@ -12,6 +12,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [payrolls, setPayrolls] = useState<PayrollWeekly[]>([]);
   const [cashAdvances, setCashAdvances] = useState<CashAdvance[]>([]);
+  const [cashAdvanceTransactions, setCashAdvanceTransactions] = useState<CashAdvanceTransaction[]>([]);
   const [attendance, setAttendance] = useState<Attendance[]>([]);
   const [adjustments, setAdjustments] = useState<AttendanceAdjustment[]>([]);
   
@@ -74,6 +75,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     setEmployees(dataStore.getEmployees());
     setPayrolls(dataStore.getPayrollWeekly());
     setCashAdvances(dataStore.getCashAdvances());
+    setCashAdvanceTransactions(dataStore.getCashAdvanceTransactions());
     setAttendance(dataStore.getAttendance());
     setAdjustments(dataStore.getAttendanceAdjustments());
     setCalibration(dataStore.getCalibration());
@@ -112,9 +114,12 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
       if (isMonthEnd) {
         const monthPrefix = periodEnd.slice(0, 7);
         const monthLogs = attendance.filter(log => log.employee_id === selectedEmpId && log.timestamp.startsWith(monthPrefix));
+        const monthApprovedAdjustments = adjustments.filter(item => item.employee_id === selectedEmpId && item.date.startsWith(monthPrefix) && item.type !== 'ignored');
         const monthDays = new Set(monthLogs.filter(log => log.type_scan === 'masuk').map(log => log.timestamp.slice(0, 10))).size;
         const totalLate = monthLogs.reduce((sum, log) => sum + (log.late_minutes || 0), 0);
-        setBonus((monthDays >= settings.monthly_bonus_min_days && totalLate === 0 ? settings.monthly_bonus_amount : 0) + liveBonus);
+        const approvedLateCompensation = monthApprovedAdjustments.reduce((sum, item) => sum + (item.late_compensation_minutes || 0), 0);
+        const netLate = Math.max(0, totalLate - approvedLateCompensation);
+        setBonus((monthDays >= settings.monthly_bonus_min_days && netLate === 0 ? settings.monthly_bonus_amount : 0) + liveBonus);
       } else setBonus(liveBonus);
 
       // Find cash advance balance to pre-populate deduction
@@ -130,6 +135,13 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
 
     const emp = employees.find(x => x.id === selectedEmpId);
     if (!emp) return;
+    const totalOutstandingKasbon = cashAdvances
+      .filter(advance => advance.employee_id === emp.id)
+      .reduce((sum, advance) => sum + advance.remaining_balance, 0);
+    if (kasbonDeduction > totalOutstandingKasbon) {
+      alert(`Potongan kasbon melebihi sisa kasbon ${emp.name}. Sisa kasbon: ${formatIDR(totalOutstandingKasbon)}.`);
+      return;
+    }
 
     // Calculations
     const base_pay = daysWorked * emp.rate_harian;
@@ -154,18 +166,15 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     try {
       dataStore.recordPayroll(newPayroll);
 
-      // Update Cash advance balance if there is a deduction
       if (kasbonDeduction > 0) {
-        let remainingDeduction = kasbonDeduction;
-        const updatedAdvances = cashAdvances.map(adv => {
-          if (adv.employee_id === emp.id && adv.remaining_balance > 0 && remainingDeduction > 0) {
-            const deduct = Math.min(adv.remaining_balance, remainingDeduction);
-            remainingDeduction -= deduct;
-            return { ...adv, remaining_balance: adv.remaining_balance - deduct };
-          }
-          return adv;
+        dataStore.applyCashAdvancePayment({
+          employee_id: emp.id,
+          amount: kasbonDeduction,
+          type: 'deduction',
+          date: periodEnd,
+          note: `Potongan kasbon dari slip gaji ${periodStart} s/d ${periodEnd}`,
+          payroll_id: newPayroll.id
         });
-        dataStore.setCashAdvances(updatedAdvances);
       }
 
       // Reset Form
@@ -273,18 +282,12 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     const emp = employees.find(x => x.id === newKasbonEmpId);
     if (!emp) return;
 
-    const newKasbon: CashAdvance = {
-      id: Math.random().toString(36).substring(2, 11),
+    dataStore.createCashAdvance({
       employee_id: emp.id,
-      employee_name: emp.name,
       amount: newKasbonAmount,
       date: new Date().toISOString().split('T')[0],
-      remaining_balance: newKasbonAmount
-    };
-
-    const currentAdvances = dataStore.getCashAdvances();
-    currentAdvances.unshift(newKasbon);
-    dataStore.setCashAdvances(currentAdvances);
+      note: 'Kasbon baru dari modul payroll'
+    });
 
     // Reset
     setNewKasbonEmpId('');
@@ -293,13 +296,14 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
   };
 
   const pendingAdjustmentLogs = attendance
-    .filter(log => log.type_scan === 'pulang' && (log.overtime_minutes || 0) > 0)
+    .filter(log => log.type_scan === 'pulang' && ((log.overtime_minutes || 0) > 0 || (log.late_compensation_minutes || 0) > 0))
     .filter(log => !adjustments.some(item => item.attendance_id === log.id))
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
     .slice(0, 20);
 
-  const approveAdjustment = (log: Attendance, type: 'overtime' | 'live_tiktok' | 'ignored') => {
+  const approveAdjustment = (log: Attendance, type: 'late_compensation' | 'overtime' | 'live_tiktok' | 'ignored') => {
     const actor = JSON.parse(localStorage.getItem('nxty_session') || 'null');
+    const approvedLateCompensation = type === 'ignored' ? 0 : (log.late_compensation_minutes || 0);
     dataStore.approveAttendanceAdjustment({
       id: Math.random().toString(36).slice(2, 11),
       attendance_id: log.id,
@@ -308,9 +312,10 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
       date: log.timestamp.slice(0, 10),
       checkout_time: log.timestamp.slice(11, 16),
       type,
+      late_compensation_minutes: approvedLateCompensation,
       overtime_minutes: type === 'overtime' ? (log.overtime_minutes || 0) : 0,
       bonus_amount: type === 'live_tiktok' ? 20000 : 0,
-      note: type === 'live_tiktok' ? 'Bonus live TikTok' : type === 'overtime' ? 'ACC lembur' : 'Tidak dihitung tambahan',
+      note: type === 'live_tiktok' ? 'Bonus live TikTok' : type === 'overtime' ? 'ACC lembur' : type === 'late_compensation' ? 'Pengganti telat disetujui' : 'Tidak dihitung tambahan',
       approved_by_id: actor?.employeeId,
       approved_by_name: actor?.name,
       approved_at: wibNowISO()
@@ -609,6 +614,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     if (loggedEmployee) {
       const myPayrolls = payrolls.filter(p => p.employee_id === loggedEmployee.id);
       const myAdvances = cashAdvances.filter(c => c.employee_id === loggedEmployee.id);
+      const myCashAdvanceTransactions = cashAdvanceTransactions.filter(transaction => transaction.employee_id === loggedEmployee.id).slice(0, 20);
       const totalSisaKasbon = myAdvances.reduce((sum, item) => sum + item.remaining_balance, 0);
 
       return (
@@ -679,6 +685,23 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                     </div>
                   ))
                 )}
+              </div>
+
+              <div className="border-t border-gray-100 pt-3">
+                <p className="text-[10px] font-black uppercase tracking-wide text-gray-400 mb-2">Riwayat Transaksi Kasbon</p>
+                <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                  {myCashAdvanceTransactions.length === 0 ? (
+                    <p className="text-xs text-gray-400 text-center py-3 bg-gray-50 rounded border border-dashed border-gray-200">Belum ada transaksi kasbon.</p>
+                  ) : myCashAdvanceTransactions.map(transaction => (
+                    <div key={transaction.id} className="flex justify-between gap-3 text-xs bg-gray-50 border border-gray-100 rounded p-2">
+                      <div>
+                        <p className="font-bold text-gray-700">{transaction.type === 'create' ? 'Kasbon Baru' : transaction.type === 'topup' ? 'Tambah Saldo' : transaction.type === 'deduction' ? 'Potongan Gaji' : transaction.type === 'payment' ? 'Pembayaran' : 'Koreksi'}</p>
+                        <p className="text-[10px] text-gray-400">{transaction.date}{transaction.note ? ` · ${transaction.note}` : ''}</p>
+                      </div>
+                      <span className="font-mono font-black text-gray-800 shrink-0">{formatIDR(transaction.amount)}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
@@ -992,18 +1015,24 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
         {pendingAdjustmentLogs.length > 0 && (
           <div className="bg-white border border-amber-200 rounded-xl p-4 space-y-3">
             <div>
-              <h3 className="font-black text-sm text-gray-800">Perlu ACC Lembur / Live TikTok</h3>
-              <p className="text-xs text-gray-500">Karyawan yang pulang lewat jam kerja. Pilih salah satu agar masuk perhitungan slip gaji.</p>
+              <h3 className="font-black text-sm text-gray-800">Perlu Review Pengganti Telat / Lembur / Live TikTok</h3>
+              <p className="text-xs text-gray-500">Jam tambahan dipakai untuk menutup telat dulu. Sisa setelah telat tertutup baru masuk lembur.</p>
             </div>
             <div className="space-y-2 max-h-72 overflow-y-auto">
               {pendingAdjustmentLogs.map(log => (
                 <div key={log.id} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center bg-amber-50/60 border border-amber-100 rounded-lg p-3 text-xs">
                   <div className="md:col-span-5">
                     <p className="font-black text-gray-800">{log.employee_name}</p>
-                    <p className="text-gray-500">{log.timestamp.slice(0, 10)} · pulang {log.timestamp.slice(11, 16)} · ekstra {Math.round((log.overtime_minutes || 0) / 60 * 100) / 100} jam</p>
+                    <p className="text-gray-500">{log.timestamp.slice(0, 10)} · pulang {log.timestamp.slice(11, 16)}</p>
+                    <p className="text-gray-500">Pengganti telat {log.late_compensation_minutes || 0} menit · lembur {log.overtime_minutes || 0} menit</p>
                   </div>
                   <div className="md:col-span-7 flex flex-wrap gap-2 md:justify-end">
-                    <button type="button" onClick={() => approveAdjustment(log, 'overtime')} className="px-3 py-2 rounded-lg bg-[#1F4B36] text-white font-bold cursor-pointer">ACC Lembur</button>
+                    {(log.late_compensation_minutes || 0) > 0 && (
+                      <button type="button" onClick={() => approveAdjustment(log, 'late_compensation')} className="px-3 py-2 rounded-lg bg-emerald-700 text-white font-bold cursor-pointer">Setujui Pengganti</button>
+                    )}
+                    {(log.overtime_minutes || 0) > 0 && (
+                      <button type="button" onClick={() => approveAdjustment(log, 'overtime')} className="px-3 py-2 rounded-lg bg-[#1F4B36] text-white font-bold cursor-pointer">ACC Lembur</button>
+                    )}
                     <button type="button" onClick={() => approveAdjustment(log, 'live_tiktok')} className="px-3 py-2 rounded-lg bg-pink-600 text-white font-bold cursor-pointer">Live TikTok Rp20.000</button>
                     <button type="button" onClick={() => approveAdjustment(log, 'ignored')} className="px-3 py-2 rounded-lg bg-white border border-gray-200 text-gray-600 font-bold cursor-pointer">Abaikan</button>
                   </div>

@@ -416,8 +416,12 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
   const saveWorkSettings = () => {
     if (!workSettings.start_time || !workSettings.end_time || workSettings.end_time <= workSettings.start_time) return alert('Jam kerja tidak valid.');
     if (workSettings.half_day_max_hours <= 0) return alert('Batas setengah hari harus lebih dari nol.');
-    dataStore.setWorkSettings(workSettings);
-    dataStore.logAudit('update', 'work_settings', `Mengubah aturan kerja menjadi ${workSettings.start_time}-${workSettings.end_time} WIB`);
+    const attendanceRadius = Math.round(Number(workSettings.attendance_radius_meters) || 0);
+    if (attendanceRadius < 10) return alert('Radius absensi minimal 10 meter.');
+    const updatedSettings = { ...workSettings, attendance_radius_meters: attendanceRadius };
+    dataStore.setWorkSettings(updatedSettings);
+    setWorkSettings(updatedSettings);
+    dataStore.logAudit('update', 'work_settings', `Mengubah aturan kerja menjadi ${updatedSettings.start_time}-${updatedSettings.end_time} WIB, radius ${updatedSettings.attendance_radius_meters}m`);
     setShowWorkSettings(false);
   };
 
@@ -518,8 +522,8 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
   useEffect(() => { setHistoryPage(1); }, [historySearch, historyPeriod, historyStart, historyEnd, historyType, historyStatus, historyMethod]);
 
   const exportAttendanceCsv = () => {
-    const rows = [['Tanggal', 'Waktu WIB', 'Nama', 'Jenis', 'Status', 'Terlambat (menit)', 'Durasi Kerja (menit)', 'Porsi Hari', 'Lembur (menit)', 'Metode', 'Dibantu Oleh', 'Alasan']];
-    filteredHistory.forEach(log => rows.push([log.timestamp.slice(0, 10), log.timestamp.slice(11, 16), log.employee_name, log.type_scan, log.status, String(log.late_minutes || 0), String(log.worked_minutes || 0), String(log.work_fraction || ''), String(log.overtime_minutes || 0), log.verification_method || 'gps_self', log.assisted_by_name || '', log.assistance_reason || '']));
+    const rows = [['Tanggal', 'Waktu WIB', 'Nama', 'Jenis', 'Status', 'Terlambat (menit)', 'Pengganti Telat (menit)', 'Durasi Kerja (menit)', 'Porsi Hari', 'Lembur (menit)', 'Metode', 'Dibantu Oleh', 'Alasan']];
+    filteredHistory.forEach(log => rows.push([log.timestamp.slice(0, 10), log.timestamp.slice(11, 16), log.employee_name, log.type_scan, log.status, String(log.late_minutes || 0), String(log.late_compensation_minutes || 0), String(log.worked_minutes || 0), String(log.work_fraction || ''), String(log.overtime_minutes || 0), log.verification_method || 'gps_self', log.assisted_by_name || '', log.assistance_reason || '']));
     const csv = '\uFEFF' + rows.map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
@@ -549,7 +553,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
             </span>
             Sistem Absensi Karyawan
           </h2>
-          <p className="text-xs text-gray-500 mt-0.5">Verifikasi ganda: PIN, lokasi GPS (radius 100 meter dari pabrik), dan foto selfie.</p>
+          <p className="text-xs text-gray-500 mt-0.5">Verifikasi absensi dengan PIN, QR lokasi, dan GPS sesuai radius yang diatur admin.</p>
         </div>
 
         {/* Toggle Mode Option A / Option B (disembunyikan di portal karyawan) */}
@@ -602,7 +606,27 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
 
       {showLocationScanner && <div className="fixed inset-0 z-50 bg-black/70 p-4 flex items-center justify-center no-print"><div className="bg-white rounded-2xl w-full max-w-md p-5 space-y-4"><div className="flex justify-between"><div><h3 className="font-black">Scan QR Lokasi</h3><p className="text-xs text-gray-500">Arahkan kamera ke QR yang ditempel di pabrik.</p></div><button onClick={() => setShowLocationScanner(false)} className="cursor-pointer"><X className="w-4 h-4" /></button></div><EmployeeQrScanner onScan={handleLocationQr} /></div></div>}
 
-      {showWorkSettings && <div className="fixed inset-0 z-50 bg-black/70 p-4 flex items-center justify-center no-print"><div className="bg-white rounded-2xl w-full max-w-2xl max-h-[94vh] overflow-y-auto p-5 space-y-4"><div className="flex justify-between"><div><h3 className="font-black text-gray-900">Jam Kerja & QR Lokasi</h3><p className="text-xs text-gray-500">Seluruh waktu menggunakan WIB (GMT+7).</p></div><button onClick={() => setShowWorkSettings(false)} className="cursor-pointer"><X className="w-4 h-4" /></button></div><div className="grid grid-cols-2 gap-3"><div><label className="text-xs font-bold">Jam Masuk</label><input type="time" value={workSettings.start_time} onChange={e => setWorkSettings({...workSettings, start_time:e.target.value})} className="w-full mt-1 border rounded-lg p-2" /></div><div><label className="text-xs font-bold">Jam Pulang</label><input type="time" value={workSettings.end_time} onChange={e => setWorkSettings({...workSettings, end_time:e.target.value})} className="w-full mt-1 border rounded-lg p-2" /></div><div><label className="text-xs font-bold">Batas Setengah Hari (jam)</label><input type="number" min="1" step="0.5" value={workSettings.half_day_max_hours} onChange={e => setWorkSettings({...workSettings, half_day_max_hours:Number(e.target.value)})} className="w-full mt-1 border rounded-lg p-2" /></div><div><label className="text-xs font-bold">Bonus Rajin Bulanan</label><input type="number" min="0" value={workSettings.monthly_bonus_amount} onChange={e => setWorkSettings({...workSettings, monthly_bonus_amount:Number(e.target.value)})} className="w-full mt-1 border rounded-lg p-2" /></div><div className="col-span-2"><label className="text-xs font-bold">Minimum Kehadiran untuk Bonus (hari)</label><input type="number" min="1" value={workSettings.monthly_bonus_min_days} onChange={e => setWorkSettings({...workSettings, monthly_bonus_min_days:Number(e.target.value)})} className="w-full mt-1 border rounded-lg p-2" /></div></div><div className="location-qr-print-card border rounded-2xl p-4 text-center space-y-3"><p className="font-black">QR LOKASI ABSENSI · ARI SPORTINDO</p><div className="inline-flex bg-white p-2"><QRCodeSVG value={`ARI-LOCATION:${workSettings.location_qr_token}`} size={220} level="H" /></div><p className="text-xs">Scan QR ini melalui menu Absensi pada akun karyawan.</p></div><div className="flex flex-wrap gap-2"><button onClick={regenerateLocationQr} className="px-3 py-2 bg-rose-50 text-rose-700 rounded-lg text-xs font-bold cursor-pointer">Ganti QR Lokasi</button><button onClick={printLocationQr} className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-xs font-bold cursor-pointer"><Printer className="w-3.5 h-3.5 inline mr-1" /> Cetak QR</button><button onClick={saveWorkSettings} className="ml-auto px-4 py-2 bg-[#1F4B36] text-white rounded-lg text-xs font-bold cursor-pointer">Simpan Pengaturan</button></div></div></div>}
+      {showWorkSettings && (
+        <div className="fixed inset-0 z-50 bg-black/70 p-4 flex items-center justify-center no-print">
+          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[94vh] overflow-y-auto p-5 space-y-4">
+            <div className="flex justify-between">
+              <div><h3 className="font-black text-gray-900">Jam Kerja & QR Lokasi</h3><p className="text-xs text-gray-500">Seluruh waktu menggunakan WIB (GMT+7).</p></div>
+              <button onClick={() => setShowWorkSettings(false)} className="cursor-pointer"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className="text-xs font-bold">Jam Masuk</label><input type="time" value={workSettings.start_time} onChange={e => setWorkSettings({...workSettings, start_time:e.target.value})} className="w-full mt-1 border rounded-lg p-2" /></div>
+              <div><label className="text-xs font-bold">Jam Pulang</label><input type="time" value={workSettings.end_time} onChange={e => setWorkSettings({...workSettings, end_time:e.target.value})} className="w-full mt-1 border rounded-lg p-2" /></div>
+              <div><label className="text-xs font-bold">Batas Setengah Hari (jam)</label><input type="number" min="1" step="0.5" value={workSettings.half_day_max_hours} onChange={e => setWorkSettings({...workSettings, half_day_max_hours:Number(e.target.value)})} className="w-full mt-1 border rounded-lg p-2" /></div>
+              <div><label className="text-xs font-bold">Radius Absensi (meter)</label><input type="number" min="10" step="5" value={workSettings.attendance_radius_meters} onChange={e => setWorkSettings({...workSettings, attendance_radius_meters:Number(e.target.value)})} className="w-full mt-1 border rounded-lg p-2" /></div>
+              <div><label className="text-xs font-bold">Bonus Rajin Bulanan</label><input type="number" min="0" value={workSettings.monthly_bonus_amount} onChange={e => setWorkSettings({...workSettings, monthly_bonus_amount:Number(e.target.value)})} className="w-full mt-1 border rounded-lg p-2" /></div>
+              <div><label className="text-xs font-bold">Minimum Kehadiran Bonus (hari)</label><input type="number" min="1" value={workSettings.monthly_bonus_min_days} onChange={e => setWorkSettings({...workSettings, monthly_bonus_min_days:Number(e.target.value)})} className="w-full mt-1 border rounded-lg p-2" /></div>
+            </div>
+            <p className="text-[11px] text-gray-500 bg-gray-50 border border-gray-100 rounded-lg p-2">Jika lokasi karyawan lebih jauh dari radius ini, absensi akan ditolak dan tidak tersimpan.</p>
+            <div className="location-qr-print-card border rounded-2xl p-4 text-center space-y-3"><p className="font-black">QR LOKASI ABSENSI · ARI SPORTINDO</p><div className="inline-flex bg-white p-2"><QRCodeSVG value={`ARI-LOCATION:${workSettings.location_qr_token}`} size={220} level="H" /></div><p className="text-xs">Scan QR ini melalui menu Absensi pada akun karyawan.</p></div>
+            <div className="flex flex-wrap gap-2"><button onClick={regenerateLocationQr} className="px-3 py-2 bg-rose-50 text-rose-700 rounded-lg text-xs font-bold cursor-pointer">Ganti QR Lokasi</button><button onClick={printLocationQr} className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-xs font-bold cursor-pointer"><Printer className="w-3.5 h-3.5 inline mr-1" /> Cetak QR</button><button onClick={saveWorkSettings} className="ml-auto px-4 py-2 bg-[#1F4B36] text-white rounded-lg text-xs font-bold cursor-pointer">Simpan Pengaturan</button></div>
+          </div>
+        </div>
+      )}
 
       {showAssistedScan && (
         <div className="fixed inset-0 z-50 bg-black/70 p-4 flex items-center justify-center no-print">
@@ -711,9 +735,8 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                 <MapPin className="w-4 h-4 text-[#1F4B36]" /> Verifikasi Lokasi GPS
               </h3>
               <p className="text-xs text-gray-500 leading-relaxed">
-                Lokasi diambil otomatis dari <b>GPS perangkat ini</b> saat tombol absen ditekan,
-                lalu dicocokkan dengan titik kantor. Absen di luar radius <b>100 meter</b> tetap
-                tercatat namun ditandai <b>anomali</b> dan dilaporkan ke owner.
+                Lokasi diambil otomatis dari <b>GPS perangkat ini</b> saat tombol absen ditekan.
+                Jika posisi berada di luar radius yang ditentukan admin, absensi akan ditolak.
               </p>
               <p className="text-[10px] text-gray-400">
                 Pastikan GPS aktif dan izinkan akses lokasi saat browser meminta. Jaga kerahasiaan PIN Anda.
@@ -975,7 +998,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
 
             {/* Bottom Info bar */}
             <div className="bg-[#0e2419] px-6 py-3 border-t border-[#163826] text-[10px] text-emerald-300/60 flex flex-col sm:flex-row justify-between items-center gap-2 font-mono">
-              <span>GPS aktif untuk cek lokasi pabrik</span>
+              <span>Radius absensi: {workSettings.attendance_radius_meters} m</span>
               <span>ARI SPORTINDO</span>
             </div>
 
@@ -1017,7 +1040,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                 <AlertTriangle className="w-5 h-5" />
               </div>
               <div>
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Deteksi Anomali</p>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Data Luar Radius Lama</p>
                 <p className="text-lg font-black text-rose-600">{stats.anomaliHariIni} Log</p>
               </div>
             </div>
@@ -1040,9 +1063,9 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
             <div className="lg:col-span-5 bg-white rounded-2xl border border-gray-100 p-5 space-y-4 shadow-xs text-left no-print">
               <div>
                 <h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider flex items-center gap-2">
-                  <Map className="w-4 h-4 text-[#1F4B36]" /> Visualisasi Geofence Pabrik
+                  <Map className="w-4 h-4 text-[#1F4B36]" /> Radius Absensi Pabrik
                 </h3>
-                <p className="text-[10px] text-gray-400 mt-0.5">Representasi radar lokasi check-in dari koordinat latitude & longitude.</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">Absensi hanya diterima jika GPS berada dalam radius yang diatur admin.</p>
               </div>
 
               {/* Fake Interactive Map Canvas Area */}
@@ -1071,7 +1094,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                 </div>
 
                 <div className="absolute top-12 right-12 flex flex-col items-center animate-pulse">
-                  <div className="px-1.5 py-0.5 bg-rose-600 text-white font-mono text-[8px] rounded shadow-md">Budi (Anomali: 610m)</div>
+                  <div className="px-1.5 py-0.5 bg-rose-600 text-white font-mono text-[8px] rounded shadow-md">Di luar radius: ditolak</div>
                   <div className="w-2.5 h-2.5 bg-rose-500 rounded-full border border-white mt-1" />
                 </div>
 
@@ -1085,15 +1108,15 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
 
                 {/* Coordinates Legend */}
                 <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur-xs px-2 py-1 rounded text-[9px] font-mono border border-white/5 space-y-0.5">
-                  <p className="text-emerald-400">&bull; Geofence Aman: 100m</p>
-                  <p className="text-rose-500">&bull; Anomali Terdeteksi: Di Luar Zone</p>
+                  <p className="text-emerald-400">&bull; Radius diterima: {workSettings.attendance_radius_meters}m</p>
+                  <p className="text-rose-500">&bull; Di luar radius: ditolak</p>
                 </div>
               </div>
 
               <div className="bg-gray-50 border border-gray-150 rounded-xl p-3 text-[11px] text-gray-500 leading-relaxed font-medium">
                 <span className="font-bold text-gray-800 block mb-0.5">Keterangan Aturan Lokasi:</span>
                 Setiap scan masuk/pulang karyawan dihitung jarak lurusnya ke koordinat pusat departemen pabrik. 
-                Jika jarak melebihi 100 meter, status di-tandai sebagai <span className="font-bold text-rose-600">ANOMALI</span> dan data koordinat disimpan sebagai lampiran pertimbangan pembayaran gaji HRD.
+                Jika jarak melebihi <span className="font-bold text-gray-800">{workSettings.attendance_radius_meters} meter</span>, absensi ditolak dan tidak tersimpan.
               </div>
             </div>
 
@@ -1171,6 +1194,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                                 {formattedDate} - {timeString} WIB
                               </span>
                               {(log.late_minutes || 0) > 0 && <span className="font-bold text-amber-700">Terlambat {log.late_minutes} menit</span>}
+                              {(log.late_compensation_minutes || 0) > 0 && <span className="font-bold text-emerald-700">Pengganti telat {log.late_compensation_minutes} menit</span>}
                               {log.work_fraction === 0.5 && <span className="font-bold text-rose-700">Setengah Hari</span>}
                               {(log.overtime_minutes || 0) > 0 && <span className="font-bold text-sky-700">Lembur {log.overtime_minutes} menit</span>}
                               <span className="flex items-center gap-1 font-mono text-[10px]">

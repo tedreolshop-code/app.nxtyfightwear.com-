@@ -30,6 +30,7 @@ import {
   ,ProductionTaskLog
   ,PackingTask
   ,AttendanceAdjustment
+  ,CashAdvanceTransaction
 } from './types';
 import { pushKeyToCloud, pushAttendanceToCloud, clearAttendanceInCloud } from './cloudSync';
 
@@ -70,7 +71,7 @@ export const RECIPES: Record<string, Array<{ material_id: string; qtyPerUnit: nu
 };
 
 // Standard GPS coordinates for ARI SPORTINDO HQ in Bandung, Indonesia
-// Koordinat kantor/pabrik ARI SPORTINDO (acuan geofence absensi, radius 100 m)
+// Koordinat kantor/pabrik ARI SPORTINDO (acuan geofence absensi).
 // Sumber: Google Maps 6°48'33.2"S 107°36'05.7"E
 const COORDS = {
   eva_foam: { lat: -6.8092099, lng: 107.6015847 },
@@ -185,6 +186,7 @@ const INITIAL_PRODUCTION_LOGS: ProductionLog[] = [];
 const INITIAL_ATTENDANCE: Attendance[] = [];
 
 const INITIAL_CASH_ADVANCES: CashAdvance[] = [];
+const INITIAL_CASH_ADVANCE_TRANSACTIONS: CashAdvanceTransaction[] = [];
 
 const INITIAL_PAYROLL_WEEKLY: PayrollWeekly[] = [];
 
@@ -215,6 +217,7 @@ const INITIAL_WORK_SETTINGS: WorkSettings = {
   end_time: '16:00',
   timezone: 'Asia/Jakarta',
   half_day_max_hours: 4,
+  attendance_radius_meters: 100,
   monthly_bonus_amount: 0,
   monthly_bonus_min_days: 20,
   location_qr_token: 'ari-hq-' + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)
@@ -418,6 +421,8 @@ class DataStore {
 
   getCashAdvances = (): CashAdvance[] => this.get('cash_advances', INITIAL_CASH_ADVANCES);
   setCashAdvances = (data: CashAdvance[]) => this.set('cash_advances', data);
+  getCashAdvanceTransactions = (): CashAdvanceTransaction[] => this.get('cash_advance_transactions', INITIAL_CASH_ADVANCE_TRANSACTIONS);
+  setCashAdvanceTransactions = (data: CashAdvanceTransaction[]) => this.set('cash_advance_transactions', data);
 
   getPayrollWeekly = (): PayrollWeekly[] => this.get('payroll_weekly', INITIAL_PAYROLL_WEEKLY);
   setPayrollWeekly = (data: PayrollWeekly[]) => this.set('payroll_weekly', data);
@@ -453,8 +458,8 @@ class DataStore {
   setExpenseCategories = (data: string[]) => this.set('expense_categories', data);
 
   getWorkSettings = (): WorkSettings => {
-    const settings = this.get<WorkSettings>('work_settings', INITIAL_WORK_SETTINGS);
-    if (!localStorage.getItem('nxty_work_settings')) this.setWorkSettings(settings);
+    const settings = { ...INITIAL_WORK_SETTINGS, ...this.get<Partial<WorkSettings>>('work_settings', INITIAL_WORK_SETTINGS) };
+    if (!localStorage.getItem('nxty_work_settings') || !settings.attendance_radius_meters) this.setWorkSettings(settings);
     return settings;
   };
   setWorkSettings = (data: WorkSettings) => this.set('work_settings', data);
@@ -817,6 +822,7 @@ class DataStore {
     clearAttendanceInCloud();
     this.setPayrollWeekly([]);
     this.setCashAdvances([]);
+    this.setCashAdvanceTransactions([]);
     this.setNotifications([]);
   };
 
@@ -1046,6 +1052,126 @@ class DataStore {
     return emp.pin === inputPin || emp.pin === inputHashed;
   };
 
+  createCashAdvance = (input: {
+    employee_id: string;
+    amount: number;
+    date?: string;
+    note?: string;
+    created_by_id?: string;
+    created_by_name?: string;
+  }): CashAdvance => {
+    const employee = this.getEmployees().find(emp => emp.id === input.employee_id);
+    if (!employee) throw new Error('Karyawan tidak ditemukan.');
+    const amount = Math.round(Number(input.amount) || 0);
+    if (amount <= 0) throw new Error('Nominal kasbon harus lebih dari nol.');
+    const date = input.date || wibTodayStr();
+    const cashAdvance: CashAdvance = {
+      id: uuid(),
+      employee_id: employee.id,
+      employee_name: employee.name,
+      amount,
+      date,
+      remaining_balance: amount
+    };
+    const transaction: CashAdvanceTransaction = {
+      id: uuid(),
+      cash_advance_id: cashAdvance.id,
+      employee_id: employee.id,
+      employee_name: employee.name,
+      type: 'create',
+      amount,
+      date,
+      note: input.note,
+      created_at: wibNowISO(),
+      created_by_id: input.created_by_id,
+      created_by_name: input.created_by_name
+    };
+    this.setCashAdvances([cashAdvance, ...this.getCashAdvances()]);
+    this.setCashAdvanceTransactions([transaction, ...this.getCashAdvanceTransactions()]);
+    this.logAudit('create', 'cash_advance', `Membuat kasbon ${employee.name} sebesar Rp ${amount.toLocaleString('id-ID')}`, cashAdvance.id, { note: input.note });
+    return cashAdvance;
+  };
+
+  topUpCashAdvance = (input: {
+    cash_advance_id: string;
+    amount: number;
+    date?: string;
+    note?: string;
+    created_by_id?: string;
+    created_by_name?: string;
+  }): CashAdvance => {
+    const amount = Math.round(Number(input.amount) || 0);
+    if (amount <= 0) throw new Error('Nominal tambah saldo harus lebih dari nol.');
+    const advances = this.getCashAdvances();
+    const target = advances.find(adv => adv.id === input.cash_advance_id);
+    if (!target) throw new Error('Data kasbon tidak ditemukan.');
+    const updatedTarget = {
+      ...target,
+      amount: target.amount + amount,
+      remaining_balance: target.remaining_balance + amount
+    };
+    this.setCashAdvances(advances.map(adv => adv.id === target.id ? updatedTarget : adv));
+    const transaction: CashAdvanceTransaction = {
+      id: uuid(),
+      cash_advance_id: target.id,
+      employee_id: target.employee_id,
+      employee_name: target.employee_name,
+      type: 'topup',
+      amount,
+      date: input.date || wibTodayStr(),
+      note: input.note,
+      created_at: wibNowISO(),
+      created_by_id: input.created_by_id,
+      created_by_name: input.created_by_name
+    };
+    this.setCashAdvanceTransactions([transaction, ...this.getCashAdvanceTransactions()]);
+    this.logAudit('update', 'cash_advance', `Menambah saldo kasbon ${target.employee_name} sebesar Rp ${amount.toLocaleString('id-ID')}`, target.id, { note: input.note });
+    return updatedTarget;
+  };
+
+  applyCashAdvancePayment = (input: {
+    employee_id: string;
+    amount: number;
+    type: 'deduction' | 'payment' | 'adjustment';
+    date?: string;
+    note?: string;
+    payroll_id?: string;
+    created_by_id?: string;
+    created_by_name?: string;
+  }): number => {
+    let remainingPayment = Math.round(Number(input.amount) || 0);
+    if (remainingPayment <= 0) throw new Error('Nominal pembayaran kasbon harus lebih dari nol.');
+    const advances = this.getCashAdvances();
+    const transactions: CashAdvanceTransaction[] = [];
+    const date = input.date || wibTodayStr();
+    const updatedAdvances = advances.map(adv => {
+      if (adv.employee_id !== input.employee_id || adv.remaining_balance <= 0 || remainingPayment <= 0) return adv;
+      const paid = Math.min(adv.remaining_balance, remainingPayment);
+      remainingPayment -= paid;
+      transactions.push({
+        id: uuid(),
+        cash_advance_id: adv.id,
+        employee_id: adv.employee_id,
+        employee_name: adv.employee_name,
+        type: input.type,
+        amount: paid,
+        date,
+        note: input.note,
+        payroll_id: input.payroll_id,
+        created_at: wibNowISO(),
+        created_by_id: input.created_by_id,
+        created_by_name: input.created_by_name
+      });
+      return { ...adv, remaining_balance: adv.remaining_balance - paid };
+    });
+    if (transactions.length === 0) throw new Error('Tidak ada saldo kasbon aktif untuk karyawan ini.');
+    this.setCashAdvances(updatedAdvances);
+    this.setCashAdvanceTransactions([...transactions, ...this.getCashAdvanceTransactions()]);
+    const applied = Math.round(Number(input.amount) || 0) - remainingPayment;
+    this.logAudit('update', 'cash_advance', `Mencatat pembayaran kasbon sebesar Rp ${applied.toLocaleString('id-ID')}`, input.employee_id, { type: input.type, note: input.note, payroll_id: input.payroll_id });
+    return applied;
+  };
+
   recordPayroll = (payroll: PayrollWeekly): boolean => {
     const payrolls = this.getPayrollWeekly();
     const exists = payrolls.some(p => 
@@ -1112,12 +1238,14 @@ class DataStore {
       Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
-    const distance = R * c; // meters
-
-    // Radius check: anomaly if > 100m
-    const status = distance > 100 ? 'anomaly' : 'normal';
-
     const workSettings = this.getWorkSettings();
+    const distance = R * c; // meters
+    const allowedRadius = Math.max(1, workSettings.attendance_radius_meters || INITIAL_WORK_SETTINGS.attendance_radius_meters);
+    if (distance > allowedRadius) {
+      throw new Error(`Absen ditolak: lokasi Anda ${Math.round(distance)} m dari ${dept.name}. Batas radius absensi adalah ${allowedRadius} m.`);
+    }
+
+    const status: Attendance['status'] = 'normal';
     const clockMinutes = (value: string) => {
       const [hours, minutes] = value.split(':').map(Number);
       return hours * 60 + minutes;
@@ -1132,10 +1260,12 @@ class DataStore {
         const workedMinutes = Math.max(0, Math.round((new Date(att.timestamp).getTime() - new Date(checkIn.timestamp).getTime()) / 60000));
         const lateMinutes = checkIn.late_minutes ?? Math.max(0, clockMinutes(checkIn.timestamp.slice(11, 16)) - clockMinutes(workSettings.start_time));
         const afterWorkMinutes = Math.max(0, clockMinutes(timestampClock) - clockMinutes(workSettings.end_time));
+        const lateCompensationMinutes = Math.min(lateMinutes, afterWorkMinutes);
         attendanceMetrics = {
           worked_minutes: workedMinutes,
           work_fraction: workedMinutes <= workSettings.half_day_max_hours * 60 ? 0.5 : 1,
-          overtime_minutes: Math.max(0, afterWorkMinutes - lateMinutes)
+          late_compensation_minutes: lateCompensationMinutes,
+          overtime_minutes: Math.max(0, afterWorkMinutes - lateCompensationMinutes)
         };
       }
     }
@@ -1149,19 +1279,6 @@ class DataStore {
       is_mock_location_flag: false,
       status,
     };
-
-    if (status === 'anomaly') {
-      const notifications = this.getNotifications();
-      notifications.unshift({
-        id: uuid(),
-        type: 'attendance_anomaly',
-        message: `Anomali Absensi: ${emp.name} melakukan scan ${att.type_scan} berjarak ${Math.round(distance)}m dari ${dept.name} (Toleransi: 100m)`,
-        target_role: 'owner',
-        is_read: false,
-        created_at: new Date().toISOString()
-      });
-      this.setNotifications(notifications);
-    }
 
     attendanceLogs.unshift(newAttendance);
     this.setAttendance(attendanceLogs);
