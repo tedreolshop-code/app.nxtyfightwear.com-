@@ -31,6 +31,18 @@ interface ProductionInventoryModuleProps {
   currentEmployee?: Employee | null;
 }
 
+type ProductionDepartmentId = ProductionJob['department_id'];
+
+const PRODUCTION_DEPARTMENTS: Array<{ id: ProductionDepartmentId; label: string; description: string }> = [
+  { id: 'dept-eva-foam', label: 'Eva Foam', description: 'Matras, pelampung, dan produk berbahan eva foam.' },
+  { id: 'dept-konveksi', label: 'Konveksi', description: 'Samsak, body protector, jahit, dan produk kain.' },
+];
+
+const DEFAULT_STAGES_BY_DEPARTMENT: Record<ProductionDepartmentId, string> = {
+  'dept-eva-foam': 'Potong Bahan\nPress / Lem\nFinishing\nCek Kualitas\nPacking',
+  'dept-konveksi': 'Potong\nSablon\nJahit\nFinishing\nCek Kualitas\nPacking',
+};
+
 export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps> = ({ userRole, currentEmployee }) => {
   const [products, setProducts] = useState<Product[]>([]);
   const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>([]);
@@ -56,6 +68,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
   const [modalNote, setModalNote] = useState('');
 
   // Production input states
+  const [manualDepartmentId, setManualDepartmentId] = useState<ProductionDepartmentId | ''>('');
   const [selectedProductId, setSelectedProductId] = useState('');
   const [productionQty, setProductionQty] = useState(1);
   const [customMaterials, setCustomMaterials] = useState<Array<{ material_id: string; qty: number }>>([]);
@@ -182,6 +195,37 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
     return products; // General warehouse or owner sees all
   };
 
+  const lockedManualDepartment: ProductionDepartmentId | '' =
+    userRole === 'admin_eva_foam'
+      ? 'dept-eva-foam'
+      : userRole === 'admin_konveksi'
+        ? 'dept-konveksi'
+        : '';
+
+  const setManualDepartment = (departmentId: ProductionDepartmentId) => {
+    setManualDepartmentId(departmentId);
+    setManualOutputs([{ product_id: '', target_qty: 1 }]);
+    setManualEmployeeIds([]);
+    setManualStages(DEFAULT_STAGES_BY_DEPARTMENT[departmentId]);
+  };
+
+  useEffect(() => {
+    if (lockedManualDepartment && manualDepartmentId !== lockedManualDepartment) {
+      setManualDepartment(lockedManualDepartment);
+    }
+  }, [lockedManualDepartment, manualDepartmentId]);
+
+  const manualDepartment = PRODUCTION_DEPARTMENTS.find(department => department.id === manualDepartmentId);
+  const manualProducts = manualDepartmentId
+    ? getFilteredProducts().filter(product => product.department_id === manualDepartmentId)
+    : [];
+  const manualAssignableEmployees = manualDepartmentId
+    ? employees.filter(employee => employee.department_id === manualDepartmentId)
+    : [];
+  const manualFilteredMaterials = manualDepartmentId
+    ? rawMaterials.filter(material => !material.department_id || material.department_id === manualDepartmentId)
+    : rawMaterials;
+
   // Auto populate ingredients when a product is selected
   useEffect(() => {
     if (selectedProductId) {
@@ -225,6 +269,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
 
   const handleCreateManualProductionJob = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!manualDepartmentId) return alert('Pilih departemen produksi terlebih dahulu.');
     const outputs = manualOutputs
       .map(output => {
         const product = products.find(item => item.id === output.product_id);
@@ -233,6 +278,9 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
       .filter(Boolean) as Array<{ product: Product; target_qty: number }>;
 
     if (outputs.length === 0) return alert('Pilih minimal satu output produk.');
+    if (outputs.some(output => output.product.department_id !== manualDepartmentId)) {
+      return alert('Produk output harus sesuai dengan departemen yang dipilih.');
+    }
 
     const first = outputs[0];
     const stages = manualStages.split('\n').map(stage => stage.trim()).filter(Boolean);
@@ -253,7 +301,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
 
     const assignedEmployees = manualEmployeeIds
       .map(id => employees.find(employee => employee.id === id))
-      .filter(Boolean)
+      .filter(employee => employee && employee.department_id === manualDepartmentId)
       .map(employee => ({ employee_id: employee!.id, employee_name: employee!.name }));
 
     const orderNumber = `PROD/${new Date().getFullYear()}/${String(productionJobs.length + 1).padStart(4, '0')}`;
@@ -264,7 +312,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
       product_name: outputs.length > 1 ? `${first.product.name} +${outputs.length - 1} output` : first.product.name,
       variant: first.product.variant,
       qty: first.target_qty,
-      department_id: (first.product.department_id === 'dept-konveksi' ? 'dept-konveksi' : 'dept-eva-foam'),
+      department_id: manualDepartmentId,
       stages: stages.map((stage, index) => ({ stage, status: index === 0 ? 'ongoing' : 'pending' })),
       current_stage: stages[0],
       status: 'ongoing',
@@ -289,7 +337,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
 
     setManualOutputs([{ product_id: '', target_qty: 1 }]);
     setManualMaterials([{ material_id: '', qty: 1 }]);
-    setManualStages('Potong\nJahit\nCek Kualitas\nPacking');
+    setManualStages(DEFAULT_STAGES_BY_DEPARTMENT[manualDepartmentId]);
     setManualEmployeeIds([]);
     setManualNotes('');
     setManualStep(1);
@@ -731,7 +779,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
       return material ? { material, qty: Math.max(0, Number(item.qty) || 0) } : null;
     })
     .filter((item): item is { material: RawMaterial; qty: number } => Boolean(item && item.qty > 0));
-  const manualBasicValid = manualSelectedOutputs.length > 0;
+  const manualBasicValid = Boolean(manualDepartmentId) && manualSelectedOutputs.length > 0;
   const manualMaterialsValid = manualSelectedMaterials.length > 0;
   const manualStagesValid = manualStages.split('\n').some(stage => stage.trim());
 
@@ -1697,8 +1745,8 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                         key={item.step}
                         type="button"
                         onClick={() => {
-                          if (item.step === 2 && !manualBasicValid) return alert('Pilih output produk dulu.');
-                          if (item.step === 3 && (!manualBasicValid || !manualMaterialsValid)) return alert('Lengkapi output dan bahan dulu.');
+                          if (item.step === 2 && !manualBasicValid) return alert('Pilih departemen dan output produk dulu.');
+                          if (item.step === 3 && (!manualBasicValid || !manualMaterialsValid)) return alert('Lengkapi departemen, output, dan bahan dulu.');
                           setManualStep(item.step as 1 | 2 | 3);
                         }}
                         className={`rounded-lg border px-3 py-2 text-xs font-bold cursor-pointer ${manualStep === item.step ? 'bg-[#1F4B36] text-white border-[#1F4B36]' : 'bg-gray-50 text-gray-500 border-gray-200'}`}
@@ -1711,17 +1759,36 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                   {manualStep === 1 && (
                     <div className="space-y-4">
                       <div className="space-y-2">
+                        <label className="block text-xs font-semibold text-gray-500">Departemen Produksi</label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {PRODUCTION_DEPARTMENTS.filter(department => !lockedManualDepartment || department.id === lockedManualDepartment).map(department => (
+                            <button
+                              key={department.id}
+                              type="button"
+                              onClick={() => setManualDepartment(department.id)}
+                              className={`text-left rounded-xl border p-3 cursor-pointer ${manualDepartmentId === department.id ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'}`}
+                            >
+                              <p className="text-xs font-black">{department.label}</p>
+                              <p className="text-[10px] mt-1 leading-relaxed">{department.description}</p>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
                         <label className="block text-xs font-semibold text-gray-500">Produk yang Akan Dibuat</label>
+                        {!manualDepartmentId && <p className="rounded-lg border border-amber-100 bg-amber-50 p-2 text-[11px] text-amber-800">Pilih departemen dulu agar produk dan karyawan tidak tercampur.</p>}
                         {manualOutputs.map((output, index) => (
                           <div key={index} className="grid grid-cols-12 gap-2">
                             <select
                               value={output.product_id}
                               onChange={event => setManualOutputs(items => items.map((item, itemIndex) => itemIndex === index ? { ...item, product_id: event.target.value } : item))}
                               className="col-span-8 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[#1F4B36]"
+                              disabled={!manualDepartmentId}
                               required={index === 0}
                             >
                               <option value="">Pilih produk jadi</option>
-                              {getFilteredProducts().map(product => <option key={product.id} value={product.id}>{product.name} ({product.variant})</option>)}
+                              {manualProducts.map(product => <option key={product.id} value={product.id}>{product.name} ({product.variant})</option>)}
                             </select>
                             <input
                               type="number"
@@ -1739,7 +1806,9 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                       <div>
                         <label className="block text-xs font-semibold text-gray-500 mb-1">Karyawan Ditugaskan</label>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-32 overflow-y-auto bg-gray-50 border border-gray-200 rounded-lg p-2">
-                          {employees.map(employee => (
+                          {!manualDepartmentId && <p className="text-[11px] text-gray-400 col-span-full">Pilih departemen dulu.</p>}
+                          {manualDepartmentId && manualAssignableEmployees.length === 0 && <p className="text-[11px] text-gray-400 col-span-full">Belum ada karyawan aktif di departemen ini.</p>}
+                          {manualAssignableEmployees.map(employee => (
                             <label key={employee.id} className="flex items-center gap-2 text-xs text-gray-700">
                               <input type="checkbox" checked={manualEmployeeIds.includes(employee.id)} onChange={event => setManualEmployeeIds(ids => event.target.checked ? [...ids, employee.id] : ids.filter(id => id !== employee.id))} />
                               <span>{employee.name}</span>
@@ -1758,6 +1827,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                   {manualStep === 2 && (
                     <div className="space-y-3">
                       <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-3 text-xs text-emerald-800">
+                        {manualDepartment && <p><b>Departemen:</b> {manualDepartment.label}</p>}
                         {manualSelectedOutputs.map(item => <p key={item.product.id}><b>{item.product.name}</b> · target {item.target_qty} pcs</p>)}
                       </div>
                       <div className="space-y-2">
@@ -1768,7 +1838,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                             <div key={index} className="grid grid-cols-12 gap-2">
                               <select value={material.material_id} onChange={event => setManualMaterials(items => items.map((item, itemIndex) => itemIndex === index ? { ...item, material_id: event.target.value } : item))} className="col-span-8 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[#1F4B36]">
                                 <option value="">Pilih bahan</option>
-                                {rawMaterials.map(item => <option key={item.id} value={item.id}>{item.name} - stok {item.current_stock} {item.unit}</option>)}
+                                {manualFilteredMaterials.map(item => <option key={item.id} value={item.id}>{item.name} - stok {item.current_stock} {item.unit}</option>)}
                               </select>
                               <input type="number" min={0} step="0.01" value={material.qty} onChange={event => setManualMaterials(items => items.map((item, itemIndex) => itemIndex === index ? { ...item, qty: Number(event.target.value) } : item))} className="col-span-3 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono font-bold" placeholder={selected?.unit || 'Qty'} />
                               <button type="button" onClick={() => setManualMaterials(items => items.length === 1 ? items : items.filter((_, itemIndex) => itemIndex !== index))} className="col-span-1 rounded-lg bg-gray-100 text-gray-500 text-xs font-bold cursor-pointer">×</button>
@@ -1789,6 +1859,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                       </div>
                       <div className="bg-gray-50 border border-gray-100 rounded-lg p-3 text-xs space-y-1">
                         <p className="font-bold text-gray-700">Ringkasan</p>
+                        <p>Departemen: {manualDepartment?.label || '-'}</p>
                         <p>{manualSelectedOutputs.length} output produk</p>
                         <p>{manualSelectedMaterials.length} bahan baku</p>
                         <p>{manualEmployeeIds.length} karyawan ditugaskan</p>
@@ -1802,7 +1873,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                       <button
                         type="button"
                         onClick={() => {
-                          if (manualStep === 1 && !manualBasicValid) return alert('Pilih minimal satu output produk.');
+                          if (manualStep === 1 && !manualBasicValid) return alert('Pilih departemen dan minimal satu output produk.');
                           if (manualStep === 2 && !manualMaterialsValid) return alert('Pilih minimal satu bahan baku yang dipakai.');
                           setManualStep((manualStep + 1) as 1 | 2 | 3);
                         }}
