@@ -195,6 +195,7 @@ const EmployeeQrScanner: React.FC<{ onScan: (value: string) => void }> = ({ onSc
 export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, lockedEmployee, assistingAdmin, openLocationScannerSignal }) => {
   // Navigation Mode
   const [activeMode, setActiveMode] = useState<'pola_a_kiosk' | 'pola_b_dashboard'>('pola_a_kiosk');
+  const [adminAttendanceTab, setAdminAttendanceTab] = useState<'summary' | 'recap' | 'history' | 'correction' | 'sync'>('summary');
 
   // Common states
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -487,6 +488,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
     emp.id.toLowerCase().includes(searchQuery.toLowerCase())
   );
   const automaticScanType = lockedEmployee ? inferEmployeeScanType(lockedEmployee.id) : null;
+  const departmentLabel = (departmentId: string) => departmentId === 'dept-eva-foam' ? 'Eva Foam' : departmentId === 'dept-konveksi' ? 'Konveksi' : departmentId;
 
   const todayWib = wibNowISO().slice(0, 10);
   const periodBounds = (() => {
@@ -515,6 +517,40 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
       return matchesDate && matchesSearch && matchesType && matchesStatus && matchesMethod;
     })
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  const periodLogs = attendanceLogs.filter(log => {
+    const date = log.timestamp.slice(0, 10);
+    return date >= periodBounds.start && date <= periodBounds.end;
+  });
+  const todayLogs = attendanceLogs.filter(log => log.timestamp.slice(0, 10) === todayWib);
+  const todayCheckInIds = new Set(todayLogs.filter(log => log.type_scan === 'masuk').map(log => log.employee_id));
+  const todayCheckOutIds = new Set(todayLogs.filter(log => log.type_scan === 'pulang').map(log => log.employee_id));
+  const notCheckedInToday = employees.filter(employee => !todayCheckInIds.has(employee.id));
+  const notCheckedOutToday = employees.filter(employee => todayCheckInIds.has(employee.id) && !todayCheckOutIds.has(employee.id));
+  const assistedPeriodLogs = periodLogs.filter(log => (log.verification_method || 'gps_self') === 'admin_qr');
+  const latePeriodLogs = periodLogs.filter(log => (log.late_minutes || 0) > 0);
+  const pendingAttendanceSync = (() => {
+    try {
+      return JSON.parse(localStorage.getItem('nxty_attendance_pending') || '[]') as Attendance[];
+    } catch {
+      return [] as Attendance[];
+    }
+  })();
+  const employeeRecaps = employees.map(employee => {
+    const logs = periodLogs.filter(log => log.employee_id === employee.id);
+    const checkInLogs = logs.filter(log => log.type_scan === 'masuk');
+    const checkOutLogs = logs.filter(log => log.type_scan === 'pulang');
+    return {
+      employee,
+      hadir: new Set(checkInLogs.map(log => log.timestamp.slice(0, 10))).size,
+      pulang: new Set(checkOutLogs.map(log => log.timestamp.slice(0, 10))).size,
+      telat: logs.reduce((sum, log) => sum + (log.late_minutes || 0), 0),
+      penggantiTelat: logs.reduce((sum, log) => sum + (log.late_compensation_minutes || 0), 0),
+      lembur: logs.reduce((sum, log) => sum + (log.overtime_minutes || 0), 0),
+      bantuanAdmin: logs.filter(log => (log.verification_method || 'gps_self') === 'admin_qr').length,
+      terakhir: logs[0]?.timestamp || ''
+    };
+  }).filter(item => item.hadir > 0 || item.pulang > 0 || item.telat > 0 || item.bantuanAdmin > 0)
+    .sort((a, b) => b.terakhir.localeCompare(a.terakhir));
   const historyPageSize = 50;
   const historyTotalPages = Math.max(1, Math.ceil(filteredHistory.length / historyPageSize));
   const pagedHistory = filteredHistory.slice((historyPage - 1) * historyPageSize, historyPage * historyPageSize);
@@ -1012,6 +1048,33 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
            POLA B: REAL-TIME MONITORING HRD (Admin Recap & Logs)
            ------------------------------------------------------------- */
         <div className="space-y-6">
+          <div className="bg-white p-1 rounded-xl border border-gray-200 inline-flex flex-wrap gap-1 no-print">
+            {([
+              { id: 'summary', label: 'Ringkasan' },
+              { id: 'recap', label: 'Rekap Karyawan' },
+              { id: 'history', label: 'Riwayat Scan' },
+              { id: 'correction', label: 'Koreksi' },
+              { id: 'sync', label: 'Sync' },
+            ] as const).map(tab => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setAdminAttendanceTab(tab.id)}
+                className={`px-3.5 py-2 rounded-lg text-xs font-bold cursor-pointer ${adminAttendanceTab === tab.id ? 'bg-[#1F4B36] text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="space-y-2 no-print">
+            <div className="flex flex-wrap gap-2">
+              {(['today', 'week', 'month', 'custom'] as const).map(period => <button key={period} onClick={() => setHistoryPeriod(period)} className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold cursor-pointer border ${historyPeriod === period ? 'bg-[#1F4B36] text-white border-[#1F4B36]' : 'bg-white text-gray-600 border-gray-200'}`}>{period === 'today' ? 'Hari Ini' : period === 'week' ? 'Minggu Ini' : period === 'month' ? 'Bulan Ini' : 'Custom'}</button>)}
+              <button onClick={exportAttendanceCsv} className="ml-auto px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-100 cursor-pointer"><Download className="w-3 h-3 inline mr-1" /> CSV</button>
+            </div>
+            {historyPeriod === 'custom' && <div className="grid grid-cols-2 gap-2 max-w-md"><input type="date" value={historyStart} onChange={e => setHistoryStart(e.target.value)} className="border border-gray-200 rounded-lg p-2 text-xs" /><input type="date" value={historyEnd} min={historyStart} onChange={e => setHistoryEnd(e.target.value)} className="border border-gray-200 rounded-lg p-2 text-xs" /></div>}
+            <p className="text-[10px] text-gray-400">Periode analisa: {periodBounds.start} s/d {periodBounds.end}</p>
+          </div>
           
           {/* Real-time stats Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 no-print">
@@ -1056,8 +1119,71 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
             </div>
           </div>
 
+          {adminAttendanceTab === 'summary' && (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              <div className="lg:col-span-7 bg-white rounded-2xl border border-gray-100 p-5 space-y-4 shadow-xs text-left">
+                <div>
+                  <h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider flex items-center gap-2"><Calendar className="w-4 h-4 text-[#1F4B36]" /> Ringkasan Harian</h3>
+                  <p className="text-[10px] text-gray-400 mt-0.5">Tampilan cepat untuk kondisi absensi hari ini.</p>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3"><p className="text-[10px] font-black text-emerald-700 uppercase">Hadir</p><p className="text-xl font-black text-emerald-900">{todayCheckInIds.size}</p></div>
+                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-3"><p className="text-[10px] font-black text-slate-600 uppercase">Sudah Pulang</p><p className="text-xl font-black text-slate-900">{todayCheckOutIds.size}</p></div>
+                  <div className="rounded-xl border border-amber-100 bg-amber-50 p-3"><p className="text-[10px] font-black text-amber-700 uppercase">Terlambat</p><p className="text-xl font-black text-amber-900">{todayLogs.filter(log => (log.late_minutes || 0) > 0).length}</p></div>
+                  <div className="rounded-xl border border-rose-100 bg-rose-50 p-3"><p className="text-[10px] font-black text-rose-700 uppercase">Belum Masuk</p><p className="text-xl font-black text-rose-900">{notCheckedInToday.length}</p></div>
+                  <div className="rounded-xl border border-sky-100 bg-sky-50 p-3"><p className="text-[10px] font-black text-sky-700 uppercase">Belum Pulang</p><p className="text-xl font-black text-sky-900">{notCheckedOutToday.length}</p></div>
+                  <div className="rounded-xl border border-purple-100 bg-purple-50 p-3"><p className="text-[10px] font-black text-purple-700 uppercase">Dibantu Admin</p><p className="text-xl font-black text-purple-900">{todayLogs.filter(log => (log.verification_method || 'gps_self') === 'admin_qr').length}</p></div>
+                </div>
+              </div>
+              <div className="lg:col-span-5 bg-white rounded-2xl border border-gray-100 p-5 space-y-4 shadow-xs text-left">
+                <h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider">Perlu Perhatian</h3>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {[...notCheckedInToday.slice(0, 8).map(emp => ({ name: emp.name, text: 'Belum absen masuk', tone: 'text-rose-700 bg-rose-50 border-rose-100' })),
+                    ...notCheckedOutToday.slice(0, 8).map(emp => ({ name: emp.name, text: 'Belum absen pulang', tone: 'text-sky-700 bg-sky-50 border-sky-100' }))].map((item, index) => (
+                    <div key={`${item.name}-${index}`} className={`rounded-lg border p-2.5 text-xs ${item.tone}`}><b>{item.name}</b><span className="ml-2">{item.text}</span></div>
+                  ))}
+                  {notCheckedInToday.length === 0 && notCheckedOutToday.length === 0 && <p className="text-xs text-gray-400 text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-200">Tidak ada catatan yang perlu perhatian hari ini.</p>}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {adminAttendanceTab === 'recap' && (
+            <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4 shadow-xs text-left">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div><h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider">Rekap Per Karyawan</h3><p className="text-[10px] text-gray-400">Agregasi untuk analisa kedisiplinan dan payroll.</p></div>
+                <div className="relative"><Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-gray-400" /><input value={historySearch} onChange={e => setHistorySearch(e.target.value)} placeholder="Cari karyawan..." className="pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-xs" /></div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50 text-gray-500"><tr><th className="p-2 text-left">Karyawan</th><th className="p-2 text-left">Departemen</th><th className="p-2 text-right">Hadir</th><th className="p-2 text-right">Pulang</th><th className="p-2 text-right">Telat</th><th className="p-2 text-right">Pengganti</th><th className="p-2 text-right">Lembur</th><th className="p-2 text-right">Bantuan</th></tr></thead>
+                  <tbody>{employeeRecaps.filter(item => !historySearch.trim() || `${item.employee.name} ${item.employee.username || ''}`.toLowerCase().includes(historySearch.trim().toLowerCase())).map(item => <tr key={item.employee.id} className="border-t border-gray-100"><td className="p-2 font-bold text-gray-800">{item.employee.name}<p className="text-[10px] text-gray-400 font-normal">@{item.employee.username}</p></td><td className="p-2">{departmentLabel(item.employee.department_id)}</td><td className="p-2 text-right font-mono font-black">{item.hadir}</td><td className="p-2 text-right font-mono">{item.pulang}</td><td className="p-2 text-right font-mono text-amber-700">{item.telat}m</td><td className="p-2 text-right font-mono text-emerald-700">{item.penggantiTelat}m</td><td className="p-2 text-right font-mono text-sky-700">{item.lembur}m</td><td className="p-2 text-right font-mono">{item.bantuanAdmin}</td></tr>)}{employeeRecaps.length === 0 && <tr><td colSpan={8} className="p-8 text-center text-gray-400">Belum ada data pada periode ini.</td></tr>}</tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {adminAttendanceTab === 'correction' && (
+            <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4 shadow-xs text-left">
+              <div><h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider">Koreksi & Bantuan Admin</h3><p className="text-[10px] text-gray-400">Daftar absensi yang dibuat lewat bantuan admin, lengkap dengan alasan.</p></div>
+              <div className="space-y-2 max-h-[520px] overflow-y-auto">{assistedPeriodLogs.length === 0 ? <p className="p-10 text-center text-xs text-gray-400 bg-gray-50 border border-dashed rounded-xl">Belum ada absensi dibantu admin pada periode ini.</p> : assistedPeriodLogs.map(log => <div key={log.id} className="rounded-xl border border-amber-100 bg-amber-50/60 p-3 text-xs"><div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"><div><p className="font-black text-gray-900">{log.employee_name}</p><p className="text-gray-500">{log.timestamp.slice(0, 10)} · {log.timestamp.slice(11, 16)} · {log.type_scan}</p></div><span className="rounded-full bg-white border border-amber-200 px-2 py-1 text-[10px] font-black text-amber-800">Dibantu {log.assisted_by_name || '-'}</span></div><p className="mt-2 text-gray-600">Alasan: {log.assistance_reason || '-'}</p></div>)}</div>
+            </div>
+          )}
+
+          {adminAttendanceTab === 'sync' && (
+            <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4 shadow-xs text-left">
+              <div><h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider">Monitoring Sync Absensi</h3><p className="text-[10px] text-gray-400">Memantau data absensi yang sudah tersimpan lokal dan antrean yang belum terkirim cloud.</p></div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="rounded-xl bg-emerald-50 border border-emerald-100 p-3"><p className="text-[10px] font-black uppercase text-emerald-700">Tersimpan Lokal</p><p className="text-xl font-black text-emerald-900">{attendanceLogs.length}</p></div>
+                <div className="rounded-xl bg-amber-50 border border-amber-100 p-3"><p className="text-[10px] font-black uppercase text-amber-700">Menunggu Sync</p><p className="text-xl font-black text-amber-900">{pendingAttendanceSync.length}</p></div>
+                <div className="rounded-xl bg-slate-50 border border-slate-100 p-3"><p className="text-[10px] font-black uppercase text-slate-600">Periode Aktif</p><p className="text-xl font-black text-slate-900">{periodLogs.length}</p></div>
+              </div>
+              <div className="space-y-2">{pendingAttendanceSync.length === 0 ? <p className="p-10 text-center text-xs text-gray-400 bg-gray-50 border border-dashed rounded-xl">Tidak ada antrean absensi pending di perangkat ini.</p> : pendingAttendanceSync.map(log => <div key={log.id} className="rounded-lg border border-amber-100 bg-amber-50 p-3 text-xs"><b>{log.employee_name}</b><span className="ml-2">{log.timestamp?.slice(0, 16)} · {log.type_scan}</span></div>)}</div>
+            </div>
+          )}
+
           {/* Grid Layout: Map Representation vs Raw Logs */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {adminAttendanceTab === 'history' && <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             
             {/* Left Box: Geofence Safe Zone Map Simulation (5 Columns) */}
             <div className="lg:col-span-5 bg-white rounded-2xl border border-gray-100 p-5 space-y-4 shadow-xs text-left no-print">
@@ -1228,7 +1354,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
               {historyTotalPages > 1 && <div className="flex items-center justify-between pt-2 border-t border-gray-100 no-print"><button disabled={historyPage === 1} onClick={() => setHistoryPage(page => Math.max(1, page - 1))} className="p-2 border rounded-lg disabled:opacity-30 cursor-pointer"><ChevronLeft className="w-3.5 h-3.5" /></button><span className="text-[10px] text-gray-500">Halaman {historyPage} dari {historyTotalPages}</span><button disabled={historyPage === historyTotalPages} onClick={() => setHistoryPage(page => Math.min(historyTotalPages, page + 1))} className="p-2 border rounded-lg disabled:opacity-30 cursor-pointer"><ChevronRight className="w-3.5 h-3.5" /></button></div>}
             </div>
 
-          </div>
+          </div>}
 
         </div>
 

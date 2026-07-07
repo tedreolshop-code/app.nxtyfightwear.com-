@@ -30,6 +30,8 @@ const localDateStr = (d: Date) => {
 
 const goTo = (tabId: string) =>
   window.dispatchEvent(new CustomEvent('nxty_change_tab', { detail: tabId }));
+const goToEmployeeSubTab = (subTab: 'data' | 'absensi' | 'kasbon' | 'payroll') =>
+  window.dispatchEvent(new CustomEvent('nxty_change_karyawan_subtab', { detail: subTab }));
 
 // Channel penjualan dengan warna tetap (urutan tidak berubah walau nilainya 0).
 // Palet sudah divalidasi aman untuk buta warna & kontras terhadap latar putih.
@@ -164,10 +166,50 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName }) 
 
   const attendance = dataStore.getAttendance();
   const todayWIB = wibTodayStr();
+  const employees = dataStore.getEmployees().filter(e => e.status_aktif);
   const hadirHariIni = new Set(
     attendance.filter(a => a.timestamp.split('T')[0] === todayWIB && a.type_scan === 'masuk').map(a => a.employee_id)
   ).size;
-  const karyawanAktif = dataStore.getEmployees().filter(e => e.status_aktif).length;
+  const pulangHariIni = new Set(
+    attendance.filter(a => a.timestamp.split('T')[0] === todayWIB && a.type_scan === 'pulang').map(a => a.employee_id)
+  ).size;
+  const terlambatHariIni = attendance.filter(a => a.timestamp.split('T')[0] === todayWIB && (a.late_minutes || 0) > 0).length;
+  const dibantuAdminHariIni = attendance.filter(a => a.timestamp.split('T')[0] === todayWIB && (a.verification_method || 'gps_self') === 'admin_qr').length;
+  const karyawanAktif = employees.length;
+  const belumMasukHariIni = Math.max(0, karyawanAktif - hadirHariIni);
+  const belumPulangHariIni = Math.max(0, hadirHariIni - pulangHariIni);
+  const pendingAttendanceSync = (() => {
+    try {
+      return JSON.parse(localStorage.getItem('nxty_attendance_pending') || '[]').length as number;
+    } catch {
+      return 0;
+    }
+  })();
+
+  const currentWeekRange = (() => {
+    const now = new Date();
+    const day = now.getDay() || 7;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - (day - 1));
+    const saturday = new Date(monday);
+    saturday.setDate(monday.getDate() + 5);
+    return { start: localDateStr(monday), end: localDateStr(saturday) };
+  })();
+  const payrolls = dataStore.getPayrollWeekly();
+  const payrollMingguIni = payrolls.filter(pay => pay.period_start >= currentWeekRange.start && pay.period_end <= currentWeekRange.end);
+  const totalPayrollMingguIni = payrollMingguIni.reduce((sum, pay) => sum + pay.total_pay, 0);
+  const karyawanBelumPayroll = Math.max(0, karyawanAktif - new Set(payrollMingguIni.map(pay => pay.employee_id)).size);
+  const cashAdvances = dataStore.getCashAdvances();
+  const totalKasbonAktif = cashAdvances.reduce((sum, advance) => sum + advance.remaining_balance, 0);
+  const karyawanKasbonAktif = new Set(cashAdvances.filter(advance => advance.remaining_balance > 0).map(advance => advance.employee_id)).size;
+  const cashAdvanceTransactions = dataStore.getCashAdvanceTransactions();
+  const kasbonBaruMingguIni = cashAdvanceTransactions
+    .filter(transaction => (transaction.type === 'create' || transaction.type === 'topup') && transaction.date >= currentWeekRange.start && transaction.date <= currentWeekRange.end)
+    .reduce((sum, transaction) => sum + transaction.amount, 0);
+  const potonganKasbonMingguIni = cashAdvanceTransactions
+    .filter(transaction => transaction.type === 'deduction' && transaction.date >= currentWeekRange.start && transaction.date <= currentWeekRange.end)
+    .reduce((sum, transaction) => sum + transaction.amount, 0);
+  const absensiPerluCek = belumMasukHariIni + belumPulangHariIni + terlambatHariIni + dibantuAdminHariIni + pendingAttendanceSync;
 
   // === Kartu ringkasan per peran ===
   interface StatCard {
@@ -216,6 +258,16 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName }) 
   if (orderBaru.length > 0) perluPerhatian.push({ text: `${orderBaru.length} pesanan menunggu dikirim ke produksi`, tab: 'penjualan', serius: false });
   if (jobTerlambat.length > 0) perluPerhatian.push({ text: `${jobTerlambat.length} pekerjaan produksi lewat tenggat 7 hari`, tab: 'produksi', serius: true });
   bahanKritis.slice(0, 3).forEach(m => perluPerhatian.push({ text: `Stok ${m.name} tinggal ${m.current_stock} ${m.unit} (minimum ${m.stock_minimum})`, tab: 'gudang', serius: true }));
+  if (karyawanBelumPayroll > 0) perluPerhatian.push({ text: `${karyawanBelumPayroll} karyawan belum punya slip gaji minggu ini`, tab: 'karyawan:payroll', serius: false });
+  if (absensiPerluCek > 0) perluPerhatian.push({ text: `${absensiPerluCek} catatan absensi perlu dicek hari ini`, tab: 'karyawan:absensi', serius: false });
+  if (totalKasbonAktif >= 1_000_000 || kasbonBaruMingguIni > 0) perluPerhatian.push({ text: `Kasbon aktif ${formatIDR(totalKasbonAktif)} dari ${karyawanKasbonAktif} karyawan`, tab: 'karyawan:kasbon', serius: totalKasbonAktif >= 1_000_000 });
+
+  const goToAttentionTarget = (target: string) => {
+    if (target === 'karyawan:payroll') return goToEmployeeSubTab('payroll');
+    if (target === 'karyawan:absensi') return goToEmployeeSubTab('absensi');
+    if (target === 'karyawan:kasbon') return goToEmployeeSubTab('kasbon');
+    goTo(target);
+  };
 
   return (
     <div className="space-y-5">
@@ -274,6 +326,35 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName }) 
           )}
         </div>
       </div>
+
+      {role === 'owner' && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <button onClick={() => goToEmployeeSubTab('payroll')} className="bg-white rounded-xl border border-gray-200 p-4 text-left hover:shadow-md transition-shadow cursor-pointer">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-black uppercase tracking-wide text-gray-400">Payroll Minggu Ini</span>
+              <ChevronRight className="w-4 h-4 text-gray-300" />
+            </div>
+            <p className="mt-1 text-lg font-black text-gray-900">{formatIDR(totalPayrollMingguIni)}</p>
+            <p className={`text-xs ${karyawanBelumPayroll > 0 ? 'text-amber-700 font-semibold' : 'text-gray-400'}`}>{payrollMingguIni.length} slip dibuat · {karyawanBelumPayroll} belum dibuat</p>
+          </button>
+          <button onClick={() => goToEmployeeSubTab('kasbon')} className="bg-white rounded-xl border border-gray-200 p-4 text-left hover:shadow-md transition-shadow cursor-pointer">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-black uppercase tracking-wide text-gray-400">Kasbon Aktif</span>
+              <ChevronRight className="w-4 h-4 text-gray-300" />
+            </div>
+            <p className="mt-1 text-lg font-black text-rose-700">{formatIDR(totalKasbonAktif)}</p>
+            <p className="text-xs text-gray-400">{karyawanKasbonAktif} karyawan · baru {formatIDR(kasbonBaruMingguIni)} · potong {formatIDR(potonganKasbonMingguIni)}</p>
+          </button>
+          <button onClick={() => goToEmployeeSubTab('absensi')} className="bg-white rounded-xl border border-gray-200 p-4 text-left hover:shadow-md transition-shadow cursor-pointer">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-black uppercase tracking-wide text-gray-400">Absensi Perlu Cek</span>
+              <ChevronRight className="w-4 h-4 text-gray-300" />
+            </div>
+            <p className={`mt-1 text-lg font-black ${absensiPerluCek > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>{absensiPerluCek}</p>
+            <p className="text-xs text-gray-400">Belum masuk {belumMasukHariIni} · belum pulang {belumPulangHariIni} · telat {terlambatHariIni} · sync {pendingAttendanceSync}</p>
+          </button>
+        </div>
+      )}
 
       {role === 'owner' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -508,7 +589,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName }) 
             {perluPerhatian.map((item, idx) => (
               <button
                 key={idx}
-                onClick={() => goTo(item.tab)}
+                onClick={() => goToAttentionTarget(item.tab)}
                 className="w-full px-5 py-3 flex items-center gap-3 text-left hover:bg-gray-50 cursor-pointer"
               >
                 <span className={`w-2 h-2 rounded-full shrink-0 ${item.serius ? 'bg-rose-500' : 'bg-amber-400'}`} />

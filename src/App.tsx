@@ -324,9 +324,20 @@ export default function App() {
       const detail = (e as CustomEvent<string>).detail;
       if (detail && permittedMenus.some(m => m.id === detail)) setActiveTab(detail);
     };
+    const handleKaryawanSubTabChange = (e: Event) => {
+      const detail = (e as CustomEvent<typeof karyawanSubTab>).detail;
+      if (detail && ['data', 'absensi', 'kasbon', 'payroll'].includes(detail)) {
+        setKaryawanSubTab(detail);
+        if (permittedMenus.some(m => m.id === 'karyawan')) setActiveTab('karyawan');
+      }
+    };
     window.addEventListener('nxty_change_tab', handleTabChange);
-    return () => window.removeEventListener('nxty_change_tab', handleTabChange);
-  }, [permittedMenus]);
+    window.addEventListener('nxty_change_karyawan_subtab', handleKaryawanSubTabChange);
+    return () => {
+      window.removeEventListener('nxty_change_tab', handleTabChange);
+      window.removeEventListener('nxty_change_karyawan_subtab', handleKaryawanSubTabChange);
+    };
+  }, [permittedMenus, karyawanSubTab]);
 
   // Ekspor CSV (dipakai halaman Laporan)
   const handleExportCSV = (type: 'attendance' | 'invoices' | 'payroll' | 'expenses') => {
