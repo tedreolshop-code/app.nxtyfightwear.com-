@@ -1014,6 +1014,18 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     if (filterEndDate && pay.period_end > filterEndDate) return false;
     return true;
   });
+  const selectedPendingAdjustmentLogs = selectedEmpId
+    ? attendance
+        .filter(log => {
+          if (log.employee_id !== selectedEmpId || log.type_scan !== 'pulang') return false;
+          const date = log.timestamp.slice(0, 10);
+          return date >= periodStart && date <= periodEnd && ((log.overtime_minutes || 0) > 0 || (log.late_compensation_minutes || 0) > 0);
+        })
+        .filter(log => !adjustments.some(item => item.attendance_id === log.id))
+        .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+    : [];
+  const selectedPendingOvertimeMinutes = selectedPendingAdjustmentLogs.reduce((sum, log) => sum + (log.overtime_minutes || 0), 0);
+  const selectedPendingLateCompensationMinutes = selectedPendingAdjustmentLogs.reduce((sum, log) => sum + (log.late_compensation_minutes || 0), 0);
 
   return (
     <div className="space-y-8">
@@ -1541,6 +1553,37 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                     required
                   />
                 </div>
+
+                {selectedEmpId && selectedPendingAdjustmentLogs.length > 0 && (
+                  <div className="md:col-span-2 rounded-xl border border-amber-200 bg-amber-50/80 p-3 space-y-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                      <div>
+                        <p className="font-black text-amber-900 uppercase tracking-wide text-[11px]">Ada lembur/pengganti telat belum ACC</p>
+                        <p className="text-[11px] text-amber-800">
+                          Pending: pengganti telat {selectedPendingLateCompensationMinutes} menit, lembur {selectedPendingOvertimeMinutes} menit. Setelah ACC, field Jam Lembur ACC otomatis terisi.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                      {selectedPendingAdjustmentLogs.map(log => (
+                        <div key={log.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-white/80 border border-amber-100 rounded-lg px-3 py-2">
+                          <span className="text-[11px] text-gray-700">
+                            {log.timestamp.slice(0, 10)} pulang {log.timestamp.slice(11, 16)} · pengganti {log.late_compensation_minutes || 0} menit · lembur {log.overtime_minutes || 0} menit
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {(log.late_compensation_minutes || 0) > 0 && (
+                              <button type="button" onClick={() => approveAdjustment(log, 'late_compensation')} className="px-2.5 py-1 rounded bg-emerald-700 text-white font-bold text-[10px] cursor-pointer">Setujui Pengganti</button>
+                            )}
+                            {(log.overtime_minutes || 0) > 0 && (
+                              <button type="button" onClick={() => approveAdjustment(log, 'overtime')} className="px-2.5 py-1 rounded bg-[#1F4B36] text-white font-bold text-[10px] cursor-pointer">ACC Lembur</button>
+                            )}
+                            <button type="button" onClick={() => approveAdjustment(log, 'ignored')} className="px-2.5 py-1 rounded bg-white border border-gray-200 text-gray-600 font-bold text-[10px] cursor-pointer">Abaikan</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <label className="block font-bold text-emerald-800 uppercase tracking-wider mb-1">Hari Kerja Otomatis</label>
