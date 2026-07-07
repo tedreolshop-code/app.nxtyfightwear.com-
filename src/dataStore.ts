@@ -26,6 +26,8 @@ import {
   UserRole
   ,WorkSettings
   ,ProductionHandoff
+  ,RejectedGood
+  ,ProductionTaskLog
 } from './types';
 import { pushKeyToCloud, pushAttendanceToCloud, clearAttendanceInCloud } from './cloudSync';
 
@@ -99,6 +101,8 @@ const INITIAL_ORDERS: Order[] = [];
 
 const INITIAL_PRODUCTION_JOBS: ProductionJob[] = [];
 const INITIAL_PRODUCTION_HANDOFFS: ProductionHandoff[] = [];
+const INITIAL_REJECTED_GOODS: RejectedGood[] = [];
+const INITIAL_PRODUCTION_TASK_LOGS: ProductionTaskLog[] = [];
 
 const INITIAL_ASSETS: Asset[] = [
   {
@@ -482,10 +486,154 @@ class DataStore {
   getProductionHandoffs = (): ProductionHandoff[] => this.get('production_handoffs', INITIAL_PRODUCTION_HANDOFFS);
   setProductionHandoffs = (data: ProductionHandoff[]) => this.set('production_handoffs', data);
 
+  getRejectedGoods = (): RejectedGood[] => this.get('rejected_goods', INITIAL_REJECTED_GOODS);
+  setRejectedGoods = (data: RejectedGood[]) => this.set('rejected_goods', data);
+
+  getProductionTaskLogs = (): ProductionTaskLog[] => this.get('production_task_logs', INITIAL_PRODUCTION_TASK_LOGS);
+  setProductionTaskLogs = (data: ProductionTaskLog[]) => this.set('production_task_logs', data);
+
   getAssets = (): Asset[] => this.get('assets', INITIAL_ASSETS);
   setAssets = (data: Asset[]) => this.set('assets', data);
 
   // Business Transactions
+  createManualProductionJob = (job: ProductionJob): { ok: boolean; shortages: string[] } => {
+    const materialsUsed = job.materials_planned || [];
+    const materials = this.getRawMaterials();
+    const shortages: string[] = [];
+
+    for (const item of materialsUsed) {
+      const mat = materials.find(m => m.id === item.material_id);
+      if (!mat || mat.current_stock < item.qty) {
+        shortages.push(`${item.material_name || mat?.name || item.material_id}: butuh ${item.qty}${item.unit ? ` ${item.unit}` : ''}, tersedia ${mat ? mat.current_stock : 0}`);
+      }
+    }
+    if (shortages.length > 0) return { ok: false, shortages };
+
+    const movements = this.getStockMovements();
+    const notifications = this.getNotifications();
+    let notifChanged = false;
+
+    const updatedMaterials = materials.map(mat => {
+      const used = materialsUsed.find(item => item.material_id === mat.id);
+      if (!used) return mat;
+      const newStock = mat.current_stock - used.qty;
+      movements.unshift({
+        id: uuid(),
+        type: 'bahan_keluar',
+        item_id: mat.id,
+        item_name: mat.name,
+        amount: used.qty,
+        reference: `Order Produksi ${job.order_number || job.id}`,
+        created_at: wibNowISO()
+      });
+      if (newStock <= mat.stock_minimum) {
+        notifications.unshift({
+          id: uuid(),
+          type: 'low_stock',
+          message: `Stok kritis: ${mat.name} tersisa ${newStock} ${mat.unit} (Batas minimum: ${mat.stock_minimum} ${mat.unit})`,
+          target_role: 'admin_gudang',
+          is_read: false,
+          created_at: wibNowISO()
+        });
+        notifChanged = true;
+      }
+      return { ...mat, current_stock: newStock };
+    });
+
+    this.setRawMaterials(updatedMaterials);
+    this.setStockMovements(movements);
+    if (notifChanged) this.setNotifications(notifications);
+    this.setProductionJobs([job, ...this.getProductionJobs()]);
+    this.logAudit('create', 'production_job', `Membuat order produksi manual ${job.order_number || job.id} untuk ${job.product_name}`, job.id);
+    return { ok: true, shortages: [] };
+  };
+
+  postProductionTaskLog = (log: ProductionTaskLog): void => {
+    this.setProductionTaskLogs([log, ...this.getProductionTaskLogs()]);
+    this.logAudit('create', 'production_task_log', `${log.employee_name} mencatat kerja ${log.task_name} (${log.qty_done} selesai, ${log.qty_rejected} reject)`, log.id);
+  };
+
+  deleteProductionTaskLog = (logId: string): boolean => {
+    const logs = this.getProductionTaskLogs();
+    const target = logs.find(log => log.id === logId);
+    if (!target) return false;
+    this.setProductionTaskLogs(logs.filter(log => log.id !== logId));
+    this.logAudit('delete', 'production_task_log', `Menghapus catatan kerja ${target.task_name} milik ${target.employee_name}`, logId);
+    return true;
+  };
+
+  finalizeProductionOutput = (
+    jobId: string,
+    outputs: Array<{ product_id: string; product_name: string; variant: string; good_qty: number; reject_qty: number; reject_reason?: string }>
+  ): { ok: boolean; message?: string } => {
+    const jobs = this.getProductionJobs();
+    const job = jobs.find(item => item.id === jobId);
+    if (!job) return { ok: false, message: 'Order produksi tidak ditemukan.' };
+
+    const products = this.getProducts();
+    const movements = this.getStockMovements();
+    const rejectedGoods = this.getRejectedGoods();
+    const actor = this.currentActor();
+
+    const updatedProducts = products.map(product => {
+      const output = outputs.find(item => item.product_id === product.id);
+      if (!output || output.good_qty <= 0) return product;
+      movements.unshift({
+        id: uuid(),
+        type: 'barang_jadi_masuk',
+        item_id: product.id,
+        item_name: product.name,
+        amount: output.good_qty,
+        reference: `Hasil Produksi ${job.order_number || job.id}`,
+        created_at: wibNowISO()
+      });
+      return { ...product, stock: product.stock + output.good_qty };
+    });
+
+    for (const output of outputs) {
+      if (output.reject_qty <= 0) continue;
+      rejectedGoods.unshift({
+        id: uuid(),
+        production_job_id: job.id,
+        product_id: output.product_id,
+        product_name: output.product_name,
+        variant: output.variant,
+        qty: output.reject_qty,
+        reason: output.reject_reason || 'Reject produksi',
+        status: 'disimpan',
+        created_at: wibNowISO(),
+        created_by_id: actor.id,
+        created_by_name: actor.name
+      });
+    }
+
+    const updatedJobs = jobs.map(item => {
+      if (item.id !== job.id) return item;
+      const savedOutputs = outputs.map(output => ({
+        product_id: output.product_id,
+        product_name: output.product_name,
+        variant: output.variant,
+        target_qty: item.outputs?.find(saved => saved.product_id === output.product_id)?.target_qty || item.qty,
+        good_qty: output.good_qty,
+        reject_qty: output.reject_qty
+      }));
+      return {
+        ...item,
+        outputs: savedOutputs,
+        status: 'completed' as const,
+        stages: item.stages.map(stage => ({ ...stage, status: 'completed' as const, updated_at: wibNowISO(), updated_by: actor.name })),
+        current_stage: item.stages[item.stages.length - 1]?.stage || item.current_stage
+      };
+    });
+
+    this.setProducts(updatedProducts);
+    this.setStockMovements(movements);
+    this.setRejectedGoods(rejectedGoods);
+    this.setProductionJobs(updatedJobs);
+    this.logAudit('update', 'production_job', `Finalisasi hasil produksi ${job.order_number || job.id}`, job.id);
+    return { ok: true };
+  };
+
   recordProduction = (
     deptId: string, 
     productId: string, 
@@ -592,6 +740,8 @@ class DataStore {
     this.setOrders([]);
     this.setProductionJobs([]);
     this.setProductionHandoffs([]);
+    this.setRejectedGoods([]);
+    this.setProductionTaskLogs([]);
     this.setProductionLogs([]);
     this.setMarketplaceSales([]);
     this.setMarketplaceItemSales([]);

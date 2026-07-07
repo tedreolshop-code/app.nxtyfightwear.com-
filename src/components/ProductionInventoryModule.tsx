@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Product, RawMaterial, StockMovement, ProductionLog, ProductionJob, Employee } from '../types';
+import { Product, RawMaterial, StockMovement, ProductionLog, ProductionJob, Employee, RejectedGood, ProductionTaskLog } from '../types';
 import { ProductionHandoffPanel } from './ProductionHandoffPanel';
-import { dataStore, RECIPES } from '../dataStore';
+import { dataStore, RECIPES, wibNowISO, wibTodayStr } from '../dataStore';
 import { 
   Box, 
   Hammer, 
@@ -37,9 +37,13 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [productionLogs, setProductionLogs] = useState<ProductionLog[]>([]);
   const [productionJobs, setProductionJobs] = useState<ProductionJob[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [rejectedGoods, setRejectedGoods] = useState<RejectedGood[]>([]);
+  const [taskLogs, setTaskLogs] = useState<ProductionTaskLog[]>([]);
   
-  // Navigation: 'tracker' (Kanban Board) or 'stock' (Convert & Materials)
-  const [subTab, setSubTab] = useState<'tracker' | 'stock'>('tracker');
+  // Navigation dibuat mengikuti urutan kerja admin produksi.
+  const [subTab, setSubTab] = useState<'order' | 'tracker' | 'finalize' | 'history'>('order');
+  const [manualStep, setManualStep] = useState<1 | 2 | 3>(1);
 
   // Interactive Helper States
   const [searchQuery, setSearchQuery] = useState('');
@@ -54,6 +58,20 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
   const [selectedProductId, setSelectedProductId] = useState('');
   const [productionQty, setProductionQty] = useState(1);
   const [customMaterials, setCustomMaterials] = useState<Array<{ material_id: string; qty: number }>>([]);
+  const [manualOutputs, setManualOutputs] = useState<Array<{ product_id: string; target_qty: number }>>([{ product_id: '', target_qty: 1 }]);
+  const [manualMaterials, setManualMaterials] = useState<Array<{ material_id: string; qty: number }>>([{ material_id: '', qty: 1 }]);
+  const [manualStages, setManualStages] = useState('Potong\nJahit\nCek Kualitas\nPacking');
+  const [manualEmployeeIds, setManualEmployeeIds] = useState<string[]>([]);
+  const [manualNotes, setManualNotes] = useState('');
+  const [finalJobId, setFinalJobId] = useState('');
+  const [finalOutputs, setFinalOutputs] = useState<Array<{ product_id: string; good_qty: number; reject_qty: number; reject_reason: string }>>([]);
+  const [taskJobId, setTaskJobId] = useState('');
+  const [openedEmployeeJobId, setOpenedEmployeeJobId] = useState('');
+  const [taskStage, setTaskStage] = useState('');
+  const [taskName, setTaskName] = useState('');
+  const [taskQtyDone, setTaskQtyDone] = useState(0);
+  const [taskQtyRejected, setTaskQtyRejected] = useState(0);
+  const [taskNotes, setTaskNotes] = useState('');
 
   // Stock Adjustment states
   const [showAdjust, setShowAdjust] = useState(false);
@@ -80,6 +98,9 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
     setMovements(dataStore.getStockMovements());
     setProductionLogs(dataStore.getProductionLogs());
     setProductionJobs(dataStore.getProductionJobs());
+    setEmployees(dataStore.getEmployees().filter(employee => employee.status_aktif));
+    setRejectedGoods(dataStore.getRejectedGoods());
+    setTaskLogs(dataStore.getProductionTaskLogs());
   };
 
   // Data lokal instan — tanpa jeda loading buatan
@@ -197,6 +218,163 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
     } else {
       alert('Gagal mencatat produksi! Silakan periksa kembali kecukupan stok bahan baku di gudang.');
     }
+  };
+
+  const handleCreateManualProductionJob = (e: React.FormEvent) => {
+    e.preventDefault();
+    const outputs = manualOutputs
+      .map(output => {
+        const product = products.find(item => item.id === output.product_id);
+        return product ? { product, target_qty: Math.max(1, Number(output.target_qty) || 1) } : null;
+      })
+      .filter(Boolean) as Array<{ product: Product; target_qty: number }>;
+
+    if (outputs.length === 0) return alert('Pilih minimal satu output produk.');
+
+    const first = outputs[0];
+    const stages = manualStages.split('\n').map(stage => stage.trim()).filter(Boolean);
+    if (stages.length === 0) return alert('Isi minimal satu tahapan produksi.');
+
+    const materialsPlanned = manualMaterials
+      .map(item => {
+        const material = rawMaterials.find(mat => mat.id === item.material_id);
+        return material ? {
+          material_id: material.id,
+          material_name: material.name,
+          qty: Math.max(0, Number(item.qty) || 0),
+          unit: material.unit
+        } : null;
+      })
+      .filter((item): item is { material_id: string; material_name: string; qty: number; unit: string } => Boolean(item && item.qty > 0));
+    if (materialsPlanned.length === 0) return alert('Pilih minimal satu bahan baku yang dipakai.');
+
+    const assignedEmployees = manualEmployeeIds
+      .map(id => employees.find(employee => employee.id === id))
+      .filter(Boolean)
+      .map(employee => ({ employee_id: employee!.id, employee_name: employee!.name }));
+
+    const orderNumber = `PROD/${new Date().getFullYear()}/${String(productionJobs.length + 1).padStart(4, '0')}`;
+    const job: ProductionJob = {
+      id: `job-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      order_number: orderNumber,
+      product_id: first.product.id,
+      product_name: outputs.length > 1 ? `${first.product.name} +${outputs.length - 1} output` : first.product.name,
+      variant: first.product.variant,
+      qty: first.target_qty,
+      department_id: (first.product.department_id === 'dept-konveksi' ? 'dept-konveksi' : 'dept-eva-foam'),
+      stages: stages.map((stage, index) => ({ stage, status: index === 0 ? 'ongoing' : 'pending' })),
+      current_stage: stages[0],
+      status: 'ongoing',
+      notes: manualNotes.trim() || undefined,
+      created_at: wibNowISO(),
+      materials_planned: materialsPlanned,
+      outputs: outputs.map(output => ({
+        product_id: output.product.id,
+        product_name: output.product.name,
+        variant: output.product.variant,
+        target_qty: output.target_qty,
+        good_qty: 0,
+        reject_qty: 0
+      })),
+      assigned_employees: assignedEmployees
+    };
+
+    const result = dataStore.createManualProductionJob(job);
+    if (!result.ok) {
+      return alert(`Order produksi tidak bisa dibuat karena bahan kurang:\n- ${result.shortages.join('\n- ')}`);
+    }
+
+    setManualOutputs([{ product_id: '', target_qty: 1 }]);
+    setManualMaterials([{ material_id: '', qty: 1 }]);
+    setManualStages('Potong\nJahit\nCek Kualitas\nPacking');
+    setManualEmployeeIds([]);
+    setManualNotes('');
+    setManualStep(1);
+    loadData();
+    setSubTab('tracker');
+    alert(`Order produksi ${orderNumber} berhasil dibuat. Bahan baku yang dipilih sudah dipotong dari persediaan.`);
+  };
+
+  const syncFinalOutputsForJob = (jobId: string) => {
+    setFinalJobId(jobId);
+    const job = productionJobs.find(item => item.id === jobId);
+    if (!job) return setFinalOutputs([]);
+    const outputs = (job.outputs && job.outputs.length > 0)
+      ? job.outputs
+      : [{ product_id: job.product_id, product_name: job.product_name, variant: job.variant, target_qty: job.qty, good_qty: 0, reject_qty: 0 }];
+    setFinalOutputs(outputs.map(output => ({
+      product_id: output.product_id,
+      good_qty: output.good_qty || output.target_qty || 0,
+      reject_qty: output.reject_qty || 0,
+      reject_reason: ''
+    })));
+  };
+
+  const handleFinalizeManualProduction = (e: React.FormEvent) => {
+    e.preventDefault();
+    const job = productionJobs.find(item => item.id === finalJobId);
+    if (!job) return alert('Pilih order produksi yang akan difinalisasi.');
+    const outputs = finalOutputs.map(output => {
+      const product = products.find(item => item.id === output.product_id);
+      return product ? {
+        product_id: product.id,
+        product_name: product.name,
+        variant: product.variant,
+        good_qty: Math.max(0, Number(output.good_qty) || 0),
+        reject_qty: Math.max(0, Number(output.reject_qty) || 0),
+        reject_reason: output.reject_reason.trim()
+      } : null;
+    }).filter(Boolean) as Array<{ product_id: string; product_name: string; variant: string; good_qty: number; reject_qty: number; reject_reason?: string }>;
+
+    if (outputs.every(output => output.good_qty <= 0 && output.reject_qty <= 0)) {
+      return alert('Isi minimal barang bagus atau reject.');
+    }
+
+    const result = dataStore.finalizeProductionOutput(job.id, outputs);
+    if (!result.ok) return alert(result.message || 'Gagal finalisasi produksi.');
+    setFinalJobId('');
+    setFinalOutputs([]);
+    loadData();
+    alert('Hasil produksi berhasil difinalisasi. Barang bagus masuk stok produk jadi dan reject dicatat sebagai barang reject.');
+  };
+
+  const handleSubmitEmployeeTaskLog = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentEmployee) return alert('Identitas karyawan tidak tersedia.');
+    const job = productionJobs.find(item => item.id === taskJobId);
+    if (!job) return alert('Pilih order produksi terlebih dahulu.');
+    const qtyDone = Math.max(0, Number(taskQtyDone) || 0);
+    const qtyRejected = Math.max(0, Number(taskQtyRejected) || 0);
+    if (qtyDone <= 0 && qtyRejected <= 0) {
+      return alert('Isi minimal Qty Selesai atau Qty Reject lebih dari 0.');
+    }
+    const label = `${job.order_number || job.id} - ${job.product_name}`;
+    dataStore.postProductionTaskLog({
+      id: `ptask-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      production_job_id: job.id,
+      production_label: label,
+      employee_id: currentEmployee.id,
+      employee_name: currentEmployee.name,
+      date: wibTodayStr(),
+      stage_name: taskStage || job.current_stage,
+      task_name: taskName.trim() || taskStage || job.current_stage,
+      qty_done: qtyDone,
+      qty_rejected: qtyRejected,
+      notes: taskNotes.trim() || undefined,
+      created_at: wibNowISO()
+    });
+    setTaskName('');
+    setTaskQtyDone(0);
+    setTaskQtyRejected(0);
+    setTaskNotes('');
+    loadData();
+    alert('Hasil kerja berhasil dicatat.');
+  };
+
+  const handleDeleteEmployeeTaskLog = (logId: string) => {
+    if (!window.confirm('Hapus catatan kerjaan ini?')) return;
+    if (!dataStore.deleteProductionTaskLog(logId)) return alert('Catatan kerja tidak ditemukan.');
+    loadData();
   };
 
   const handleManualAdjustment = (e: React.FormEvent) => {
@@ -477,6 +655,11 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
 
   const isEmployee = userRole === 'karyawan';
   const isRestrictedProduction = isEmployee || userRole === 'admin_marketplace' || userRole === 'admin_keuangan_hr';
+
+  useEffect(() => {
+    if (isEmployee && subTab !== 'tracker') setSubTab('tracker');
+  }, [isEmployee, subTab]);
+
   const scopedProductionJobs = isEmployee && currentEmployee
     ? productionJobs.filter(job => job.department_id === currentEmployee.department_id)
     : productionJobs;
@@ -524,19 +707,44 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
   };
 
   const counts = getFilterCounts();
+  const manualSelectedOutputs = manualOutputs
+    .map(output => {
+      const product = products.find(item => item.id === output.product_id);
+      return product ? { product, target_qty: Math.max(1, Number(output.target_qty) || 1) } : null;
+    })
+    .filter(Boolean) as Array<{ product: Product; target_qty: number }>;
+  const manualSelectedMaterials = manualMaterials
+    .map(item => {
+      const material = rawMaterials.find(mat => mat.id === item.material_id);
+      return material ? { material, qty: Math.max(0, Number(item.qty) || 0) } : null;
+    })
+    .filter((item): item is { material: RawMaterial; qty: number } => Boolean(item && item.qty > 0));
+  const manualBasicValid = manualSelectedOutputs.length > 0;
+  const manualMaterialsValid = manualSelectedMaterials.length > 0;
+  const manualStagesValid = manualStages.split('\n').some(stage => stage.trim());
 
   return (
     <div className="space-y-6">
       <div className="no-print flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-100 pb-4">
         <div>
-          <h1 className="text-xl font-bold text-[#1F4B36] font-sans">Manajemen Alur Kerja Produksi</h1>
-          <p className="text-xs text-gray-400">Pencatatan real-time alur pengerjaan pesanan tiap divisi (Eva Foam &amp; Konveksi) serta audit log bahan baku.</p>
+          <h1 className="text-xl font-bold text-[#1F4B36] font-sans">{isEmployee ? 'Daftar Kerjaan' : 'Manajemen Alur Kerja Produksi'}</h1>
+          <p className="text-xs text-gray-400">{isEmployee ? 'Daftar tugas aktif dan input hasil kerja harian.' : 'Pencatatan real-time alur pengerjaan pesanan tiap divisi (Eva Foam & Konveksi) serta audit log bahan baku.'}</p>
         </div>
       </div>
 
       {/* Sub-Tabs navigation */}
       <div className="no-print flex border-b border-gray-200 gap-2">
         {!isEmployee && <button
+          onClick={() => { setSubTab('order'); triggerLoading(); }}
+          className={`px-5 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
+            subTab === 'order'
+              ? 'border-[#1F4B36] text-[#1F4B36]'
+              : 'border-transparent text-gray-400 hover:text-gray-600'
+          }`}
+        >
+          <Plus className="w-4 h-4" /> Order Produksi
+        </button>}
+        <button
           onClick={() => { setSubTab('tracker'); triggerLoading(); }}
           className={`px-5 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
             subTab === 'tracker'
@@ -544,27 +752,170 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
               : 'border-transparent text-gray-400 hover:text-gray-600'
           }`}
         >
-          <Clipboard className="w-4 h-4" /> Papan Alur Produksi
-        </button>}
-        <button
-          onClick={() => { setSubTab('stock'); triggerLoading(); }}
+          <Clipboard className="w-4 h-4" /> {isEmployee ? 'Daftar Kerjaan' : 'Progress'}
+        </button>
+        {!isEmployee && <button
+          onClick={() => { setSubTab('finalize'); triggerLoading(); }}
           className={`px-5 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
-            subTab === 'stock'
+            subTab === 'finalize'
               ? 'border-[#1F4B36] text-[#1F4B36]'
               : 'border-transparent text-gray-400 hover:text-gray-600'
           }`}
         >
-          <Box className="w-4 h-4" /> Input Hasil Produksi &amp; Stok Bahan
-        </button>
+          <CheckCircle2 className="w-4 h-4" /> Finalisasi
+        </button>}
+        {!isEmployee && <button
+          onClick={() => { setSubTab('history'); triggerLoading(); }}
+          className={`px-5 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
+            subTab === 'history'
+              ? 'border-[#1F4B36] text-[#1F4B36]'
+              : 'border-transparent text-gray-400 hover:text-gray-600'
+          }`}
+        >
+          <History className="w-4 h-4" /> Riwayat &amp; Stok
+        </button>}
       </div>
 
       {/* TRACKER VIEW */}
       {subTab === 'tracker' && (
         <div className="space-y-6 animate-fadeIn">
-          <ProductionHandoffPanel jobs={scopedProductionJobs} currentEmployee={currentEmployee} isAdmin={!isEmployee} />
+          {!isEmployee && <ProductionHandoffPanel jobs={scopedProductionJobs} currentEmployee={currentEmployee} isAdmin={!isEmployee} />}
+
+          {isEmployee && (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              {(() => {
+                const myJobs = scopedProductionJobs.filter(job =>
+                  job.status !== 'completed' &&
+                  (
+                    job.assigned_employees?.some(item => item.employee_id === currentEmployee?.id) ||
+                    (!job.assigned_employees?.length && job.department_id === currentEmployee?.department_id)
+                  )
+                );
+                const selectedTaskJob = myJobs.find(job => job.id === openedEmployeeJobId);
+                const myLogs = taskLogs.filter(log => log.employee_id === currentEmployee?.id);
+                const selectedLogs = selectedTaskJob ? myLogs.filter(log => log.production_job_id === selectedTaskJob.id) : myLogs;
+                return (
+                  <>
+                    <div className={`${selectedTaskJob ? 'lg:col-span-5' : 'lg:col-span-12'} bg-white rounded-xl border border-gray-200 p-4 space-y-4`}>
+                      <div>
+                        <h3 className="font-black text-sm text-gray-800">Daftar Kerjaan Saya</h3>
+                        <p className="text-xs text-gray-400">Buka salah satu kerjaan untuk input hasil atau reject.</p>
+                      </div>
+                      <div className="space-y-2">
+                        {myJobs.length === 0 ? (
+                          <p className="text-xs text-gray-400 text-center py-10 bg-gray-50 rounded-lg border border-dashed border-gray-200">Belum ada tugas produksi aktif.</p>
+                        ) : myJobs.map(job => {
+                          const hasInputToday = myLogs.some(log => log.production_job_id === job.id && log.date === wibTodayStr());
+                          return (
+                            <button
+                              key={job.id}
+                              type="button"
+                              onClick={() => {
+                                setOpenedEmployeeJobId(job.id);
+                                setTaskJobId(job.id);
+                                setTaskStage(job.current_stage);
+                                setTaskName(job.current_stage);
+                                setTaskQtyDone(0);
+                                setTaskQtyRejected(0);
+                                setTaskNotes('');
+                              }}
+                              className={`w-full text-left p-3 rounded-lg border cursor-pointer transition-colors ${openedEmployeeJobId === job.id ? 'bg-emerald-50 border-emerald-200' : 'bg-gray-50 border-gray-100 hover:bg-emerald-50/50'}`}
+                            >
+                              <div className="flex justify-between gap-3">
+                                <div>
+                                  <p className="font-black text-gray-800 text-xs">{job.product_name}</p>
+                                  <p className="text-[10px] text-gray-500 mt-0.5">{job.order_number || job.id}</p>
+                                  {job.notes && <p className="text-[10px] text-gray-500 mt-1 line-clamp-2">{job.notes}</p>}
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <p className="font-mono text-xs font-black text-[#1F4B36]">{job.qty} pcs</p>
+                                  <p className="text-[10px] font-bold text-amber-700">{job.current_stage}</p>
+                                  <span className={`mt-1 inline-block rounded px-1.5 py-0.5 text-[9px] font-bold ${hasInputToday ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-500'}`}>{hasInputToday ? 'Sudah input' : 'Belum input'}</span>
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {selectedTaskJob && <div className="lg:col-span-7 bg-white rounded-xl border border-gray-200 p-4 space-y-4">
+                      <div>
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <h3 className="font-black text-sm text-gray-800">{selectedTaskJob.product_name}</h3>
+                            <p className="text-xs text-gray-400">{selectedTaskJob.order_number || selectedTaskJob.id} · target {selectedTaskJob.qty} pcs</p>
+                          </div>
+                          <button type="button" onClick={() => { setOpenedEmployeeJobId(''); setTaskJobId(''); }} className="text-xs font-bold text-gray-500 bg-gray-100 rounded-lg px-3 py-1.5 cursor-pointer">Tutup</button>
+                        </div>
+                      </div>
+
+                      <form onSubmit={handleSubmitEmployeeTaskLog} className="space-y-3 border border-gray-100 rounded-xl p-3 bg-gray-50/60">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Tahap</label>
+                            <select value={taskStage} onChange={event => setTaskStage(event.target.value)} className="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-xs">
+                              {(selectedTaskJob.stages || []).map(stage => <option key={stage.stage} value={stage.stage}>{stage.stage}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Kerjaan</label>
+                            <input value={taskName} onChange={event => setTaskName(event.target.value)} placeholder="Contoh: jahit" className="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-xs" />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Qty Selesai</label>
+                            <input type="number" min={0} value={taskQtyDone} onChange={event => setTaskQtyDone(Number(event.target.value))} className="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-xs font-mono font-bold" />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Qty Reject</label>
+                            <input type="number" min={0} value={taskQtyRejected} onChange={event => setTaskQtyRejected(Number(event.target.value))} className="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-xs font-mono font-bold" />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Catatan</label>
+                          <textarea value={taskNotes} onChange={event => setTaskNotes(event.target.value)} rows={3} placeholder="Kendala, alasan reject, atau detail pekerjaan" className="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-xs" />
+                        </div>
+                        <button type="submit" className="w-full py-2.5 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 bg-[#1F4B36] text-white cursor-pointer hover:bg-[#163826]">
+                          <CheckCircle2 className="w-4 h-4" />
+                          Simpan Hasil Kerja
+                        </button>
+                      </form>
+
+                      <div>
+                        <h4 className="font-black text-xs text-gray-700 mb-2">Riwayat Kerjaan Ini</h4>
+                      <div className="space-y-2 max-h-[520px] overflow-y-auto">
+                        {selectedLogs.length === 0 ? (
+                          <p className="text-xs text-gray-400 text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-200">Belum ada riwayat untuk kerjaan ini.</p>
+                        ) : selectedLogs.slice(0, 30).map(log => (
+                          <div key={log.id} className="p-3 rounded-lg border border-gray-100 bg-gray-50 text-xs flex justify-between gap-3">
+                            <div>
+                              <p className="font-black text-gray-800">{log.task_name}</p>
+                              <p className="text-[10px] text-gray-500 mt-0.5">{log.production_label} · {log.stage_name}</p>
+                              {log.notes && <p className="mt-1 text-[11px] text-gray-500">{log.notes}</p>}
+                            </div>
+                            <div className="text-right shrink-0 font-mono">
+                              <p className="font-black text-emerald-700">{log.qty_done} selesai</p>
+                              {log.qty_rejected > 0 && <p className="font-bold text-rose-600">{log.qty_rejected} reject</p>}
+                              <p className="text-[9px] text-gray-400 mt-1">{new Date(log.created_at).toLocaleDateString('id-ID')}</p>
+                              <button type="button" onClick={() => handleDeleteEmployeeTaskLog(log.id)} className="mt-2 text-[10px] font-bold text-rose-600 hover:text-rose-700 cursor-pointer">
+                                Hapus
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      </div>
+                    </div>}
+                  </>
+                );
+              })()}
+            </div>
+          )}
           
           {/* SEARCH, FILTERS & CONTROLS */}
-          <div className="bg-white rounded-xl border border-gray-200 p-4 md:p-5 shadow-2xs space-y-4">
+          {!isEmployee && <div className="bg-white rounded-xl border border-gray-200 p-4 md:p-5 shadow-2xs space-y-4">
             <div className="flex flex-col md:flex-row gap-3 items-center justify-between">
               
               {/* Search bar */}
@@ -647,10 +998,10 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                 <CheckCircle2 className="w-3.5 h-3.5" /> Selesai Hari Ini <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${activeFilter === 'completed_today' ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800'}`}>{counts.completed_today}</span>
               </button>
             </div>
-          </div>
+          </div>}
 
           {/* RINGKASAN ALUR: berapa job sedang berada di tiap tahap, per departemen */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {!isEmployee && <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {([
               { id: 'dept-eva-foam', label: 'Alur Eva Foam', stages: ['Campur Bahan', 'Cetak', 'Potong', 'Finishing', 'Cek Kualitas', 'Packing'] },
               { id: 'dept-konveksi', label: 'Alur Konveksi (Jahit)', stages: ['Potong', 'Sablon', 'Jahit', 'Finishing', 'Cek Kualitas', 'Packing'] },
@@ -687,10 +1038,10 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                 </div>
               );
             })}
-          </div>
+          </div>}
 
           {/* LOADING STATE */}
-          {isLoading ? (
+          {!isEmployee && (isLoading ? (
             <div className="flex flex-col items-center justify-center py-20 space-y-3 bg-white rounded-xl border border-gray-100">
               <Loader2 className="w-8 h-8 text-[#1F4B36] animate-spin" />
               <p className="text-xs text-gray-500 font-medium">Memuat data alur kerja...</p>
@@ -969,7 +1320,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
               </div>}
 
             </div>
-          )}
+          ))}
         </div>
       )}
 
@@ -1263,14 +1614,155 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
         </div>
       )}
 
-      {/* STOCK VIEW */}
-      {subTab === 'stock' && (
+      {/* ADMIN WORKFLOW VIEWS */}
+      {!isEmployee && (subTab === 'order' || subTab === 'finalize' || subTab === 'history') && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fadeIn">
           
           {/* LEFT COLUMN: Input Production Logs */}
-          <div className="lg:col-span-5 space-y-6">
+          <div className={`${subTab === 'finalize' ? 'hidden' : subTab === 'order' && manualStep === 1 ? 'lg:col-span-12' : subTab === 'order' ? 'lg:col-span-7' : 'lg:col-span-5'} space-y-6`}>
             {!isRestrictedProduction ? (
-              <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
+              <>
+              {subTab === 'order' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
+                <div className="border-b border-gray-100 pb-3 flex items-center gap-1.5">
+                  <Clipboard className="w-4.5 h-4.5 text-[#1F4B36]" />
+                  <h3 className="font-bold text-sm text-gray-800">Buat Order Produksi Manual</h3>
+                </div>
+
+                <form onSubmit={handleCreateManualProductionJob} className="space-y-4">
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { step: 1, label: 'Detail' },
+                      { step: 2, label: 'Bahan' },
+                      { step: 3, label: 'Tahapan' },
+                    ].map(item => (
+                      <button
+                        key={item.step}
+                        type="button"
+                        onClick={() => {
+                          if (item.step === 2 && !manualBasicValid) return alert('Pilih output produk dulu.');
+                          if (item.step === 3 && (!manualBasicValid || !manualMaterialsValid)) return alert('Lengkapi output dan bahan dulu.');
+                          setManualStep(item.step as 1 | 2 | 3);
+                        }}
+                        className={`rounded-lg border px-3 py-2 text-xs font-bold cursor-pointer ${manualStep === item.step ? 'bg-[#1F4B36] text-white border-[#1F4B36]' : 'bg-gray-50 text-gray-500 border-gray-200'}`}
+                      >
+                        {item.step}. {item.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {manualStep === 1 && (
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <label className="block text-xs font-semibold text-gray-500">Produk yang Akan Dibuat</label>
+                        {manualOutputs.map((output, index) => (
+                          <div key={index} className="grid grid-cols-12 gap-2">
+                            <select
+                              value={output.product_id}
+                              onChange={event => setManualOutputs(items => items.map((item, itemIndex) => itemIndex === index ? { ...item, product_id: event.target.value } : item))}
+                              className="col-span-8 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[#1F4B36]"
+                              required={index === 0}
+                            >
+                              <option value="">Pilih produk jadi</option>
+                              {getFilteredProducts().map(product => <option key={product.id} value={product.id}>{product.name} ({product.variant})</option>)}
+                            </select>
+                            <input
+                              type="number"
+                              min={1}
+                              value={output.target_qty}
+                              onChange={event => setManualOutputs(items => items.map((item, itemIndex) => itemIndex === index ? { ...item, target_qty: Number(event.target.value) } : item))}
+                              className="col-span-3 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono font-bold"
+                            />
+                            <button type="button" onClick={() => setManualOutputs(items => items.length === 1 ? items : items.filter((_, itemIndex) => itemIndex !== index))} className="col-span-1 rounded-lg bg-gray-100 text-gray-500 text-xs font-bold cursor-pointer">×</button>
+                          </div>
+                        ))}
+                        <button type="button" onClick={() => setManualOutputs(items => [...items, { product_id: '', target_qty: 1 }])} className="text-xs font-bold text-[#1F4B36] flex items-center gap-1 cursor-pointer"><Plus className="w-3.5 h-3.5" /> Tambah output</button>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1">Karyawan Ditugaskan</label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-32 overflow-y-auto bg-gray-50 border border-gray-200 rounded-lg p-2">
+                          {employees.map(employee => (
+                            <label key={employee.id} className="flex items-center gap-2 text-xs text-gray-700">
+                              <input type="checkbox" checked={manualEmployeeIds.includes(employee.id)} onChange={event => setManualEmployeeIds(ids => event.target.checked ? [...ids, employee.id] : ids.filter(id => id !== employee.id))} />
+                              <span>{employee.name}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1">Catatan Instruksi</label>
+                        <textarea value={manualNotes} onChange={event => setManualNotes(event.target.value)} rows={2} placeholder="Instruksi warna, prioritas, atau detail custom..." className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[#1F4B36]" />
+                      </div>
+                    </div>
+                  )}
+
+                  {manualStep === 2 && (
+                    <div className="space-y-3">
+                      <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-3 text-xs text-emerald-800">
+                        {manualSelectedOutputs.map(item => <p key={item.product.id}><b>{item.product.name}</b> · target {item.target_qty} pcs</p>)}
+                      </div>
+                      <div className="space-y-2">
+                        <label className="block text-xs font-semibold text-gray-500">Bahan Baku Diambil</label>
+                        {manualMaterials.map((material, index) => {
+                          const selected = rawMaterials.find(item => item.id === material.material_id);
+                          return (
+                            <div key={index} className="grid grid-cols-12 gap-2">
+                              <select value={material.material_id} onChange={event => setManualMaterials(items => items.map((item, itemIndex) => itemIndex === index ? { ...item, material_id: event.target.value } : item))} className="col-span-8 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[#1F4B36]">
+                                <option value="">Pilih bahan</option>
+                                {rawMaterials.map(item => <option key={item.id} value={item.id}>{item.name} - stok {item.current_stock} {item.unit}</option>)}
+                              </select>
+                              <input type="number" min={0} step="0.01" value={material.qty} onChange={event => setManualMaterials(items => items.map((item, itemIndex) => itemIndex === index ? { ...item, qty: Number(event.target.value) } : item))} className="col-span-3 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono font-bold" placeholder={selected?.unit || 'Qty'} />
+                              <button type="button" onClick={() => setManualMaterials(items => items.length === 1 ? items : items.filter((_, itemIndex) => itemIndex !== index))} className="col-span-1 rounded-lg bg-gray-100 text-gray-500 text-xs font-bold cursor-pointer">×</button>
+                            </div>
+                          );
+                        })}
+                        <button type="button" onClick={() => setManualMaterials(items => [...items, { material_id: '', qty: 1 }])} className="text-xs font-bold text-[#1F4B36] flex items-center gap-1 cursor-pointer"><Plus className="w-3.5 h-3.5" /> Tambah bahan</button>
+                      </div>
+                    </div>
+                  )}
+
+                  {manualStep === 3 && (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1">Tahapan Produksi</label>
+                        <textarea value={manualStages} onChange={event => setManualStages(event.target.value)} rows={4} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-[#1F4B36]" />
+                        <p className="text-[10px] text-gray-400 mt-1">Satu baris = satu tahap. Bisa disesuaikan per order.</p>
+                      </div>
+                      <div className="bg-gray-50 border border-gray-100 rounded-lg p-3 text-xs space-y-1">
+                        <p className="font-bold text-gray-700">Ringkasan</p>
+                        <p>{manualSelectedOutputs.length} output produk</p>
+                        <p>{manualSelectedMaterials.length} bahan baku</p>
+                        <p>{manualEmployeeIds.length} karyawan ditugaskan</p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2 pt-2">
+                    {manualStep > 1 && <button type="button" onClick={() => setManualStep((manualStep - 1) as 1 | 2 | 3)} className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2.5 rounded-lg font-bold text-xs cursor-pointer">Kembali</button>}
+                    {manualStep < 3 ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (manualStep === 1 && !manualBasicValid) return alert('Pilih minimal satu output produk.');
+                          if (manualStep === 2 && !manualMaterialsValid) return alert('Pilih minimal satu bahan baku yang dipakai.');
+                          setManualStep((manualStep + 1) as 1 | 2 | 3);
+                        }}
+                        className="flex-1 bg-[#1F4B36] hover:bg-[#163826] text-white py-2.5 rounded-lg font-bold text-xs cursor-pointer"
+                      >
+                        Lanjut
+                      </button>
+                    ) : (
+                      <button type="submit" disabled={!manualStagesValid || !manualMaterialsValid} className={`flex-1 py-2.5 rounded-lg font-bold text-xs shadow-md flex items-center justify-center gap-1.5 ${manualStagesValid && manualMaterialsValid ? 'bg-[#1F4B36] hover:bg-[#163826] text-white cursor-pointer' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
+                        <Clipboard className="w-4 h-4" />
+                        Buat Order &amp; Potong Bahan
+                      </button>
+                    )}
+                  </div>
+                </form>
+              </div>}
+
+              {false && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
                 <div className="border-b border-gray-100 pb-3 flex items-center gap-1.5">
                   <Hammer className="w-4.5 h-4.5 text-[#1F4B36]" />
                   <h3 className="font-bold text-sm text-gray-800">Catat Hasil Produksi Baru</h3>
@@ -1355,7 +1847,8 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                     Selesaikan Produksi &amp; Potong Bahan
                   </button>
                 </form>
-              </div>
+              </div>}
+              </>
             ) : (
               <div className="bg-amber-50 text-[#1F4B36] border border-amber-200 rounded-xl p-6 text-center space-y-3">
                 <Hammer className="w-12 h-12 mx-auto text-[#1F4B36] opacity-75" />
@@ -1367,7 +1860,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
             )}
 
             {/* Raw Materials Monitoring (Critical Stock Warning) */}
-            <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
+            {subTab === 'history' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
               <div>
                 <h3 className="font-bold text-sm text-gray-800">Status Stok Bahan Baku</h3>
                 <p className="text-xs text-gray-400">Monitoring sisa bahan baku di pabrik ARI SPORTINDO</p>
@@ -1400,14 +1893,98 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                   );
                 })}
               </div>
-            </div>
+            </div>}
           </div>
 
           {/* RIGHT COLUMN: Active stock of Finished Goods & movements */}
-          <div className="lg:col-span-7 space-y-6">
-            
+          <div className={`${subTab === 'order' && manualStep === 1 ? 'hidden' : subTab === 'finalize' ? 'lg:col-span-12' : subTab === 'order' ? 'lg:col-span-5' : 'lg:col-span-7'} space-y-6`}>
+            {subTab === 'order' && manualStep > 1 && (
+              <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
+                <div>
+                  <h3 className="font-bold text-sm text-gray-800 font-sans">Order Produksi Berjalan</h3>
+                  <p className="text-xs text-gray-400">Ringkasan order aktif setelah dibuat dari form manual.</p>
+                </div>
+                <div className="space-y-2 max-h-[520px] overflow-y-auto">
+                  {productionJobs.filter(job => job.status !== 'completed').length === 0 ? (
+                    <p className="text-xs text-gray-400 text-center py-10 bg-gray-50 rounded-lg border border-dashed border-gray-200">Belum ada order produksi berjalan.</p>
+                  ) : productionJobs.filter(job => job.status !== 'completed').slice(0, 12).map(job => (
+                    <button key={job.id} type="button" onClick={() => { setSelectedJob(job); setSubTab('tracker'); }} className="w-full text-left p-3 rounded-lg border border-gray-100 bg-gray-50 hover:bg-emerald-50/50 cursor-pointer">
+                      <div className="flex justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-black text-gray-800">{job.order_number || job.id}</p>
+                          <p className="text-xs text-gray-600 mt-0.5">{job.product_name}</p>
+                          {job.assigned_employees && job.assigned_employees.length > 0 && <p className="text-[10px] text-gray-400 mt-1">{job.assigned_employees.map(item => item.employee_name).join(', ')}</p>}
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="font-mono text-xs font-black text-[#1F4B36]">{job.qty} pcs</p>
+                          <p className="text-[10px] text-amber-700 font-bold">{job.current_stage}</p>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {subTab === 'finalize' && !isRestrictedProduction && (
+              <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
+                <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+                  <div>
+                    <h3 className="font-bold text-sm text-gray-800 font-sans">Finalisasi Hasil Order Produksi</h3>
+                    <p className="text-xs text-gray-400">Barang bagus masuk stok produk jadi, barang reject dicatat terpisah.</p>
+                  </div>
+                  <CheckCircle2 className="w-4.5 h-4.5 text-emerald-600" />
+                </div>
+
+                <form onSubmit={handleFinalizeManualProduction} className="space-y-4">
+                  <select
+                    value={finalJobId}
+                    onChange={event => syncFinalOutputsForJob(event.target.value)}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[#1F4B36]"
+                  >
+                    <option value="">Pilih order produksi berjalan</option>
+                    {productionJobs.filter(job => job.status !== 'completed').map(job => (
+                      <option key={job.id} value={job.id}>{job.order_number || job.id} - {job.product_name}</option>
+                    ))}
+                  </select>
+
+                  {finalOutputs.map((output, index) => {
+                    const product = products.find(item => item.id === output.product_id);
+                    const jobOutput = productionJobs.find(job => job.id === finalJobId)?.outputs?.find(item => item.product_id === output.product_id);
+                    return (
+                      <div key={`${output.product_id}-${index}`} className="border border-gray-100 rounded-xl p-3 bg-gray-50 space-y-3">
+                        <div className="flex justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-bold text-gray-800">{product?.name || output.product_id}</p>
+                            <p className="text-[10px] text-gray-400">Target: {jobOutput?.target_qty || 0} pcs</p>
+                          </div>
+                          <span className="text-[10px] text-gray-500 font-mono">{product?.variant}</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Bagus</label>
+                            <input type="number" min={0} value={output.good_qty} onChange={event => setFinalOutputs(items => items.map((item, itemIndex) => itemIndex === index ? { ...item, good_qty: Number(event.target.value) } : item))} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono font-bold" />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Reject</label>
+                            <input type="number" min={0} value={output.reject_qty} onChange={event => setFinalOutputs(items => items.map((item, itemIndex) => itemIndex === index ? { ...item, reject_qty: Number(event.target.value) } : item))} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono font-bold" />
+                          </div>
+                        </div>
+                        <input value={output.reject_reason} onChange={event => setFinalOutputs(items => items.map((item, itemIndex) => itemIndex === index ? { ...item, reject_reason: event.target.value } : item))} placeholder="Alasan reject bila ada" className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs" />
+                      </div>
+                    );
+                  })}
+
+                  <button type="submit" disabled={!finalJobId} className={`w-full py-2.5 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 ${!finalJobId ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-emerald-700 hover:bg-emerald-800 text-white cursor-pointer'}`}>
+                    <CheckCircle2 className="w-4 h-4" />
+                    Finalisasi Produksi
+                  </button>
+                </form>
+              </div>
+            )}
+             
             {/* Products Stock */}
-            <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
+            {subTab === 'history' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
               <div>
                 <h3 className="font-bold text-sm text-gray-800 font-sans">Sisa Stok Barang Jadi</h3>
                 <p className="text-xs text-gray-400">Stok siap kirim hasil produksi gudang ARI SPORTINDO</p>
@@ -1438,10 +2015,33 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                   );
                 })}
               </div>
-            </div>
+            </div>}
+
+            {(subTab === 'finalize' || subTab === 'history') && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
+              <div>
+                <h3 className="font-bold text-sm text-gray-800 font-sans">Barang Reject Produksi</h3>
+                <p className="text-xs text-gray-400">Catatan barang reject yang masih disimpan atau perlu tindak lanjut.</p>
+              </div>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {rejectedGoods.length === 0 ? (
+                  <p className="text-xs text-gray-400 text-center py-6 bg-gray-50 rounded-lg border border-dashed border-gray-200">Belum ada barang reject tercatat.</p>
+                ) : rejectedGoods.slice(0, 10).map(item => (
+                  <div key={item.id} className="p-3 rounded-lg border border-rose-100 bg-rose-50/40 text-xs flex justify-between gap-3">
+                    <div>
+                      <p className="font-bold text-gray-800">{item.product_name}</p>
+                      <p className="text-[10px] text-gray-500 mt-0.5">{item.reason}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="font-mono font-black text-rose-700">{item.qty} pcs</p>
+                      <p className="text-[9px] uppercase text-rose-500 font-bold">{item.status}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>}
 
             {/* Audit History Log */}
-            <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
+            {subTab === 'history' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
               <div className="flex justify-between items-center border-b border-gray-100 pb-3">
                 <div>
                   <h3 className="font-bold text-sm text-gray-800 font-sans">Riwayat Mutasi Stok</h3>
@@ -1483,7 +2083,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                   );
                 })}
               </div>
-            </div>
+            </div>}
 
           </div>
 

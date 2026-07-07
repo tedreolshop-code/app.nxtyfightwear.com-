@@ -340,6 +340,53 @@ export interface ProductionJob {
   status: 'pending' | 'ongoing' | 'completed';
   notes?: string;
   created_at: string;
+  materials_planned?: Array<{
+    material_id: string;
+    material_name: string;
+    qty: number;
+    unit: string;
+  }>;
+  outputs?: Array<{
+    product_id: string;
+    product_name: string;
+    variant: string;
+    target_qty: number;
+    good_qty: number;
+    reject_qty: number;
+  }>;
+  assigned_employees?: Array<{
+    employee_id: string;
+    employee_name: string;
+  }>;
+}
+
+export interface RejectedGood {
+  id: string;
+  production_job_id?: string;
+  product_id: string;
+  product_name: string;
+  variant?: string;
+  qty: number;
+  reason: string;
+  status: 'disimpan' | 'diperbaiki' | 'dibuang' | 'dijual_murah';
+  created_at: string;
+  created_by_id?: string;
+  created_by_name?: string;
+}
+
+export interface ProductionTaskLog {
+  id: string;
+  production_job_id: string;
+  production_label: string;
+  employee_id: string;
+  employee_name: string;
+  date: string;
+  stage_name: string;
+  task_name: string;
+  qty_done: number;
+  qty_rejected: number;
+  notes?: string;
+  created_at: string;
 }
 
 export interface ProductionHandoff {

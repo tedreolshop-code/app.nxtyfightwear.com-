@@ -1,8 +1,8 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Employee } from '../types';
-import { dataStore, hashPin } from '../dataStore';
-import { Camera, Eye, EyeOff, KeyRound, Phone, Printer, QrCode, Save, User } from 'lucide-react';
+import { Employee, ProductionJob, ProductionTaskLog } from '../types';
+import { dataStore, hashPin, wibNowISO, wibTodayStr } from '../dataStore';
+import { Camera, ClipboardCheck, Eye, EyeOff, KeyRound, Phone, Printer, QrCode, Save, User } from 'lucide-react';
 
 interface ProfileModuleProps {
   employee: Employee;
@@ -19,9 +19,39 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ employee, onUpdate
   const [newPin2, setNewPin2] = useState('');
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
   const [showAttendanceQr, setShowAttendanceQr] = useState(false);
+  const [productionJobs, setProductionJobs] = useState<ProductionJob[]>([]);
+  const [taskLogs, setTaskLogs] = useState<ProductionTaskLog[]>([]);
+  const [taskJobId, setTaskJobId] = useState('');
+  const [taskStage, setTaskStage] = useState('');
+  const [taskName, setTaskName] = useState('');
+  const [taskQtyDone, setTaskQtyDone] = useState(0);
+  const [taskQtyRejected, setTaskQtyRejected] = useState(0);
+  const [taskNotes, setTaskNotes] = useState('');
 
   const departments = dataStore.getDepartments();
   const deptName = departments.find(d => d.id === employee.department_id)?.name || 'Umum';
+
+  const loadProductionTasks = () => {
+    setProductionJobs(dataStore.getProductionJobs());
+    setTaskLogs(dataStore.getProductionTaskLogs());
+  };
+
+  useEffect(() => {
+    loadProductionTasks();
+    const handleStorageChange = () => loadProductionTasks();
+    window.addEventListener('nxty_storage_change', handleStorageChange);
+    return () => window.removeEventListener('nxty_storage_change', handleStorageChange);
+  }, [employee.id]);
+
+  const assignedJobs = productionJobs.filter(job =>
+    job.status !== 'completed' &&
+    (
+      job.assigned_employees?.some(item => item.employee_id === employee.id) ||
+      (!job.assigned_employees?.length && job.department_id === employee.department_id)
+    )
+  );
+  const selectedTaskJob = productionJobs.find(job => job.id === taskJobId);
+  const myTodayTaskLogs = taskLogs.filter(log => log.employee_id === employee.id && log.date === wibTodayStr());
 
   const saveEmployee = (patch: Partial<Employee>, successText: string) => {
     const updated = dataStore.getEmployees().map(e =>
@@ -89,6 +119,52 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ employee, onUpdate
     window.addEventListener('afterprint', cleanup, { once: true });
     window.print();
     window.setTimeout(cleanup, 1000);
+  };
+
+  const handleSubmitTaskLog = (e: React.FormEvent) => {
+    e.preventDefault();
+    const job = productionJobs.find(item => item.id === taskJobId);
+    if (!job) {
+      setMessage({ text: 'Pilih order produksi terlebih dahulu.', error: true });
+      return;
+    }
+    const qtyDone = Math.max(0, Number(taskQtyDone) || 0);
+    const qtyRejected = Math.max(0, Number(taskQtyRejected) || 0);
+    if (qtyDone <= 0 && qtyRejected <= 0) {
+      setMessage({ text: 'Isi minimal Qty Selesai atau Qty Reject lebih dari 0.', error: true });
+      return;
+    }
+    const label = `${job.order_number || job.id} - ${job.product_name}`;
+    dataStore.postProductionTaskLog({
+      id: `ptask-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      production_job_id: job.id,
+      production_label: label,
+      employee_id: employee.id,
+      employee_name: employee.name,
+      date: wibTodayStr(),
+      stage_name: taskStage || job.current_stage,
+      task_name: taskName.trim() || taskStage || job.current_stage,
+      qty_done: qtyDone,
+      qty_rejected: qtyRejected,
+      notes: taskNotes.trim() || undefined,
+      created_at: wibNowISO()
+    });
+    setTaskName('');
+    setTaskQtyDone(0);
+    setTaskQtyRejected(0);
+    setTaskNotes('');
+    loadProductionTasks();
+    setMessage({ text: 'Kerjaan harian produksi berhasil dicatat.', error: false });
+  };
+
+  const handleDeleteTaskLog = (logId: string) => {
+    if (!window.confirm('Hapus catatan kerjaan ini?')) return;
+    if (!dataStore.deleteProductionTaskLog(logId)) {
+      setMessage({ text: 'Catatan kerja tidak ditemukan.', error: true });
+      return;
+    }
+    loadProductionTasks();
+    setMessage({ text: 'Catatan kerja berhasil dihapus.', error: false });
   };
 
   return (
@@ -185,6 +261,84 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ employee, onUpdate
             <User className="w-4 h-4" /> Ganti PIN
           </button>
         </form>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
+        <div>
+          <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2"><ClipboardCheck className="w-4 h-4 text-[#1F4B36]" /> Kerjaan Harian Produksi</h3>
+          <p className="text-xs text-gray-500 mt-1">Catatan ini hanya untuk progres kerja produksi dan tidak mengubah perhitungan gaji.</p>
+        </div>
+
+        <form onSubmit={handleSubmitTaskLog} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="md:col-span-2">
+            <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Order Produksi</label>
+            <select
+              value={taskJobId}
+              onChange={event => {
+                const job = productionJobs.find(item => item.id === event.target.value);
+                setTaskJobId(event.target.value);
+                setTaskStage(job?.current_stage || '');
+                setTaskName(job?.current_stage || '');
+              }}
+              className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#1F4B36]"
+            >
+              <option value="">Pilih tugas produksi</option>
+              {assignedJobs.map(job => <option key={job.id} value={job.id}>{job.order_number || job.id} - {job.product_name}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Tahap</label>
+            <select value={taskStage} onChange={event => setTaskStage(event.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm">
+              <option value="">Pilih tahap</option>
+              {(selectedTaskJob?.stages || []).map(stage => <option key={stage.stage} value={stage.stage}>{stage.stage}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Kerjaan</label>
+            <input value={taskName} onChange={event => setTaskName(event.target.value)} placeholder="Contoh: jahit pinggir" className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm" />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Qty Selesai</label>
+            <input type="number" min={0} value={taskQtyDone} onChange={event => setTaskQtyDone(Number(event.target.value))} className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm font-mono font-bold" />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Qty Reject</label>
+            <input type="number" min={0} value={taskQtyRejected} onChange={event => setTaskQtyRejected(Number(event.target.value))} className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm font-mono font-bold" />
+          </div>
+
+          <div className="md:col-span-2">
+            <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Catatan</label>
+            <textarea value={taskNotes} onChange={event => setTaskNotes(event.target.value)} rows={2} placeholder="Catatan kendala, ukuran, warna, atau detail kerja hari ini" className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm" />
+          </div>
+
+          <button type="submit" disabled={!taskJobId} className={`md:col-span-2 text-sm font-semibold px-4 py-2 rounded-lg flex items-center justify-center gap-1.5 ${!taskJobId ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-[#1F4B36] hover:bg-[#163826] text-white cursor-pointer'}`}>
+            <Save className="w-4 h-4" /> Simpan Kerjaan Hari Ini
+          </button>
+        </form>
+
+        <div className="border-t border-gray-100 pt-3 space-y-2">
+          <p className="text-[10px] font-black text-gray-500 uppercase tracking-wide">Riwayat Hari Ini</p>
+          {myTodayTaskLogs.length === 0 ? (
+            <p className="text-xs text-gray-400 bg-gray-50 border border-dashed border-gray-200 rounded-lg p-4 text-center">Belum ada pekerjaan produksi yang dicatat hari ini.</p>
+          ) : myTodayTaskLogs.map(log => (
+            <div key={log.id} className="bg-gray-50 border border-gray-100 rounded-lg p-3 text-xs flex justify-between gap-3">
+              <div>
+                <p className="font-bold text-gray-800">{log.task_name}</p>
+                <p className="text-[10px] text-gray-500">{log.production_label} · {log.stage_name}</p>
+                {log.notes && <p className="text-[10px] text-gray-500 mt-1">{log.notes}</p>}
+              </div>
+              <div className="text-right font-mono shrink-0">
+                <p className="font-black text-emerald-700">{log.qty_done} selesai</p>
+                {log.qty_rejected > 0 && <p className="font-bold text-rose-600">{log.qty_rejected} reject</p>}
+                <button type="button" onClick={() => handleDeleteTaskLog(log.id)} className="mt-2 text-[10px] font-bold text-rose-600 hover:text-rose-700 cursor-pointer">Hapus</button>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* QR pribadi hanya untuk identifikasi saat absensi dibantu admin. */}

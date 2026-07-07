@@ -4,8 +4,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { UserRole, Employee, ProductionHandoff } from './types';
-import { dataStore } from './dataStore';
+import { UserRole, Employee, ProductionHandoff, ProductionJob } from './types';
+import { dataStore, wibTodayStr } from './dataStore';
 import { isCloudEnabled, getCloudStatus, CloudStatus } from './cloudSync';
 import { MainDashboard } from './components/MainDashboard';
 import { EmployeeDashboard } from './components/EmployeeDashboard';
@@ -215,6 +215,8 @@ export default function App() {
   const [cloudStatus, setCloudStatus] = useState<CloudStatus>(getCloudStatus());
   const [toast, setToast] = useState<string | null>(null);
   const [handoffPopup, setHandoffPopup] = useState<ProductionHandoff | null>(null);
+  const [productionTaskPopup, setProductionTaskPopup] = useState<ProductionJob | null>(null);
+  const productionTaskSeenKey = (employeeId: string, jobId: string) => `nxty_production_task_seen_${employeeId}_${jobId}_${wibTodayStr()}`;
 
   useEffect(() => {
     const checkPendingHandoff = () => {
@@ -226,6 +228,31 @@ export default function App() {
     window.addEventListener('nxty_storage_change', checkPendingHandoff);
     return () => window.removeEventListener('nxty_storage_change', checkPendingHandoff);
   }, [loggedEmployee]);
+
+  useEffect(() => {
+    const checkProductionTasks = () => {
+      if (!loggedEmployee || currentRole !== 'karyawan') {
+        setProductionTaskPopup(null);
+        return;
+      }
+      const task = dataStore.getProductionJobs().find(job =>
+        job.status !== 'completed' &&
+        (
+          job.assigned_employees?.some(item => item.employee_id === loggedEmployee.id) ||
+          (!job.assigned_employees?.length && job.department_id === loggedEmployee.department_id)
+        ) &&
+        localStorage.getItem(productionTaskSeenKey(loggedEmployee.id, job.id)) !== '1'
+      );
+      setProductionTaskPopup(task || null);
+    };
+    checkProductionTasks();
+    const delayedCheck = window.setTimeout(checkProductionTasks, 1200);
+    window.addEventListener('nxty_storage_change', checkProductionTasks);
+    return () => {
+      window.clearTimeout(delayedCheck);
+      window.removeEventListener('nxty_storage_change', checkProductionTasks);
+    };
+  }, [loggedEmployee, currentRole]);
 
   // Ganti popup alert() browser dengan notifikasi halus di dalam aplikasi.
   // Berlaku untuk semua modul tanpa perlu mengubah satu per satu.
@@ -253,6 +280,8 @@ export default function App() {
   const [karyawanSubTab, setKaryawanSubTab] = useState<'data' | 'absensi' | 'payroll'>('data');
 
   const permittedMenus = MENUS.filter(m => m.roles.includes(currentRole));
+  const getMenuLabel = (menu: { id: string; label: string }) =>
+    currentRole === 'karyawan' && menu.id === 'produksi' ? 'Daftar Kerjaan' : menu.label;
 
   useEffect(() => {
     const updateTime = () => {
@@ -364,6 +393,7 @@ export default function App() {
     <div className="flex flex-col md:flex-row min-h-screen w-full bg-white font-sans text-gray-800 text-sm overflow-hidden">
       {toastEl}
       {handoffPopup && <div className="fixed inset-0 z-[90] bg-black/55 p-4 flex items-center justify-center no-print"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-4"><div><span className="text-[10px] font-black uppercase tracking-wider text-amber-700 bg-amber-50 px-2 py-1 rounded">Tugas Produksi Baru</span><h3 className="font-black text-gray-900 mt-3">{handoffPopup.product_name}</h3><p className="text-xs text-gray-500 mt-1">{handoffPopup.from_stage} → {handoffPopup.to_stage}</p></div><div className="bg-gray-50 border border-gray-100 rounded-xl p-3 text-xs"><p>Dari: <b>{handoffPopup.from_employee_name}</b></p><p>Jumlah diterima: <b>{handoffPopup.qty_sent} pcs</b></p>{handoffPopup.notes && <p className="mt-1 text-gray-500">{handoffPopup.notes}</p>}</div><p className="text-[11px] text-amber-700">Periksa barang fisik sebelum menekan Terima pada menu Produksi.</p><div className="grid grid-cols-2 gap-2"><button onClick={() => { localStorage.setItem(`nxty_handoff_seen_${handoffPopup.id}`, '1'); setHandoffPopup(null); }} className="py-2.5 rounded-xl bg-gray-100 text-gray-700 text-xs font-bold cursor-pointer">Nanti</button><button onClick={() => { localStorage.setItem(`nxty_handoff_seen_${handoffPopup.id}`, '1'); setHandoffPopup(null); setActiveTab('produksi'); }} className="py-2.5 rounded-xl bg-[#1F4B36] text-white text-xs font-bold cursor-pointer">Lihat & Konfirmasi</button></div></div></div>}
+      {productionTaskPopup && <div className="fixed inset-0 z-[91] bg-black/55 p-4 flex items-center justify-center no-print"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-4"><div><span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-1 rounded">Ada Kerjaan Baru</span><h3 className="font-black text-gray-900 mt-3">{productionTaskPopup.product_name}</h3><p className="text-xs text-gray-500 mt-1">{productionTaskPopup.order_number || productionTaskPopup.id} · tahap {productionTaskPopup.current_stage}</p></div><div className="bg-gray-50 border border-gray-100 rounded-xl p-3 text-xs"><p>Target: <b>{productionTaskPopup.qty} pcs</b></p>{productionTaskPopup.notes && <p className="mt-1 text-gray-500">{productionTaskPopup.notes}</p>}</div><p className="text-[11px] text-emerald-700">Buka Daftar Kerjaan untuk input hasil kerja atau reject jika ada.</p><div className="grid grid-cols-2 gap-2"><button onClick={() => { if (loggedEmployee) localStorage.setItem(productionTaskSeenKey(loggedEmployee.id, productionTaskPopup.id), '1'); setProductionTaskPopup(null); }} className="py-2.5 rounded-xl bg-gray-100 text-gray-700 text-xs font-bold cursor-pointer">Nanti</button><button onClick={() => { if (loggedEmployee) localStorage.setItem(productionTaskSeenKey(loggedEmployee.id, productionTaskPopup.id), '1'); setProductionTaskPopup(null); setActiveTab('produksi'); }} className="py-2.5 rounded-xl bg-[#1F4B36] text-white text-xs font-bold cursor-pointer">Lihat Kerjaan</button></div></div></div>}
 
       {/* SIDEBAR DESKTOP — datar, tanpa grup */}
       <aside className="no-print hidden md:flex w-60 bg-[#1F4B36] flex-col shrink-0 border-r border-[#163826] text-white">
@@ -390,7 +420,7 @@ export default function App() {
                 }`}
               >
                 <Icon className={`w-4 h-4 shrink-0 ${isSelected ? 'text-amber-400' : 'opacity-70'}`} />
-                <span className="truncate">{menu.label}</span>
+                <span className="truncate">{getMenuLabel(menu)}</span>
               </button>
             );
           })}
@@ -475,7 +505,7 @@ export default function App() {
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />
-                <span>{menu.label}</span>
+                <span>{getMenuLabel(menu)}</span>
               </button>
             );
           })}
