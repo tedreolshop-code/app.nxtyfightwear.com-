@@ -61,6 +61,49 @@ const MENUS: Array<{ id: string; label: string; icon: React.ComponentType<{ clas
   { id: 'audit', label: 'Audit & Recycle Bin', icon: ShieldCheck, roles: ['owner'] },
 ];
 
+const MONTH_OPTIONS = [
+  { value: '01', label: 'Januari' },
+  { value: '02', label: 'Februari' },
+  { value: '03', label: 'Maret' },
+  { value: '04', label: 'April' },
+  { value: '05', label: 'Mei' },
+  { value: '06', label: 'Juni' },
+  { value: '07', label: 'Juli' },
+  { value: '08', label: 'Agustus' },
+  { value: '09', label: 'September' },
+  { value: '10', label: 'Oktober' },
+  { value: '11', label: 'November' },
+  { value: '12', label: 'Desember' },
+];
+
+const formatCurrency = (amount: number) => `Rp ${Math.round(amount || 0).toLocaleString('id-ID')}`;
+const formatNumber = (value: number) => Math.round(value || 0).toLocaleString('id-ID');
+const sumBy = <T,>(items: T[], selector: (item: T) => number) => items.reduce((sum, item) => sum + (selector(item) || 0), 0);
+
+const downloadCsv = (filename: string, rows: Record<string, string | number | boolean | undefined | null>[]) => {
+  if (!rows.length) {
+    alert('Tidak ada data untuk diekspor pada periode ini.');
+    return;
+  }
+  const headers = Object.keys(rows[0]);
+  const csvRows = rows.map(row =>
+    headers.map(header => {
+      const text = String(row[header] ?? '');
+      const escaped = text.replace(/"/g, '""');
+      return /[",\n]/.test(escaped) ? `"${escaped}"` : escaped;
+    }).join(',')
+  );
+  const csvContent = '\uFEFF' + [headers.join(','), ...csvRows].join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `${filename}_${new Date().toISOString().split('T')[0]}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(link.href);
+};
+
 // Kartu login: username + PIN (satu pintu untuk semua akses)
 function KaryawanLoginCard({ onLogin }: { onLogin: (emp: Employee) => void }) {
   const [username, setUsername] = useState('');
@@ -289,6 +332,9 @@ export default function App() {
   // Sub-tab sederhana per halaman
   const [salesSubTab, setSalesSubTab] = useState<'marketplace' | 'order'>('marketplace');
   const [karyawanSubTab, setKaryawanSubTab] = useState<'data' | 'absensi' | 'kasbon' | 'payroll'>('data');
+  const now = new Date();
+  const [reportMonth, setReportMonth] = useState(String(now.getMonth() + 1).padStart(2, '0'));
+  const [reportYear, setReportYear] = useState(String(now.getFullYear()));
 
   const permittedMenus = MENUS.filter(m => {
     if (!m.roles.includes(currentRole)) return false;
@@ -389,6 +435,170 @@ export default function App() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const reportPrefix = `${reportYear}-${reportMonth}`;
+  const isInReportPeriod = (date?: string) => typeof date === 'string' && date.startsWith(reportPrefix);
+  const reportLabel = `${MONTH_OPTIONS.find(m => m.value === reportMonth)?.label || reportMonth} ${reportYear}`;
+
+  const activeEmployees = dataStore.getEmployees().filter(emp => emp.status_aktif);
+  const reportAttendance = dataStore.getAttendance().filter(item => isInReportPeriod(item.timestamp));
+  const reportPayroll = dataStore.getPayrollWeekly().filter(item => isInReportPeriod(item.period_start) || isInReportPeriod(item.period_end));
+  const reportCashAdvanceTransactions = dataStore.getCashAdvanceTransactions().filter(item => isInReportPeriod(item.date));
+  const reportCashAdvances = dataStore.getCashAdvances();
+  const reportInvoices = dataStore.getInvoices().filter(item => isInReportPeriod(item.date));
+  const reportOrders = dataStore.getOrders().filter(item => isInReportPeriod(item.date) && item.status !== 'cancelled');
+  const reportMarketplaceSales = dataStore.getMarketplaceSales().filter(item => isInReportPeriod(item.date));
+  const reportMarketplaceItemSales = dataStore.getMarketplaceItemSales().filter(item => isInReportPeriod(item.date));
+  const reportDailyExpenses = dataStore.getDailyExpenses().filter(item => isInReportPeriod(item.date));
+  const reportPurchases = dataStore.getPurchases().filter(item => isInReportPeriod(item.date) && item.status !== 'cancelled');
+  const reportProductionJobs = dataStore.getProductionJobs().filter(item => isInReportPeriod(item.created_at));
+
+  const paidEmployeeCount = new Set(reportPayroll.map(item => item.employee_id)).size;
+  const uniqueAttendanceDays = new Set(reportAttendance.map(item => `${item.employee_id}-${item.timestamp.split('T')[0]}`)).size;
+  const attendanceIssueCount = reportAttendance.filter(item =>
+    item.status === 'anomaly' ||
+    item.is_mock_location_flag ||
+    item.verification_method === 'admin_qr' ||
+    (item.distance_meters || 0) > dataStore.getWorkSettings().attendance_radius_meters
+  ).length;
+  const salesTotal =
+    sumBy(reportInvoices, item => item.total) +
+    sumBy(reportOrders, item => item.total) +
+    sumBy(reportMarketplaceSales, item => item.revenue) +
+    sumBy(reportMarketplaceItemSales, item => item.total);
+  const expensesTotal = sumBy(reportDailyExpenses, item => item.amount) + sumBy(reportPurchases, item => item.total_price);
+  const payrollTotal = sumBy(reportPayroll, item => item.total_pay);
+  const payrollBonusTotal = sumBy(reportPayroll, item => item.bonus);
+  const cashAdvanceAdded = sumBy(
+    reportCashAdvanceTransactions.filter(item => item.type === 'create' || item.type === 'topup'),
+    item => item.amount
+  );
+  const cashAdvancePaid = sumBy(
+    reportCashAdvanceTransactions.filter(item => item.type === 'deduction' || item.type === 'payment'),
+    item => item.amount
+  );
+  const cashAdvanceActiveBalance = sumBy(reportCashAdvances, item => item.remaining_balance);
+  const productionQty = sumBy(reportProductionJobs, item => item.qty);
+  const completedProductionQty = sumBy(reportProductionJobs.filter(item => item.status === 'completed'), item => item.qty);
+
+  const reportYears = Array.from(new Set([
+    String(now.getFullYear()),
+    String(now.getFullYear() - 1),
+    String(now.getFullYear() + 1),
+    ...[
+      ...dataStore.getAttendance().map(item => item.timestamp),
+      ...dataStore.getPayrollWeekly().map(item => item.period_start),
+      ...dataStore.getInvoices().map(item => item.date),
+      ...dataStore.getOrders().map(item => item.date),
+      ...dataStore.getDailyExpenses().map(item => item.date),
+      ...dataStore.getPurchases().map(item => item.date),
+      ...dataStore.getProductionJobs().map(item => item.created_at),
+    ].map(date => date?.slice(0, 4)).filter(Boolean),
+  ])).sort((a, b) => Number(b) - Number(a));
+
+  const handleExportPeriodCSV = (type: 'sales' | 'expenses' | 'payroll' | 'attendance' | 'cash_advance' | 'production') => {
+    const baseName = `${type}_${reportYear}_${reportMonth}_ARI_SPORTINDO`;
+    if (type === 'attendance') {
+      downloadCsv(`Laporan_Absensi_${baseName}`, reportAttendance.map(item => ({
+        tanggal: item.timestamp.split('T')[0],
+        jam: item.timestamp.split('T')[1]?.slice(0, 5) || '',
+        karyawan: item.employee_name,
+        tipe_scan: item.type_scan,
+        jarak_meter: Math.round(item.distance_meters || 0),
+        status: item.status,
+        terlambat_menit: item.late_minutes || 0,
+        lembur_menit: item.overtime_minutes || 0,
+        metode: item.verification_method || 'gps_self',
+        catatan: item.note || item.assistance_reason || '',
+      })));
+    } else if (type === 'payroll') {
+      downloadCsv(`Laporan_Payroll_${baseName}`, reportPayroll.map(item => ({
+        karyawan: item.employee_name,
+        periode_mulai: item.period_start,
+        periode_selesai: item.period_end,
+        hari_kerja: item.days_worked,
+        lembur_jam: item.overtime_hours,
+        gaji_pokok: item.base_pay,
+        bonus: item.bonus,
+        potongan_kasbon: item.cash_advance_deduction,
+        total_dibayar: item.total_pay,
+        status_cetak: item.is_printed ? 'sudah' : 'belum',
+      })));
+    } else if (type === 'cash_advance') {
+      downloadCsv(`Laporan_Kasbon_${baseName}`, reportCashAdvanceTransactions.map(item => ({
+        tanggal: item.date,
+        karyawan: item.employee_name,
+        tipe: item.type,
+        nominal: item.amount,
+        payroll_id: item.payroll_id || '',
+        catatan: item.note || '',
+        dibuat_oleh: item.created_by_name || '',
+      })));
+    } else if (type === 'sales') {
+      downloadCsv(`Laporan_Penjualan_${baseName}`, [
+        ...reportInvoices.map(item => ({
+          sumber: 'faktur',
+          tanggal: item.date,
+          nomor: item.invoice_number,
+          pelanggan: item.customer_name,
+          qty: sumBy(item.items, invItem => invItem.qty),
+          total: item.total,
+          status: item.payment_status,
+        })),
+        ...reportOrders.map(item => ({
+          sumber: item.marketplace_name || item.source,
+          tanggal: item.date,
+          nomor: item.order_number,
+          pelanggan: item.customer_name,
+          qty: sumBy(item.items, orderItem => orderItem.qty),
+          total: item.total,
+          status: item.status,
+        })),
+        ...reportMarketplaceItemSales.map(item => ({
+          sumber: item.marketplace_ref,
+          tanggal: item.date,
+          nomor: item.order_number,
+          pelanggan: item.description,
+          qty: item.qty,
+          total: item.total,
+          status: 'tercatat',
+        })),
+      ]);
+    } else if (type === 'expenses') {
+      downloadCsv(`Laporan_Pengeluaran_${baseName}`, [
+        ...reportDailyExpenses.map(item => ({
+          sumber: 'pengeluaran_harian',
+          tanggal: item.date,
+          nomor: item.id,
+          kategori: item.category,
+          keterangan: item.description,
+          total: item.amount,
+          status: 'tercatat',
+        })),
+        ...reportPurchases.map(item => ({
+          sumber: 'pembelian',
+          tanggal: item.date,
+          nomor: item.po_number,
+          kategori: 'Pembelian',
+          keterangan: item.supplier,
+          total: item.total_price,
+          status: item.status,
+        })),
+      ]);
+    } else if (type === 'production') {
+      downloadCsv(`Laporan_Produksi_${baseName}`, reportProductionJobs.map(item => ({
+        tanggal: item.created_at.split('T')[0],
+        nomor: item.order_number || item.id,
+        departemen: item.department_id === 'dept-eva-foam' ? 'Eva Foam' : 'Konveksi',
+        produk: item.product_name,
+        varian: item.variant,
+        qty_target: item.qty,
+        status: item.status,
+        tahap_aktif: item.current_stage,
+        karyawan: item.assigned_employees?.map(emp => emp.employee_name).join('; ') || '',
+      })));
+    }
   };
 
   const activeMenu = MENUS.find(m => m.id === activeTab);
@@ -678,35 +888,135 @@ export default function App() {
 
             {activeTab === 'audit' && <AuditRecycleModule />}
 
-            {/* LAPORAN (owner): ekspor CSV */}
+            {/* LAPORAN (owner): rekap periode + ekspor CSV */}
             {activeTab === 'laporan' && (
-              <div className="bg-white p-6 rounded-xl border border-gray-200 space-y-5">
-                <div className="border-b border-gray-100 pb-4">
-                  <h2 className="text-base font-bold text-[#1F4B36]">Pusat Laporan</h2>
-                  <p className="text-sm text-gray-500">Unduh data ARI SPORTINDO dalam format CSV (Excel).</p>
+              <div className="space-y-5">
+                <div className="bg-white p-5 rounded-xl border border-gray-200 space-y-4">
+                  <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+                    <div>
+                      <h2 className="text-base font-bold text-[#1F4B36]">Laporan ARI SPORTINDO</h2>
+                      <p className="text-sm text-gray-500">Ringkasan bulanan untuk owner: absensi, gaji mingguan, kasbon, penjualan, produksi, dan pengeluaran.</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 w-full sm:w-auto no-print">
+                      <label className="space-y-1">
+                        <span className="text-[11px] font-bold text-gray-500 uppercase">Bulan</span>
+                        <select
+                          value={reportMonth}
+                          onChange={(e) => setReportMonth(e.target.value)}
+                          className="w-full sm:w-40 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-[#1F4B36]"
+                        >
+                          {MONTH_OPTIONS.map(month => (
+                            <option key={month.value} value={month.value}>{month.label}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="space-y-1">
+                        <span className="text-[11px] font-bold text-gray-500 uppercase">Tahun</span>
+                        <select
+                          value={reportYear}
+                          onChange={(e) => setReportYear(e.target.value)}
+                          className="w-full sm:w-28 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-[#1F4B36]"
+                        >
+                          {reportYears.map(year => (
+                            <option key={year} value={year}>{year}</option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-3 text-sm text-emerald-900">
+                    Periode aktif: <b>{reportLabel}</b>. Data operasional harian tetap berada di menu masing-masing, sedangkan rekap bulan dan tahun dikumpulkan di sini.
+                  </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                   {([
-                    { type: 'invoices', title: 'Penjualan & Faktur', desc: 'Data pembeli, nominal, dan status bayar.' },
-                    { type: 'expenses', title: 'Pengeluaran Harian', desc: 'Biaya operasional dan belanja harian.' },
-                    { type: 'payroll', title: 'Payroll Mingguan', desc: 'Gaji, lembur, dan potongan per karyawan.' },
-                    { type: 'attendance', title: 'Absensi Karyawan', desc: 'Riwayat scan masuk/pulang dan keterlambatan.' },
+                    {
+                      type: 'sales',
+                      title: 'Penjualan',
+                      value: formatCurrency(salesTotal),
+                      meta: `${formatNumber(reportInvoices.length + reportOrders.length + reportMarketplaceItemSales.length + reportMarketplaceSales.length)} transaksi`,
+                      desc: 'Faktur, order non-marketplace, dan marketplace.',
+                    },
+                    {
+                      type: 'expenses',
+                      title: 'Pengeluaran',
+                      value: formatCurrency(expensesTotal),
+                      meta: `${formatNumber(reportDailyExpenses.length)} biaya harian · ${formatNumber(reportPurchases.length)} pembelian`,
+                      desc: 'Biaya operasional dan pembelian bahan/barang.',
+                    },
+                    {
+                      type: 'payroll',
+                      title: 'Payroll Mingguan',
+                      value: formatCurrency(payrollTotal),
+                      meta: `${formatNumber(reportPayroll.length)} slip · ${formatNumber(paidEmployeeCount)}/${formatNumber(activeEmployees.length)} karyawan`,
+                      desc: `Bonus tercatat ${formatCurrency(payrollBonusTotal)}.`,
+                    },
+                    {
+                      type: 'cash_advance',
+                      title: 'Kasbon',
+                      value: formatCurrency(cashAdvancePaid),
+                      meta: `Tambah ${formatCurrency(cashAdvanceAdded)} · sisa aktif ${formatCurrency(cashAdvanceActiveBalance)}`,
+                      desc: 'Rekap kasbon baru, topup, dan potongan gaji.',
+                    },
+                    {
+                      type: 'attendance',
+                      title: 'Absensi',
+                      value: `${formatNumber(uniqueAttendanceDays)} hari hadir`,
+                      meta: `${formatNumber(reportAttendance.length)} scan · ${formatNumber(attendanceIssueCount)} perlu cek`,
+                      desc: 'Scan masuk/pulang, jarak lokasi, dan koreksi admin.',
+                    },
+                    {
+                      type: 'production',
+                      title: 'Produksi',
+                      value: `${formatNumber(completedProductionQty)} pcs selesai`,
+                      meta: `${formatNumber(productionQty)} pcs target · ${formatNumber(reportProductionJobs.length)} pekerjaan`,
+                      desc: 'Target produksi Eva Foam dan Konveksi per bulan.',
+                    },
                   ] as const).map((r) => (
-                    <div key={r.type} className="p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-2">
-                      <p className="text-sm font-bold text-gray-700">{r.title}</p>
-                      <p className="text-xs text-gray-500">{r.desc}</p>
+                    <div key={r.type} className="bg-white p-4 rounded-xl border border-gray-200 space-y-3">
+                      <div>
+                        <p className="text-sm font-bold text-gray-700">{r.title}</p>
+                        <p className="text-xl font-black text-[#1F4B36] mt-1">{r.value}</p>
+                        <p className="text-xs font-semibold text-gray-500 mt-1">{r.meta}</p>
+                      </div>
+                      <p className="text-xs text-gray-500 min-h-8">{r.desc}</p>
                       <button
-                        onClick={() => handleExportCSV(r.type)}
-                        className="bg-[#1F4B36] hover:bg-[#163826] text-white font-semibold text-sm px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 cursor-pointer"
+                        onClick={() => handleExportPeriodCSV(r.type)}
+                        className="no-print bg-[#1F4B36] hover:bg-[#163826] text-white font-semibold text-sm px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 cursor-pointer"
                       >
-                        <Download className="w-4 h-4" /> Unduh CSV
+                        <Download className="w-4 h-4" /> Unduh CSV Periode
                       </button>
                     </div>
                   ))}
                 </div>
 
+                <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3 no-print">
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-800">Export Semua Data</h3>
+                    <p className="text-xs text-gray-500 mt-1">Dipakai jika owner butuh arsip penuh untuk backup atau olah data manual.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {([
+                      { type: 'invoices', title: 'Penjualan & Faktur' },
+                      { type: 'expenses', title: 'Pengeluaran Harian' },
+                      { type: 'payroll', title: 'Payroll Mingguan' },
+                      { type: 'attendance', title: 'Absensi Karyawan' },
+                    ] as const).map((r) => (
+                      <button
+                        key={r.type}
+                        onClick={() => handleExportCSV(r.type)}
+                        className="bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold text-xs px-3 py-2 rounded-lg flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5" /> {r.title}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Zona persiapan pemakaian nyata */}
-                <div className="border-t border-gray-100 pt-5">
+                <div className="no-print">
                   <div className="bg-rose-50 border border-rose-100 rounded-lg p-4 space-y-2">
                     <p className="text-sm font-bold text-rose-800">Mulai Data Bersih</p>
                     <p className="text-xs text-rose-700 leading-relaxed">
