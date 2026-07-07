@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Employee, PayrollWeekly, CashAdvance, Attendance } from '../types';
-import { dataStore } from '../dataStore';
+import { Employee, PayrollWeekly, CashAdvance, Attendance, AttendanceAdjustment } from '../types';
+import { dataStore, wibNowISO } from '../dataStore';
 import { Printer, Landmark, DollarSign, Plus, CheckCircle2, Sliders, History, Trash2, X, Calculator, Edit2, FileSpreadsheet } from 'lucide-react';
 
 interface PayrollModuleProps {
@@ -13,6 +13,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
   const [payrolls, setPayrolls] = useState<PayrollWeekly[]>([]);
   const [cashAdvances, setCashAdvances] = useState<CashAdvance[]>([]);
   const [attendance, setAttendance] = useState<Attendance[]>([]);
+  const [adjustments, setAdjustments] = useState<AttendanceAdjustment[]>([]);
   
   // Calibration
   const [calibration, setCalibration] = useState({ offset_x: 0, offset_y: 0 });
@@ -74,6 +75,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     setPayrolls(dataStore.getPayrollWeekly());
     setCashAdvances(dataStore.getCashAdvances());
     setAttendance(dataStore.getAttendance());
+    setAdjustments(dataStore.getAttendanceAdjustments());
     setCalibration(dataStore.getCalibration());
   };
 
@@ -97,8 +99,9 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
       });
       setDaysWorked(dayFractions.length ? dayFractions.reduce((sum, value) => sum + value, 0) : 5);
 
-      // Lembur otomatis adalah waktu setelah jam pulang dikurangi menit keterlambatan.
-      const computedOvertime = empAtt.reduce((sum, log) => sum + (log.overtime_minutes || 0), 0) / 60;
+      const approvedAdjustments = adjustments.filter(item => item.employee_id === selectedEmpId && item.date >= periodStart && item.date <= periodEnd);
+      const liveBonus = approvedAdjustments.filter(item => item.type === 'live_tiktok').reduce((sum, item) => sum + (item.bonus_amount || 0), 0);
+      const computedOvertime = approvedAdjustments.filter(item => item.type === 'overtime').reduce((sum, item) => sum + (item.overtime_minutes || 0), 0) / 60;
       setOvertimeHours(Math.round(computedOvertime * 100) / 100);
 
       // Bonus bulanan hanya diprefill pada slip yang berakhir di hari terakhir bulan.
@@ -111,15 +114,15 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
         const monthLogs = attendance.filter(log => log.employee_id === selectedEmpId && log.timestamp.startsWith(monthPrefix));
         const monthDays = new Set(monthLogs.filter(log => log.type_scan === 'masuk').map(log => log.timestamp.slice(0, 10))).size;
         const totalLate = monthLogs.reduce((sum, log) => sum + (log.late_minutes || 0), 0);
-        setBonus(monthDays >= settings.monthly_bonus_min_days && totalLate === 0 ? settings.monthly_bonus_amount : 0);
-      } else setBonus(0);
+        setBonus((monthDays >= settings.monthly_bonus_min_days && totalLate === 0 ? settings.monthly_bonus_amount : 0) + liveBonus);
+      } else setBonus(liveBonus);
 
       // Find cash advance balance to pre-populate deduction
       const advances = cashAdvances.filter(c => c.employee_id === selectedEmpId);
       const totalOutstanding = advances.reduce((acc, curr) => acc + curr.remaining_balance, 0);
       setKasbonDeduction(Math.min(totalOutstanding, 50000)); // Default auto-deduct 50k or remaining balance
     }
-  }, [selectedEmpId, periodStart, periodEnd, attendance, cashAdvances, employees]);
+  }, [selectedEmpId, periodStart, periodEnd, attendance, adjustments, cashAdvances, employees]);
 
   const handleCreatePayroll = (e: React.FormEvent) => {
     e.preventDefault();
@@ -286,6 +289,32 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     // Reset
     setNewKasbonEmpId('');
     setNewKasbonAmount(0);
+    loadData();
+  };
+
+  const pendingAdjustmentLogs = attendance
+    .filter(log => log.type_scan === 'pulang' && (log.overtime_minutes || 0) > 0)
+    .filter(log => !adjustments.some(item => item.attendance_id === log.id))
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+    .slice(0, 20);
+
+  const approveAdjustment = (log: Attendance, type: 'overtime' | 'live_tiktok' | 'ignored') => {
+    const actor = JSON.parse(localStorage.getItem('nxty_session') || 'null');
+    dataStore.approveAttendanceAdjustment({
+      id: Math.random().toString(36).slice(2, 11),
+      attendance_id: log.id,
+      employee_id: log.employee_id,
+      employee_name: log.employee_name,
+      date: log.timestamp.slice(0, 10),
+      checkout_time: log.timestamp.slice(11, 16),
+      type,
+      overtime_minutes: type === 'overtime' ? (log.overtime_minutes || 0) : 0,
+      bonus_amount: type === 'live_tiktok' ? 20000 : 0,
+      note: type === 'live_tiktok' ? 'Bonus live TikTok' : type === 'overtime' ? 'ACC lembur' : 'Tidak dihitung tambahan',
+      approved_by_id: actor?.employeeId,
+      approved_by_name: actor?.name,
+      approved_at: wibNowISO()
+    });
     loadData();
   };
 
@@ -960,6 +989,30 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
           </div>
         </div>
         
+        {pendingAdjustmentLogs.length > 0 && (
+          <div className="bg-white border border-amber-200 rounded-xl p-4 space-y-3">
+            <div>
+              <h3 className="font-black text-sm text-gray-800">Perlu ACC Lembur / Live TikTok</h3>
+              <p className="text-xs text-gray-500">Karyawan yang pulang lewat jam kerja. Pilih salah satu agar masuk perhitungan slip gaji.</p>
+            </div>
+            <div className="space-y-2 max-h-72 overflow-y-auto">
+              {pendingAdjustmentLogs.map(log => (
+                <div key={log.id} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center bg-amber-50/60 border border-amber-100 rounded-lg p-3 text-xs">
+                  <div className="md:col-span-5">
+                    <p className="font-black text-gray-800">{log.employee_name}</p>
+                    <p className="text-gray-500">{log.timestamp.slice(0, 10)} · pulang {log.timestamp.slice(11, 16)} · ekstra {Math.round((log.overtime_minutes || 0) / 60 * 100) / 100} jam</p>
+                  </div>
+                  <div className="md:col-span-7 flex flex-wrap gap-2 md:justify-end">
+                    <button type="button" onClick={() => approveAdjustment(log, 'overtime')} className="px-3 py-2 rounded-lg bg-[#1F4B36] text-white font-bold cursor-pointer">ACC Lembur</button>
+                    <button type="button" onClick={() => approveAdjustment(log, 'live_tiktok')} className="px-3 py-2 rounded-lg bg-pink-600 text-white font-bold cursor-pointer">Live TikTok Rp20.000</button>
+                    <button type="button" onClick={() => approveAdjustment(log, 'ignored')} className="px-3 py-2 rounded-lg bg-white border border-gray-200 text-gray-600 font-bold cursor-pointer">Abaikan</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Payroll History & Print list with Evergreen Theme */}
         <div className="bg-white rounded-lg border border-emerald-800/20 overflow-hidden shadow-md w-full">
           <div className="p-4 bg-emerald-50/40 border-b border-emerald-800/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">

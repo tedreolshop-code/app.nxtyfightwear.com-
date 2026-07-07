@@ -1,12 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { Order, OrderItem, Product, ProductionJob } from '../types';
+import { Order, OrderItem, Product, ProductionJob, Employee } from '../types';
 import { dataStore } from '../dataStore';
-import { ShoppingBag, Plus, Calendar, User, Phone, Tag, CheckCircle2, AlertCircle, Trash2, ArrowRight } from 'lucide-react';
+import { ShoppingBag, Plus, User, Phone, CheckCircle2, Trash2, ArrowRight, PackageCheck, Truck } from 'lucide-react';
 
 export const OrderModule: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [expandedOrderId, setExpandedOrderId] = useState('');
+  const [packingEmployeeId, setPackingEmployeeId] = useState('');
+  const [shipExpedition, setShipExpedition] = useState('');
+  const [shipTracking, setShipTracking] = useState('');
+  const [shipProof, setShipProof] = useState('');
 
   // New Order Form State
   const [customerName, setCustomerName] = useState('');
@@ -32,6 +38,7 @@ export const OrderModule: React.FC = () => {
   const loadData = () => {
     setOrders(dataStore.getOrders());
     setProducts(dataStore.getProducts());
+    setEmployees(dataStore.getEmployees().filter(employee => employee.status_aktif));
   };
 
   const handleAddItem = () => {
@@ -214,6 +221,41 @@ export const OrderModule: React.FC = () => {
     loadData();
   };
 
+  const openOrderPanel = (order: Order) => {
+    setExpandedOrderId(expandedOrderId === order.id ? '' : order.id);
+    setPackingEmployeeId(order.packing_employee_id || '');
+    setShipExpedition(order.shipping_expedition || '');
+    setShipTracking(order.tracking_number || '');
+    setShipProof(order.shipping_proof_url || '');
+  };
+
+  const handleAssignPacking = (order: Order) => {
+    if (!packingEmployeeId) return alert('Pilih karyawan packing terlebih dahulu.');
+    if (!dataStore.assignPackingTask(order.id, packingEmployeeId)) return alert('Gagal membuat tugas packing.');
+    alert('Tugas packing berhasil dikirim ke Daftar Kerjaan karyawan.');
+    loadData();
+  };
+
+  const handleProofFile = (file?: File) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setShipProof(String(reader.result || ''));
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveShipping = (order: Order) => {
+    if (!shipExpedition.trim() || !shipTracking.trim()) return alert('Ekspedisi dan nomor resi wajib diisi.');
+    dataStore.updateOrderShipping(order.id, {
+      shipping_expedition: shipExpedition.trim(),
+      tracking_number: shipTracking.trim(),
+      shipping_date: new Date().toISOString().slice(0, 10),
+      shipping_proof_url: shipProof || undefined,
+      shipping_status: 'dikirim'
+    });
+    alert('Resi pengiriman berhasil disimpan.');
+    loadData();
+  };
+
   const getSourceBadge = (order: Order) => {
     if (order.source === 'offline') {
       return <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-[10px] rounded font-semibold font-mono border">Offline / Custom</span>;
@@ -236,6 +278,13 @@ export const OrderModule: React.FC = () => {
       case 'cancelled':
         return <span className="px-2 py-0.5 bg-rose-100 text-rose-800 text-[10px] rounded font-semibold border border-rose-200">Dibatalkan</span>;
     }
+  };
+
+  const getShippingBadge = (order: Order) => {
+    const status = order.shipping_status || 'belum_dikirim';
+    const className = status === 'dikirim' ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : status === 'siap_dikirim' ? 'bg-sky-100 text-sky-800 border-sky-200' : 'bg-gray-100 text-gray-600 border-gray-200';
+    const label = status === 'dikirim' ? 'Dikirim' : status === 'siap_dikirim' ? 'Siap Kirim' : 'Belum Kirim';
+    return <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${className}`}>{label}</span>;
   };
 
   const formatIDR = (val: number) => {
@@ -461,17 +510,19 @@ export const OrderModule: React.FC = () => {
                 <th className="p-3">Daftar Barang</th>
                 <th className="p-3 text-right">Total Tagihan</th>
                 <th className="p-3 text-center">Status</th>
+                <th className="p-3 text-center">Kirim</th>
                 <th className="p-3 text-center">Aksi Pelacakan</th>
               </tr>
             </thead>
             <tbody>
               {orders.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-6 text-center text-gray-400 italic">Belum ada data pesanan tercatat.</td>
+                  <td colSpan={9} className="p-6 text-center text-gray-400 italic">Belum ada data pesanan tercatat.</td>
                 </tr>
               ) : (
                 orders.map((ord) => (
-                  <tr key={ord.id} className="border-b border-gray-100 hover:bg-gray-50/55 align-top">
+                  <React.Fragment key={ord.id}>
+                  <tr className="border-b border-gray-100 hover:bg-gray-50/55 align-top">
                     <td className="p-3 font-mono font-bold text-gray-800">{ord.order_number}</td>
                     <td className="p-3 font-mono text-gray-500 whitespace-nowrap">{ord.date}</td>
                     <td className="p-3">
@@ -493,7 +544,11 @@ export const OrderModule: React.FC = () => {
                     </td>
                     <td className="p-3 text-right font-mono font-bold text-gray-800">{formatIDR(ord.total)}</td>
                     <td className="p-3 text-center">{getStatusBadge(ord.status)}</td>
+                    <td className="p-3 text-center space-y-1">{getShippingBadge(ord)}{ord.tracking_number && <p className="text-[10px] font-mono text-gray-500">{ord.tracking_number}</p>}</td>
                     <td className="p-3 text-center space-y-1">
+                      <button onClick={() => openOrderPanel(ord)} className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-[10px] font-bold px-2 py-1 rounded flex items-center gap-1 mx-auto">
+                        <PackageCheck className="w-3 h-3" /> Packing / Resi
+                      </button>
                       {ord.status === 'pending' && (
                         <button
                           onClick={() => handleSendToProduction(ord)}
@@ -531,6 +586,34 @@ export const OrderModule: React.FC = () => {
                       )}
                     </td>
                   </tr>
+                  {expandedOrderId === ord.id && (
+                    <tr className="bg-gray-50/60 border-b border-gray-100">
+                      <td colSpan={9} className="p-4">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                          <div className="bg-white border border-gray-100 rounded-xl p-4 space-y-3">
+                            <div><h4 className="font-black text-xs text-gray-800 flex items-center gap-1"><PackageCheck className="w-4 h-4 text-[#1F4B36]" /> Tugas Packing</h4><p className="text-[10px] text-gray-400">Assign ke karyawan, nanti muncul di Daftar Kerjaan.</p></div>
+                            <select value={packingEmployeeId} onChange={event => setPackingEmployeeId(event.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs">
+                              <option value="">Pilih karyawan packing</option>
+                              {employees.map(employee => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
+                            </select>
+                            {ord.packing_employee_name && <p className="text-xs text-gray-500">PIC sekarang: <b>{ord.packing_employee_name}</b></p>}
+                            <button onClick={() => handleAssignPacking(ord)} className="w-full bg-[#1F4B36] text-white rounded-lg py-2 text-xs font-bold cursor-pointer">Kirim Tugas Packing</button>
+                          </div>
+                          <div className="bg-white border border-gray-100 rounded-xl p-4 space-y-3">
+                            <div><h4 className="font-black text-xs text-gray-800 flex items-center gap-1"><Truck className="w-4 h-4 text-[#1F4B36]" /> Resi Pengiriman</h4><p className="text-[10px] text-gray-400">Isi setelah paket siap/kirim.</p></div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <input value={shipExpedition} onChange={event => setShipExpedition(event.target.value)} placeholder="Ekspedisi" className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs" />
+                              <input value={shipTracking} onChange={event => setShipTracking(event.target.value)} placeholder="Nomor resi" className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono" />
+                            </div>
+                            <input type="file" accept="image/*" onChange={event => handleProofFile(event.target.files?.[0])} className="w-full text-xs file:mr-2 file:border-0 file:bg-gray-100 file:px-3 file:py-1.5 file:rounded file:text-xs file:font-bold" />
+                            {shipProof && <p className="text-[10px] text-emerald-700 font-bold">Bukti resi siap disimpan.</p>}
+                            <button onClick={() => handleSaveShipping(ord)} className="w-full bg-emerald-700 text-white rounded-lg py-2 text-xs font-bold cursor-pointer">Simpan Resi</button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
                 ))
               )}
             </tbody>

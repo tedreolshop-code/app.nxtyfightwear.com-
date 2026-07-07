@@ -28,6 +28,8 @@ import {
   ,ProductionHandoff
   ,RejectedGood
   ,ProductionTaskLog
+  ,PackingTask
+  ,AttendanceAdjustment
 } from './types';
 import { pushKeyToCloud, pushAttendanceToCloud, clearAttendanceInCloud } from './cloudSync';
 
@@ -103,6 +105,8 @@ const INITIAL_PRODUCTION_JOBS: ProductionJob[] = [];
 const INITIAL_PRODUCTION_HANDOFFS: ProductionHandoff[] = [];
 const INITIAL_REJECTED_GOODS: RejectedGood[] = [];
 const INITIAL_PRODUCTION_TASK_LOGS: ProductionTaskLog[] = [];
+const INITIAL_PACKING_TASKS: PackingTask[] = [];
+const INITIAL_ATTENDANCE_ADJUSTMENTS: AttendanceAdjustment[] = [];
 
 const INITIAL_ASSETS: Asset[] = [
   {
@@ -409,6 +413,9 @@ class DataStore {
   getAttendance = (): Attendance[] => this.get('attendance', INITIAL_ATTENDANCE);
   setAttendance = (data: Attendance[]) => this.set('attendance', data);
 
+  getAttendanceAdjustments = (): AttendanceAdjustment[] => this.get('attendance_adjustments', INITIAL_ATTENDANCE_ADJUSTMENTS);
+  setAttendanceAdjustments = (data: AttendanceAdjustment[]) => this.set('attendance_adjustments', data);
+
   getCashAdvances = (): CashAdvance[] => this.get('cash_advances', INITIAL_CASH_ADVANCES);
   setCashAdvances = (data: CashAdvance[]) => this.set('cash_advances', data);
 
@@ -492,10 +499,63 @@ class DataStore {
   getProductionTaskLogs = (): ProductionTaskLog[] => this.get('production_task_logs', INITIAL_PRODUCTION_TASK_LOGS);
   setProductionTaskLogs = (data: ProductionTaskLog[]) => this.set('production_task_logs', data);
 
+  getPackingTasks = (): PackingTask[] => this.get('packing_tasks', INITIAL_PACKING_TASKS);
+  setPackingTasks = (data: PackingTask[]) => this.set('packing_tasks', data);
+
   getAssets = (): Asset[] => this.get('assets', INITIAL_ASSETS);
   setAssets = (data: Asset[]) => this.set('assets', data);
 
   // Business Transactions
+  assignPackingTask = (orderId: string, employeeId: string): PackingTask | null => {
+    const orders = this.getOrders();
+    const order = orders.find(item => item.id === orderId);
+    const employee = this.getEmployees().find(item => item.id === employeeId);
+    if (!order || !employee) return null;
+
+    const current = this.getPackingTasks().filter(task => !(task.order_id === orderId && task.status === 'assigned'));
+    const task: PackingTask = {
+      id: uuid(),
+      order_id: order.id,
+      order_number: order.order_number,
+      customer_name: order.customer_name,
+      employee_id: employee.id,
+      employee_name: employee.name,
+      items: order.items,
+      status: 'assigned',
+      notes: order.notes,
+      created_at: wibNowISO()
+    };
+
+    this.setPackingTasks([task, ...current]);
+    this.setOrders(orders.map(item => item.id === orderId ? { ...item, packing_employee_id: employee.id, packing_employee_name: employee.name, shipping_status: item.shipping_status || 'belum_dikirim' } : item));
+    this.logAudit('create', 'packing_task', `Menugaskan packing ${order.order_number} ke ${employee.name}`, task.id);
+    return task;
+  };
+
+  completePackingTask = (taskId: string, note?: string): boolean => {
+    const tasks = this.getPackingTasks();
+    const task = tasks.find(item => item.id === taskId);
+    if (!task) return false;
+    this.setPackingTasks(tasks.map(item => item.id === taskId ? { ...item, status: 'completed', completed_note: note, completed_at: wibNowISO() } : item));
+    this.setOrders(this.getOrders().map(order => order.id === task.order_id ? { ...order, shipping_status: 'siap_dikirim' } : order));
+    this.logAudit('update', 'packing_task', `${task.employee_name} menyelesaikan packing ${task.order_number}`, task.id);
+    return true;
+  };
+
+  updateOrderShipping = (orderId: string, patch: Partial<Order>): boolean => {
+    const orders = this.getOrders();
+    if (!orders.some(order => order.id === orderId)) return false;
+    this.setOrders(orders.map(order => order.id === orderId ? { ...order, ...patch } : order));
+    this.logAudit('update', 'order_shipping', `Memperbarui resi pengiriman order ${orders.find(order => order.id === orderId)?.order_number || orderId}`, orderId);
+    return true;
+  };
+
+  approveAttendanceAdjustment = (adjustment: AttendanceAdjustment): void => {
+    const current = this.getAttendanceAdjustments().filter(item => item.attendance_id !== adjustment.attendance_id);
+    this.setAttendanceAdjustments([adjustment, ...current]);
+    this.logAudit('create', 'attendance_adjustment', `ACC ${adjustment.type} untuk ${adjustment.employee_name} tanggal ${adjustment.date}`, adjustment.id);
+  };
+
   createManualProductionJob = (job: ProductionJob): { ok: boolean; shortages: string[] } => {
     const materialsUsed = job.materials_planned || [];
     const materials = this.getRawMaterials();
@@ -742,6 +802,8 @@ class DataStore {
     this.setProductionHandoffs([]);
     this.setRejectedGoods([]);
     this.setProductionTaskLogs([]);
+    this.setPackingTasks([]);
+    this.setAttendanceAdjustments([]);
     this.setProductionLogs([]);
     this.setMarketplaceSales([]);
     this.setMarketplaceItemSales([]);

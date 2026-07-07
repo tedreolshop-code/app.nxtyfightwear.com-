@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Product, RawMaterial, StockMovement, ProductionLog, ProductionJob, Employee, RejectedGood, ProductionTaskLog } from '../types';
+import { Product, RawMaterial, StockMovement, ProductionLog, ProductionJob, Employee, RejectedGood, ProductionTaskLog, PackingTask } from '../types';
 import { ProductionHandoffPanel } from './ProductionHandoffPanel';
 import { dataStore, RECIPES, wibNowISO, wibTodayStr } from '../dataStore';
 import { 
@@ -40,6 +40,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [rejectedGoods, setRejectedGoods] = useState<RejectedGood[]>([]);
   const [taskLogs, setTaskLogs] = useState<ProductionTaskLog[]>([]);
+  const [packingTasks, setPackingTasks] = useState<PackingTask[]>([]);
   
   // Navigation dibuat mengikuti urutan kerja admin produksi.
   const [subTab, setSubTab] = useState<'order' | 'tracker' | 'finalize' | 'history'>('order');
@@ -67,6 +68,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
   const [finalOutputs, setFinalOutputs] = useState<Array<{ product_id: string; good_qty: number; reject_qty: number; reject_reason: string }>>([]);
   const [taskJobId, setTaskJobId] = useState('');
   const [openedEmployeeJobId, setOpenedEmployeeJobId] = useState('');
+  const [openedPackingTaskId, setOpenedPackingTaskId] = useState('');
   const [taskStage, setTaskStage] = useState('');
   const [taskName, setTaskName] = useState('');
   const [taskQtyDone, setTaskQtyDone] = useState(0);
@@ -101,6 +103,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
     setEmployees(dataStore.getEmployees().filter(employee => employee.status_aktif));
     setRejectedGoods(dataStore.getRejectedGoods());
     setTaskLogs(dataStore.getProductionTaskLogs());
+    setPackingTasks(dataStore.getPackingTasks());
   };
 
   // Data lokal instan — tanpa jeda loading buatan
@@ -375,6 +378,15 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
     if (!window.confirm('Hapus catatan kerjaan ini?')) return;
     if (!dataStore.deleteProductionTaskLog(logId)) return alert('Catatan kerja tidak ditemukan.');
     loadData();
+  };
+
+  const handleCompletePackingTask = (taskId: string) => {
+    if (!window.confirm('Tandai packing ini sudah selesai?')) return;
+    if (!dataStore.completePackingTask(taskId, taskNotes.trim() || undefined)) return alert('Tugas packing tidak ditemukan.');
+    setTaskNotes('');
+    setOpenedPackingTaskId('');
+    loadData();
+    alert('Packing selesai. Order sekarang siap dikirim.');
   };
 
   const handleManualAdjustment = (e: React.FormEvent) => {
@@ -792,18 +804,20 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                   )
                 );
                 const selectedTaskJob = myJobs.find(job => job.id === openedEmployeeJobId);
+                const myPackingTasks = packingTasks.filter(task => task.employee_id === currentEmployee?.id && task.status === 'assigned');
+                const selectedPackingTask = myPackingTasks.find(task => task.id === openedPackingTaskId);
                 const myLogs = taskLogs.filter(log => log.employee_id === currentEmployee?.id);
                 const selectedLogs = selectedTaskJob ? myLogs.filter(log => log.production_job_id === selectedTaskJob.id) : myLogs;
                 return (
                   <>
-                    <div className={`${selectedTaskJob ? 'lg:col-span-5' : 'lg:col-span-12'} bg-white rounded-xl border border-gray-200 p-4 space-y-4`}>
+                    <div className={`${selectedTaskJob || selectedPackingTask ? 'lg:col-span-5' : 'lg:col-span-12'} bg-white rounded-xl border border-gray-200 p-4 space-y-4`}>
                       <div>
                         <h3 className="font-black text-sm text-gray-800">Daftar Kerjaan Saya</h3>
                         <p className="text-xs text-gray-400">Buka salah satu kerjaan untuk input hasil atau reject.</p>
                       </div>
                       <div className="space-y-2">
-                        {myJobs.length === 0 ? (
-                          <p className="text-xs text-gray-400 text-center py-10 bg-gray-50 rounded-lg border border-dashed border-gray-200">Belum ada tugas produksi aktif.</p>
+                        {myJobs.length === 0 && myPackingTasks.length === 0 ? (
+                          <p className="text-xs text-gray-400 text-center py-10 bg-gray-50 rounded-lg border border-dashed border-gray-200">Belum ada kerjaan aktif.</p>
                         ) : myJobs.map(job => {
                           const hasInputToday = myLogs.some(log => log.production_job_id === job.id && log.date === wibTodayStr());
                           return (
@@ -812,6 +826,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                               type="button"
                               onClick={() => {
                                 setOpenedEmployeeJobId(job.id);
+                                setOpenedPackingTaskId('');
                                 setTaskJobId(job.id);
                                 setTaskStage(job.current_stage);
                                 setTaskName(job.current_stage);
@@ -836,8 +851,51 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                             </button>
                           );
                         })}
+                        {myPackingTasks.map(task => (
+                          <button
+                            key={task.id}
+                            type="button"
+                            onClick={() => {
+                              setOpenedPackingTaskId(task.id);
+                              setOpenedEmployeeJobId('');
+                              setTaskJobId('');
+                              setTaskNotes('');
+                            }}
+                            className={`w-full text-left p-3 rounded-lg border cursor-pointer transition-colors ${openedPackingTaskId === task.id ? 'bg-sky-50 border-sky-200' : 'bg-gray-50 border-gray-100 hover:bg-sky-50/60'}`}
+                          >
+                            <div className="flex justify-between gap-3">
+                              <div>
+                                <p className="font-black text-gray-800 text-xs">Packing Order</p>
+                                <p className="text-[10px] text-gray-500 mt-0.5">{task.order_number} · {task.customer_name}</p>
+                                <p className="text-[10px] text-gray-500 mt-1">{task.items.map(item => `${item.qty}x ${item.product_name}`).join(', ')}</p>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <p className="font-mono text-xs font-black text-sky-700">{task.items.reduce((sum, item) => sum + item.qty, 0)} pcs</p>
+                                <span className="mt-1 inline-block rounded px-1.5 py-0.5 text-[9px] font-bold bg-sky-100 text-sky-700">Packing</span>
+                              </div>
+                            </div>
+                          </button>
+                        ))}
                       </div>
                     </div>
+
+                    {selectedPackingTask && <div className="lg:col-span-7 bg-white rounded-xl border border-gray-200 p-4 space-y-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h3 className="font-black text-sm text-gray-800">Packing {selectedPackingTask.order_number}</h3>
+                          <p className="text-xs text-gray-400">{selectedPackingTask.customer_name}</p>
+                        </div>
+                        <button type="button" onClick={() => setOpenedPackingTaskId('')} className="text-xs font-bold text-gray-500 bg-gray-100 rounded-lg px-3 py-1.5 cursor-pointer">Tutup</button>
+                      </div>
+                      <div className="border border-gray-100 rounded-xl overflow-hidden">
+                        <table className="w-full text-xs">
+                          <thead className="bg-gray-50 text-gray-500"><tr><th className="p-2 text-left">Barang</th><th className="p-2 text-right">Qty</th></tr></thead>
+                          <tbody>{selectedPackingTask.items.map(item => <tr key={item.id} className="border-t"><td className="p-2 font-bold text-gray-800">{item.product_name}<p className="text-[10px] text-gray-400 font-normal">{item.variant}</p></td><td className="p-2 text-right font-mono font-black">{item.qty}</td></tr>)}</tbody>
+                        </table>
+                      </div>
+                      <textarea value={taskNotes} onChange={event => setTaskNotes(event.target.value)} rows={3} placeholder="Catatan packing bila ada" className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-xs" />
+                      <button type="button" onClick={() => handleCompletePackingTask(selectedPackingTask.id)} className="w-full py-2.5 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 bg-[#1F4B36] text-white cursor-pointer hover:bg-[#163826]"><CheckCircle2 className="w-4 h-4" /> Selesai Packing</button>
+                    </div>}
 
                     {selectedTaskJob && <div className="lg:col-span-7 bg-white rounded-xl border border-gray-200 p-4 space-y-4">
                       <div>

@@ -177,6 +177,24 @@ export interface PayrollWeekly {
   is_printed: boolean;
 }
 
+export type AttendanceAdjustmentType = 'overtime' | 'live_tiktok' | 'ignored';
+
+export interface AttendanceAdjustment {
+  id: string;
+  attendance_id: string;
+  employee_id: string;
+  employee_name: string;
+  date: string;
+  checkout_time: string;
+  type: AttendanceAdjustmentType;
+  overtime_minutes?: number;
+  bonus_amount?: number;
+  note?: string;
+  approved_by_id?: string;
+  approved_by_name?: string;
+  approved_at: string;
+}
+
 export interface Customer {
   id: string;
   name: string;
@@ -389,6 +407,21 @@ export interface ProductionTaskLog {
   created_at: string;
 }
 
+export interface PackingTask {
+  id: string;
+  order_id: string;
+  order_number: string;
+  customer_name: string;
+  employee_id: string;
+  employee_name: string;
+  items: OrderItem[];
+  status: 'assigned' | 'completed';
+  notes?: string;
+  completed_note?: string;
+  created_at: string;
+  completed_at?: string;
+}
+
 export interface ProductionHandoff {
   id: string;
   job_id: string;
@@ -436,6 +469,13 @@ export interface Order {
   total: number;
   status: 'pending' | 'production' | 'completed' | 'cancelled';
   notes?: string;
+  shipping_expedition?: string;
+  tracking_number?: string;
+  shipping_date?: string;
+  shipping_proof_url?: string;
+  shipping_status?: 'belum_dikirim' | 'siap_dikirim' | 'dikirim' | 'diterima';
+  packing_employee_id?: string;
+  packing_employee_name?: string;
 }
 
 export interface Asset {
