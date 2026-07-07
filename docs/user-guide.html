@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <title>User Guide ARI SPORTINDO</title>
+  <style>
+    @page { size: A4; margin: 17mm 16mm 18mm; }
+    @page:first { margin: 0; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #243029; font: 10.3pt/1.48 Arial, Helvetica, sans-serif; background: white; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { font-size: 28pt; line-height: 1.08; }
+    h2 { color: #173d2b; font-size: 19pt; margin-bottom: 6mm; border-bottom: 2px solid #e7b536; padding-bottom: 2.5mm; }
+    h3 { color: #1f4b36; font-size: 12.5pt; margin: 5mm 0 2mm; }
+    p { margin-bottom: 3mm; }
+    ul, ol { margin: 2mm 0 4mm; padding-left: 6mm; }
+    li { margin: 1.2mm 0; }
+    table { width: 100%; border-collapse: collapse; margin: 3mm 0 5mm; font-size: 9.2pt; }
+    th { background: #1f4b36; color: white; text-align: left; }
+    th, td { padding: 2.5mm 3mm; border: 1px solid #dce4df; vertical-align: top; }
+    tr:nth-child(even) td { background: #f5f8f6; }
+    code { font-family: Arial, sans-serif; color: #173d2b; font-weight: bold; }
+    .cover { width: 210mm; height: 297mm; padding: 24mm 20mm; color: white; background: #173d2b; position: relative; overflow: hidden; page-break-after: always; }
+    .cover:after { content: ""; position: absolute; width: 145mm; height: 145mm; border: 32mm solid rgba(251,191,36,.12); border-radius: 50%; right: -75mm; bottom: -55mm; }
+    .mark { width: 28mm; height: 28mm; border-radius: 7mm; background: #fbbf24; color: #173d2b; display: grid; place-items: center; font-size: 17pt; font-weight: 900; letter-spacing: -1px; }
+    .cover-main { margin-top: 49mm; max-width: 150mm; }
+    .cover h1 { margin: 6mm 0 4mm; font-size: 35pt; }
+    .cover .subtitle { font-size: 15pt; color: #d4e8dc; }
+    .cover .url { display: inline-block; margin-top: 11mm; padding: 3mm 5mm; border: 1px solid rgba(255,255,255,.3); border-radius: 3mm; color: #fbbf24; }
+    .cover .meta { position: absolute; left: 20mm; bottom: 22mm; color: #bed2c5; font-size: 9pt; }
+    .page { page-break-before: always; }
+    .keep { break-inside: avoid; }
+    .lead { color: #52665a; font-size: 11.2pt; }
+    .callout { border-left: 4px solid #e7b536; background: #fff9e8; padding: 3.5mm 4mm; margin: 4mm 0; break-inside: avoid; }
+    .note { border-left-color: #1f4b36; background: #eef5f1; }
+    .warning { border-left-color: #c2413b; background: #fff1f0; }
+    .steps { list-style: none; counter-reset: step; padding: 0; }
+    .steps li { counter-increment: step; position: relative; padding: 1mm 0 4mm 11mm; border-left: 1px solid #ccd9d1; margin-left: 4mm; }
+    .steps li:before { content: counter(step); position: absolute; left: -4.5mm; top: 0; width: 8mm; height: 8mm; border-radius: 50%; background: #1f4b36; color: white; text-align: center; line-height: 8mm; font-weight: bold; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; margin: 3mm 0 5mm; }
+    .card { border: 1px solid #dce4df; border-radius: 3mm; padding: 4mm; break-inside: avoid; }
+    .card h3 { margin-top: 0; }
+    .badge { display: inline-block; padding: .8mm 2.2mm; border-radius: 5mm; background: #e7f1eb; color: #1f4b36; font-size: 8pt; font-weight: bold; }
+    .toc td { border: 0; border-bottom: 1px dotted #b8c6bd; background: white !important; padding: 2mm 0; }
+    .toc td:last-child { text-align: right; color: #66776c; }
+    .footer-note { color: #66776c; font-size: 8.5pt; }
+    .check { color: #16764a; font-weight: bold; }
+    figure.shot { margin: 4mm 0 6mm; break-inside: avoid; }
+    figure.shot img { width: 100%; border: 1px solid #dce4df; border-radius: 2mm; display: block; }
+    figure.shot.mobile img { width: 58mm; margin: 0 auto; }
+    figcaption { text-align: center; color: #66776c; font-size: 8pt; margin-top: 1.5mm; }
+  </style>
+</head>
+<body>
+  <section class="cover">
+    <div class="mark">ARI</div>
+    <div class="cover-main">
+      <div style="color:#fbbf24;font-weight:bold;letter-spacing:2px">ARI SPORTINDO</div>
+      <h1>Panduan Pengguna</h1>
+      <p class="subtitle">Sistem Produksi &amp; Manajemen</p>
+      <div class="url">app.anxietyfightwear.com</div>
+    </div>
+    <div class="meta">Versi 1.0 &nbsp;•&nbsp; Juli 2026<br>Panduan untuk Owner, Admin, Gudang &amp; Produksi, dan Karyawan</div>
+  </section>
+
+  <section>
+    <h2>Tentang panduan ini</h2>
+    <p class="lead">Panduan ini menjelaskan cara memasang dan menggunakan aplikasi ARI SPORTINDO pada komputer maupun ponsel. Tampilan menu otomatis menyesuaikan hak akses akun.</p>
+    <div class="callout note"><strong>Alamat resmi aplikasi</strong><br>Gunakan <code>https://app.anxietyfightwear.com</code>. Pastikan alamat dan ikon gembok HTTPS benar sebelum memasukkan username dan PIN.</div>
+    <h3>Daftar isi</h3>
+    <table class="toc">
+      <tr><td>1. Mulai menggunakan aplikasi</td><td>3</td></tr>
+      <tr><td>2. Instalasi di laptop, desktop, dan HP</td><td>4</td></tr>
+      <tr><td>3. Hak akses dan navigasi</td><td>5</td></tr>
+      <tr><td>4. Dashboard dan penjualan</td><td>6</td></tr>
+      <tr><td>5. Pembelian, pengeluaran, dan gudang</td><td>7</td></tr>
+      <tr><td>6. Produksi</td><td>8</td></tr>
+      <tr><td>7. Karyawan, absensi, dan payroll</td><td>9</td></tr>
+      <tr><td>8. Profil, laporan, dan praktik aman</td><td>10</td></tr>
+      <tr><td>9. Pemecahan masalah</td><td>11</td></tr>
+    </table>
+    <h3>Istilah singkat</h3>
+    <table>
+      <tr><th>Istilah</th><th>Arti</th></tr>
+      <tr><td>PO</td><td>Purchase Order atau pesanan pembelian ke supplier.</td></tr>
+      <tr><td>Omset bersih</td><td>Nilai penjualan bersih yang dicatat dari channel marketplace.</td></tr>
+      <tr><td>Cloud</td><td>Penyimpanan terpusat agar data dapat tersinkron antarperangkat.</td></tr>
+      <tr><td>PWA</td><td>Aplikasi web yang dapat dipasang dan dibuka seperti aplikasi biasa.</td></tr>
+    </table>
+  </section>
+
+  <section class="page">
+    <h2>1. Mulai menggunakan aplikasi</h2>
+    <figure class="shot"><img src="screenshots/01-login.png" alt="Halaman login"><figcaption>Halaman login ARI SPORTINDO</figcaption></figure>
+    <h3>Masuk ke akun</h3>
+    <ol class="steps">
+      <li>Buka <code>app.anxietyfightwear.com</code> melalui browser.</li>
+      <li>Masukkan <strong>username</strong> yang diberikan administrator.</li>
+      <li>Masukkan <strong>PIN 4 digit</strong>, lalu pilih <strong>Masuk</strong>.</li>
+      <li>Setelah berhasil, dashboard dan menu sesuai peran akan tampil.</li>
+    </ol>
+    <div class="callout warning"><strong>Jangan bagikan PIN.</strong> Setiap pengguna harus memakai akun sendiri agar pencatatan aktivitas dan akses data tetap jelas.</div>
+    <h3>Navigasi</h3>
+    <div class="grid">
+      <div class="card"><h3>Komputer/laptop</h3><p>Pilih menu melalui sidebar hijau di sisi kiri. Nama akun, status cloud, dan tombol <strong>Keluar</strong> berada di bagian bawah sidebar.</p></div>
+      <div class="card"><h3>HP/tablet</h3><p>Geser baris menu berbentuk kapsul ke kiri atau kanan. Tombol <strong>Keluar</strong> berada di kanan atas.</p></div>
+    </div>
+    <h3>Status sinkronisasi</h3>
+    <table>
+      <tr><th>Status</th><th>Tindakan</th></tr>
+      <tr><td><span class="check">● Tersinkron ke Cloud</span></td><td>Koneksi dan sinkronisasi berjalan normal.</td></tr>
+      <tr><td>● Menghubungkan…</td><td>Tunggu beberapa saat; jangan menutup aplikasi saat sedang menyimpan data penting.</td></tr>
+      <tr><td>● Offline / data lokal</td><td>Periksa internet. Data dapat tampil dari perangkat, tetapi perubahan antarperangkat belum tentu langsung tersedia.</td></tr>
+      <tr><td>● Cloud error</td><td>Segarkan halaman setelah koneksi stabil. Jika berulang, laporkan kepada administrator.</td></tr>
+    </table>
+    <div class="callout note"><strong>Sesi tetap tersimpan</strong> saat halaman disegarkan. Gunakan tombol <strong>Keluar</strong> jika memakai perangkat bersama.</div>
+  </section>
+
+  <section class="page">
+    <h2>2. Instalasi di laptop, desktop, dan HP</h2>
+    <figure class="shot mobile"><img src="screenshots/09-mobile-karyawan.png" alt="Tampilan aplikasi pada HP"><figcaption>Tampilan aplikasi pada HP</figcaption></figure>
+    <p class="lead">Setelah dipasang, aplikasi memiliki ikon sendiri dan dapat dibuka dalam jendela terpisah tanpa tampilan browser penuh.</p>
+    <div class="grid">
+      <div class="card">
+        <span class="badge">Chrome / Edge • Windows, macOS, Linux</span>
+        <h3>Desktop atau laptop</h3>
+        <ol><li>Buka alamat aplikasi.</li><li>Klik ikon <strong>Install</strong> di kanan address bar, atau buka menu browser.</li><li>Pilih <strong>Install ARI Sportindo</strong>.</li><li>Konfirmasi <strong>Install</strong>.</li></ol>
+      </div>
+      <div class="card">
+        <span class="badge">Chrome • Android</span>
+        <h3>HP Android</h3>
+        <ol><li>Buka alamat aplikasi.</li><li>Tekan menu <strong>⋮</strong>.</li><li>Pilih <strong>Install app</strong> atau <strong>Tambahkan ke layar utama</strong>.</li><li>Tekan <strong>Install</strong>.</li></ol>
+      </div>
+      <div class="card">
+        <span class="badge">Safari • iPhone / iPad</span>
+        <h3>iPhone atau iPad</h3>
+        <ol><li>Buka alamat melalui <strong>Safari</strong>.</li><li>Tekan tombol <strong>Bagikan</strong>.</li><li>Pilih <strong>Tambahkan ke Layar Utama</strong>.</li><li>Tekan <strong>Tambah</strong>.</li></ol>
+      </div>
+      <div class="card">
+        <span class="badge">Setelah instalasi</span>
+        <h3>Membuka aplikasi</h3>
+        <p>Cari ikon <strong>ARI Sportindo</strong> pada desktop, Start Menu, Launchpad, atau layar utama HP. Pembaruan aplikasi diterapkan otomatis saat versi baru tersedia.</p>
+      </div>
+    </div>
+    <div class="callout"><strong>Jika pilihan Install tidak muncul:</strong> pastikan menggunakan alamat HTTPS resmi, muat ulang halaman, lalu tunggu beberapa detik. Pada iPhone/iPad, instalasi harus dilakukan melalui Safari.</div>
+  </section>
+
+  <section class="page">
+    <h2>3. Hak akses dan navigasi</h2>
+    <figure class="shot"><img src="screenshots/02-dashboard.png" alt="Dashboard Owner"><figcaption>Dashboard dan navigasi akun Owner</figcaption></figure>
+    <p>Menu yang tidak sesuai tugas pengguna disembunyikan otomatis. Administrator menentukan peran melalui profil karyawan.</p>
+    <table>
+      <tr><th>Peran</th><th>Akses utama</th></tr>
+      <tr><td><strong>Owner / Super Admin</strong></td><td>Seluruh dashboard, penjualan, pembelian, gudang, produksi, karyawan, laporan, absensi, slip gaji, dan profil.</td></tr>
+      <tr><td><strong>Admin</strong></td><td>Dashboard, penjualan marketplace/non-marketplace, pembelian dan pengeluaran, absensi, slip gaji pribadi, dan profil.</td></tr>
+      <tr><td><strong>Gudang &amp; Produksi</strong></td><td>Dashboard, stok gudang, tahapan produksi, absensi, slip gaji pribadi, dan profil.</td></tr>
+      <tr><td><strong>Karyawan</strong></td><td>Dashboard pribadi, absensi, slip gaji pribadi, dan profil.</td></tr>
+    </table>
+    <h3>Aturan kerja yang disarankan</h3>
+    <ul>
+      <li>Periksa kembali tanggal, jumlah, harga, dan status sebelum menyimpan.</li>
+      <li>Gunakan tombol edit untuk koreksi; jangan membuat data ganda.</li>
+      <li>Perubahan stok berkaitan dengan status transaksi. Pastikan status mencerminkan kondisi nyata.</li>
+      <li>Konfirmasi dengan penanggung jawab sebelum menghapus transaksi.</li>
+      <li>Keluar dari akun setelah selesai menggunakan perangkat bersama.</li>
+    </ul>
+    <h3>Alur operasional ringkas</h3>
+    <table>
+      <tr><th>Proses</th><th>Alur</th></tr>
+      <tr><td>Pengadaan</td><td>Terbitkan PO → barang diterima → ubah status selesai → stok gudang bertambah.</td></tr>
+      <tr><td>Produksi</td><td>Periksa bahan → buat pekerjaan produksi → perbarui tahapan → selesaikan → stok produk jadi tercatat.</td></tr>
+      <tr><td>Penjualan</td><td>Catat marketplace atau order non-marketplace → perbarui status → cetak dokumen bila diperlukan.</td></tr>
+      <tr><td>SDM</td><td>Buat akun karyawan → absensi masuk/pulang → susun payroll → karyawan melihat slip.</td></tr>
+    </table>
+  </section>
+
+  <section class="page">
+    <h2>4. Dashboard dan penjualan</h2>
+    <figure class="shot"><img src="screenshots/03-penjualan.png" alt="Modul Penjualan"><figcaption>Modul Penjualan Marketplace</figcaption></figure>
+    <h3>Dashboard</h3>
+    <p>Dashboard merangkum aktivitas penting seperti penjualan hari ini, pengeluaran, produksi berjalan, stok produk jadi, bahan baku kritis, dan status absensi. Gunakan dashboard untuk pemeriksaan cepat; buka modul terkait untuk detail atau koreksi.</p>
+    <h3>Penjualan marketplace</h3>
+    <ol class="steps">
+      <li>Buka <strong>Penjualan → Penjualan Marketplace</strong>.</li>
+      <li>Pilih channel marketplace dan masukkan detail transaksi atau rekap omset harian.</li>
+      <li>Isi jumlah order terkirim, omset bersih, tanggal, dan staf penginput.</li>
+      <li>Pilih <strong>Simpan &amp; Posting Detail</strong> atau <strong>Posting Rekap Omset Harian</strong>.</li>
+      <li>Gunakan aksi edit/hapus pada riwayat bila memang diperlukan.</li>
+    </ol>
+    <h3>Order non-marketplace</h3>
+    <ol>
+      <li>Buka tab <strong>Order Non-Marketplace</strong>.</li>
+      <li>Buat order dan lengkapi pelanggan, tanggal, item, jumlah, serta nilai transaksi.</li>
+      <li>Periksa total dan status pembayaran/order.</li>
+      <li>Simpan. Gunakan tombol <strong>Cetak</strong> untuk dokumen yang diperlukan.</li>
+    </ol>
+    <div class="callout warning"><strong>Hindari pencatatan ganda.</strong> Sebelum membuat transaksi, cek riwayat berdasarkan tanggal, pelanggan, channel, atau nomor referensi.</div>
+  </section>
+
+  <section class="page">
+    <h2>5. Pembelian, pengeluaran, dan gudang</h2>
+    <figure class="shot"><img src="screenshots/04-pembelian-pengeluaran.png" alt="Pembelian dan pengeluaran"><figcaption>Modul Pembelian &amp; Pengeluaran</figcaption></figure>
+    <figure class="shot"><img src="screenshots/05-gudang.png" alt="Gudang"><figcaption>Modul Gudang</figcaption></figure>
+    <h3>Menerbitkan Purchase Order</h3>
+    <ol class="steps">
+      <li>Buka <strong>Pembelian &amp; Pengeluaran</strong>, lalu pilih pembuatan PO.</li>
+      <li>Isi supplier, tanggal, nomor PO, staf, dan detail setiap barang.</li>
+      <li>Jika tersedia, hubungkan item dengan inventory agar pergerakan stok tepat.</li>
+      <li>Masukkan kuantitas dan harga satuan, kemudian periksa total.</li>
+      <li>Pilih status dan tekan <strong>Posting &amp; Terbitkan PO</strong>.</li>
+    </ol>
+    <div class="callout"><strong>Penting:</strong> stok gudang hanya bertambah ketika PO berstatus <strong>Selesai/Diterima</strong>. Status Pending belum menambah stok; PO Dibatalkan tidak boleh dianggap sebagai barang masuk.</div>
+    <h3>Mencatat kas keluar</h3>
+    <p>Pilih pencatatan pengeluaran, isi tanggal, kategori/keterangan, nominal, dan staf. Simpan setelah nominal diperiksa. Gunakan edit jika ada koreksi agar laporan tetap konsisten.</p>
+    <h3>Gudang</h3>
+    <ul>
+      <li>Pantau stok bahan baku dan produk jadi melalui menu <strong>Gudang</strong>.</li>
+      <li>Gunakan data stok sebagai dasar sebelum memulai produksi atau menyetujui pembelian.</li>
+      <li>Periksa indikator bahan kritis pada dashboard.</li>
+      <li>Jika angka tidak sesuai fisik, telusuri PO dan transaksi produksi sebelum melakukan koreksi.</li>
+    </ul>
+    <div class="callout note"><strong>Rekonsiliasi:</strong> lakukan pengecekan stok fisik secara berkala dan bandingkan dengan aplikasi. Catat alasan setiap koreksi.</div>
+  </section>
+
+  <section class="page">
+    <h2>6. Produksi</h2>
+    <figure class="shot"><img src="screenshots/06-produksi.png" alt="Produksi"><figcaption>Modul Produksi</figcaption></figure>
+    <p class="lead">Modul Produksi membantu tim memantau pekerjaan Eva Foam dan Konveksi dari antrean sampai selesai, sekaligus menjaga hubungan dengan stok bahan dan produk jadi.</p>
+    <h3>Menjalankan pekerjaan produksi</h3>
+    <ol class="steps">
+      <li>Buka menu <strong>Produksi</strong> dan buat atau pilih pekerjaan.</li>
+      <li>Tentukan jenis produk, jumlah, operator, serta informasi pekerjaan yang diminta.</li>
+      <li>Pastikan sistem menunjukkan bahan baku lengkap dan mencukupi.</li>
+      <li>Perbarui tahapan sesuai kondisi nyata, misalnya antre, diproses, atau selesai.</li>
+      <li>Untuk proses yang memerlukan komposisi bahan, gunakan fungsi <strong>Campur Bahan</strong> dan periksa jumlahnya.</li>
+      <li>Selesaikan pekerjaan hanya setelah hasil produksi sudah dikonfirmasi.</li>
+    </ol>
+    <h3>Kontrol sebelum menyelesaikan</h3>
+    <table>
+      <tr><th>Pemeriksaan</th><th>Tujuan</th></tr>
+      <tr><td>Nama/jenis produk</td><td>Mencegah hasil masuk ke produk yang salah.</td></tr>
+      <tr><td>Jumlah hasil</td><td>Menjaga akurasi stok produk jadi.</td></tr>
+      <tr><td>Pemakaian bahan</td><td>Mencegah stok bahan menjadi negatif atau tidak wajar.</td></tr>
+      <tr><td>Status dan operator</td><td>Memastikan progres dan penanggung jawab dapat dilacak.</td></tr>
+    </table>
+    <div class="callout warning"><strong>Jangan menyelesaikan pekerjaan terlalu awal.</strong> Perubahan status dapat memengaruhi perhitungan bahan dan stok produk jadi.</div>
+  </section>
+
+  <section class="page">
+    <h2>7. Karyawan, absensi, dan payroll</h2>
+    <figure class="shot"><img src="screenshots/07-karyawan.png" alt="Karyawan"><figcaption>Data dan pengelolaan karyawan</figcaption></figure>
+    <h3>Mengelola data karyawan <span class="badge">Owner</span></h3>
+    <ol>
+      <li>Buka <strong>Karyawan → Data Karyawan</strong>.</li>
+      <li>Pilih <strong>Tambah Karyawan Baru</strong>.</li>
+      <li>Isi profil, username, PIN awal 4 digit, status aktif, dan peran akses.</li>
+      <li>Simpan lalu berikan username/PIN langsung kepada karyawan terkait.</li>
+    </ol>
+    <h3>Melakukan absensi</h3>
+    <ol class="steps">
+      <li>Buka menu <strong>Absensi</strong> dan izinkan akses lokasi jika diminta.</li>
+      <li>Pilih aksi absensi yang sesuai, misalnya masuk atau pulang.</li>
+      <li>Ikuti verifikasi yang tampil dan tunggu notifikasi berhasil.</li>
+      <li>Periksa nama, waktu, dan status lokasi pada hasil absensi.</li>
+    </ol>
+    <div class="callout"><strong>Geofence 100 meter:</strong> absensi di luar area yang ditentukan ditandai <strong>ANOMALI</strong> dan koordinat disimpan sebagai bahan pemeriksaan HRD. Aktifkan GPS dan gunakan lokasi akurat.</div>
+    <h3>Payroll dan slip gaji</h3>
+    <p>Owner mengelola payroll melalui <strong>Karyawan → Payroll &amp; Slip Gaji</strong>. Periksa periode, karyawan, komponen pendapatan/potongan, data kehadiran, dan total bersih sebelum menyimpan. Slip dapat dicetak menggunakan fungsi <strong>Cetak Slip Gaji</strong>.</p>
+    <p>Karyawan membuka menu <strong>Slip Gaji</strong> untuk melihat slip miliknya sendiri. Bila periode belum muncul, hubungi Owner/HRD untuk memastikan payroll sudah diterbitkan.</p>
+  </section>
+
+  <section class="page">
+    <h2>8. Profil, laporan, dan praktik aman</h2>
+    <figure class="shot"><img src="screenshots/08-laporan.png" alt="Laporan"><figcaption>Pusat Laporan</figcaption></figure>
+    <h3>Profil Saya</h3>
+    <ul>
+      <li>Ubah foto profil melalui tombol pada foto.</li>
+      <li>Perbarui nomor HP lalu tekan <strong>Simpan</strong>.</li>
+      <li>Untuk mengganti PIN, masukkan PIN lama, PIN baru 4 digit, dan konfirmasi PIN baru.</li>
+    </ul>
+    <h3>Mengunduh laporan <span class="badge">Owner</span></h3>
+    <ol>
+      <li>Buka menu <strong>Laporan</strong>.</li>
+      <li>Pilih laporan penjualan, kehadiran, payroll, atau pengeluaran.</li>
+      <li>Tekan <strong>Unduh CSV</strong>.</li>
+      <li>Buka file hasil unduhan melalui Excel atau aplikasi spreadsheet.</li>
+    </ol>
+    <div class="callout note">Jika aplikasi memberi pesan “Tidak ada data untuk diekspor”, pastikan transaksi pada kategori tersebut sudah tersedia.</div>
+    <h3>Praktik keamanan</h3>
+    <table>
+      <tr><th>Lakukan</th><th>Hindari</th></tr>
+      <tr><td>Gunakan PIN yang tidak mudah ditebak.</td><td>Memakai tanggal lahir atau PIN yang sama untuk semua orang.</td></tr>
+      <tr><td>Keluar setelah memakai perangkat bersama.</td><td>Membiarkan akun Owner terbuka tanpa pengawasan.</td></tr>
+      <tr><td>Periksa domain resmi dan HTTPS.</td><td>Login dari tautan tidak dikenal.</td></tr>
+      <tr><td>Batasi peran sesuai tanggung jawab.</td><td>Memberikan akses Owner jika tidak diperlukan.</td></tr>
+      <tr><td>Konfirmasi sebelum menghapus data.</td><td>Menghapus transaksi sebagai cara koreksi rutin.</td></tr>
+    </table>
+  </section>
+
+  <section class="page">
+    <h2>9. Pemecahan masalah</h2>
+    <table>
+      <tr><th>Masalah</th><th>Solusi</th></tr>
+      <tr><td>Tidak bisa masuk</td><td>Pastikan username benar, PIN terdiri dari 4 digit, dan Caps Lock tidak memengaruhi username. Hubungi Owner bila akun nonaktif atau PIN lupa.</td></tr>
+      <tr><td>Menu tidak terlihat</td><td>Menu mengikuti peran akun. Minta Owner memeriksa akses sistem pada profil karyawan.</td></tr>
+      <tr><td>Data belum muncul di perangkat lain</td><td>Periksa status cloud dan koneksi internet, tunggu sinkronisasi, lalu muat ulang halaman.</td></tr>
+      <tr><td>Lokasi absensi ditolak/tidak akurat</td><td>Aktifkan GPS, izinkan lokasi untuk browser/aplikasi, matikan mode hemat lokasi, lalu coba di area kerja.</td></tr>
+      <tr><td>Aplikasi tidak dapat dipasang</td><td>Gunakan HTTPS resmi dan browser terbaru. Untuk iPhone/iPad gunakan Safari dan menu Bagikan.</td></tr>
+      <tr><td>Tampilan masih versi lama</td><td>Tutup seluruh jendela aplikasi, buka kembali saat online, lalu muat ulang. Pembaruan PWA diterapkan otomatis.</td></tr>
+      <tr><td>CSV tidak terunduh</td><td>Pastikan data tersedia dan browser mengizinkan unduhan. Periksa folder Downloads.</td></tr>
+      <tr><td>Stok tidak sesuai</td><td>Periksa status PO, riwayat produksi, jumlah item, dan transaksi terkait. Jangan langsung membuat transaksi pengganti.</td></tr>
+    </table>
+    <h3>Informasi yang perlu disertakan saat melapor</h3>
+    <ul>
+      <li>Nama pengguna dan peran akun—<strong>jangan pernah mengirim PIN</strong>.</li>
+      <li>Perangkat dan browser yang digunakan.</li>
+      <li>Menu serta tindakan sebelum masalah terjadi.</li>
+      <li>Waktu kejadian dan tangkapan layar pesan kesalahan.</li>
+      <li>Status koneksi/cloud saat kejadian.</li>
+    </ul>
+    <div class="callout note"><strong>Urutan pemeriksaan cepat:</strong> periksa internet → periksa status cloud → muat ulang → keluar dan masuk kembali → laporkan jika masalah tetap terjadi.</div>
+    <p class="footer-note" style="margin-top:14mm;text-align:center">ARI SPORTINDO — Sistem Produksi &amp; Manajemen<br>Dokumen ini disusun berdasarkan aplikasi versi Juli 2026.</p>
+  </section>
+</body>
+</html>
