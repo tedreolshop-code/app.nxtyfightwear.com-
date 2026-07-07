@@ -57,7 +57,17 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
     const roleForMenus = value || 'karyawan';
     return allTabs.filter(tab => !tab.roles || tab.roles.includes(roleForMenus));
   };
+  const defaultTabsForAccessRole = (value: string) => menusForAccessRole(value).map(menu => menu.id);
+  const menusForEmployeeAccess = (value: string, tabs?: string[]) => {
+    const baseMenus = menusForAccessRole(value);
+    if (!tabs?.length) return baseMenus;
+    return baseMenus.filter(menu => tabs.includes(menu.id));
+  };
   const accessRoleLabel = (value?: string) => accessRoleOptions.find(option => option.value === (value || ''))?.label || 'Karyawan';
+  const handleAccessRolePresetChange = (value: string) => {
+    setAccessRole(value);
+    setAllowedTabs(defaultTabsForAccessRole(value));
+  };
 
   const openCreateEmployeeModal = () => {
     resetForm();
@@ -346,7 +356,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
   // Ganti akses sistem karyawan (menu yang terbuka saat dia login) — langsung tersimpan
   const handleChangeAccessRole = (empId: string, accessRole: string) => {
     const updated = dataStore.getEmployees().map(e =>
-      e.id === empId ? { ...e, access_role: (accessRole || undefined) as Employee['access_role'] } : e
+      e.id === empId ? { ...e, access_role: (accessRole || undefined) as Employee['access_role'], allowed_tabs: defaultTabsForAccessRole(accessRole) } : e
     );
     dataStore.setEmployees(updated);
     loadData();
@@ -364,7 +374,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
     setDefaultWeeklyKasbonDeduction(50000);
     setPhoneNumber('');
     setPin('');
-    setAllowedTabs(['attendance', 'production', 'warehouse']);
+    setAllowedTabs(defaultTabsForAccessRole(''));
     setAccessRole('');
     setStatusAktif(true);
     setEditEmpId(null);
@@ -386,6 +396,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
     setPhoneNumber(emp.phone_number || '');
     setPin('');
     setAccessRole(emp.access_role || '');
+    setAllowedTabs(emp.allowed_tabs?.length ? emp.allowed_tabs : defaultTabsForAccessRole(emp.access_role || ''));
     setStatusAktif(emp.status_aktif);
     setShowAddForm(true);
   };
@@ -432,6 +443,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
           default_weekly_cash_advance_deduction: defaultWeeklyKasbonDeduction,
           phone_number: phoneNumber,
           status_aktif: statusAktif,
+          allowed_tabs: allowedTabs,
           access_role: (accessRole || undefined) as Employee['access_role'],
           ...(pin ? { pin: hashPin(pin), pin_hashed: true } : {})
         };
@@ -717,7 +729,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                     <label className="block text-xs font-semibold text-gray-600 mb-1">Akses Sistem (Menu Saat Login)</label>
                     <select
                       value={accessRole}
-                      onChange={(e) => setAccessRole(e.target.value)}
+                      onChange={(e) => handleAccessRolePresetChange(e.target.value)}
                       className="w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-xs text-gray-800 focus:outline-none focus:border-emerald-600"
                     >
                       {accessRoleOptions.map(option => <option key={option.value || 'karyawan'} value={option.value}>{option.label}</option>)}
@@ -843,7 +855,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
           <div className="md:col-span-6 border-l border-gray-100 md:pl-6 space-y-3">
             <div>
               <span className="text-xs font-bold text-gray-700 block">Tentang Akses Sistem</span>
-              <p className="text-[10px] text-gray-400">Menu di bawah mengikuti daftar menu aplikasi yang sebenarnya.</p>
+              <p className="text-[10px] text-gray-400">Pilih preset akses, lalu centang menu yang boleh tampil saat karyawan login.</p>
             </div>
 
             <div className="bg-gray-50 p-4 rounded border border-gray-100 space-y-3 text-xs text-gray-600">
@@ -851,12 +863,20 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                 <p className="font-black text-gray-800">{accessRoleLabel(accessRole)}</p>
                 <p className="text-[10px] text-gray-500">{accessRoleOptions.find(option => option.value === (accessRole as any))?.description || accessRoleOptions[0].description}</p>
               </div>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {menusForAccessRole(accessRole).map(menu => (
-                  <span key={menu.id} className="px-2 py-1 bg-white border border-gray-200 rounded-md text-[10px] font-bold text-gray-700">{menu.label}</span>
+                  <label key={menu.id} className={`flex items-center gap-2 rounded-lg border px-3 py-2 cursor-pointer ${allowedTabs.includes(menu.id) ? 'bg-white border-emerald-200 text-emerald-900' : 'bg-white/60 border-gray-100 text-gray-500'}`}>
+                    <input
+                      type="checkbox"
+                      checked={allowedTabs.includes(menu.id)}
+                      onChange={() => handleToggleTabPermission(menu.id, allowedTabs, setAllowedTabs)}
+                      className="accent-[#1F4B36]"
+                    />
+                    <span className="text-[11px] font-bold">{menu.label}</span>
+                  </label>
                 ))}
               </div>
-              <p className="text-[10px] text-gray-400 pt-1 border-t border-gray-200">Login memakai <strong>username + PIN</strong>. Karyawan berstatus Nonaktif (resign) tidak bisa login, tetapi riwayat absensi &amp; gajinya tetap tersimpan.</p>
+              <p className="text-[10px] text-gray-400 pt-1 border-t border-gray-200">Menu sensitif seperti Karyawan, Laporan, dan Audit tetap membutuhkan preset Owner. Login memakai <strong>username + PIN</strong>.</p>
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
@@ -943,7 +963,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                       >
                         {accessRoleOptions.map(option => <option key={option.value || 'karyawan'} value={option.value}>{option.label}</option>)}
                       </select>
-                      <p className="mt-1 text-[9px] text-gray-400">{menusForAccessRole(emp.access_role || '').length} menu</p>
+                      <p className="mt-1 text-[9px] text-gray-400">{menusForEmployeeAccess(emp.access_role || '', emp.allowed_tabs).length} menu aktif</p>
                     </td>
                     <td className="p-3 text-center">
                       <div className="flex items-center justify-center gap-1.5">
@@ -1113,7 +1133,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                       <div className="space-y-1 text-xs">
                         <span className="text-gray-400 block text-[10px] uppercase font-bold tracking-wider mb-1">{accessRoleLabel(profileModalEmp.access_role)} dapat membuka</span>
                         <div className="flex flex-wrap gap-1">
-                          {menusForAccessRole(profileModalEmp.access_role || '').map(menu => (
+                          {menusForEmployeeAccess(profileModalEmp.access_role || '', profileModalEmp.allowed_tabs).map(menu => (
                             <span key={menu.id} className="px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-100 rounded-md text-[10px] font-bold">
                               {menu.label}
                             </span>

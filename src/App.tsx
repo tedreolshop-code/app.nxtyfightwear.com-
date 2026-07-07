@@ -290,7 +290,11 @@ export default function App() {
   const [salesSubTab, setSalesSubTab] = useState<'marketplace' | 'order'>('marketplace');
   const [karyawanSubTab, setKaryawanSubTab] = useState<'data' | 'absensi' | 'kasbon' | 'payroll'>('data');
 
-  const permittedMenus = MENUS.filter(m => m.roles.includes(currentRole));
+  const permittedMenus = MENUS.filter(m => {
+    if (!m.roles.includes(currentRole)) return false;
+    if (!loggedEmployee?.allowed_tabs?.length) return true;
+    return loggedEmployee.allowed_tabs.includes(m.id);
+  });
   const getMenuLabel = (menu: { id: string; label: string }) =>
     currentRole === 'karyawan' && menu.id === 'produksi' ? 'Daftar Kerjaan' : menu.label;
 
@@ -318,11 +322,11 @@ export default function App() {
   useEffect(() => {
     const handleTabChange = (e: Event) => {
       const detail = (e as CustomEvent<string>).detail;
-      if (detail && MENUS.some(m => m.id === detail)) setActiveTab(detail);
+      if (detail && permittedMenus.some(m => m.id === detail)) setActiveTab(detail);
     };
     window.addEventListener('nxty_change_tab', handleTabChange);
     return () => window.removeEventListener('nxty_change_tab', handleTabChange);
-  }, []);
+  }, [permittedMenus]);
 
   // Ekspor CSV (dipakai halaman Laporan)
   const handleExportCSV = (type: 'attendance' | 'invoices' | 'payroll' | 'expenses') => {
