@@ -1,21 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { dataStore, wibNowISO, wibTodayStr } from '../dataStore';
+import { dataStore, wibTodayStr } from '../dataStore';
 import { Employee, Attendance, PayrollWeekly } from '../types';
-import { Clock, Calendar, FileText, CheckCircle2, AlertCircle, MapPin, Navigation, User, ExternalLink } from 'lucide-react';
+import { Clock, Calendar, FileText, CheckCircle2, Fingerprint, MapPin, ExternalLink } from 'lucide-react';
 
 interface EmployeeDashboardProps {
   loggedEmployee: Employee;
+  onOpenAttendance: () => void;
 }
 
-export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmployee }) => {
+export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmployee, onOpenAttendance }) => {
   const [time, setTime] = useState<string>('');
   const [dateStr, setDateStr] = useState<string>('');
   const [dayName, setDayName] = useState<string>('');
   const [attendanceLogs, setAttendanceLogs] = useState<Attendance[]>([]);
   const [payrolls, setPayrolls] = useState<PayrollWeekly[]>([]);
-  const [isScanning, setIsScanning] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   useEffect(() => {
     // Clock tick — selalu WIB (GMT+7), tidak tergantung zona waktu HP
@@ -60,54 +58,8 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
 
   const checkInTimeToday = myTodayLogs.find(l => l.type_scan === 'masuk')?.timestamp.split('T')[1]?.substring(0, 5) || '--:--';
   const checkOutTimeToday = myTodayLogs.find(l => l.type_scan === 'pulang')?.timestamp.split('T')[1]?.substring(0, 5) || '--:--';
-
-  const handleScanAttendance = (type: 'masuk' | 'pulang') => {
-    setErrorMsg(null);
-    setSuccessMsg(null);
-
-    if (!navigator.geolocation) {
-      setErrorMsg('Perangkat/browser ini tidak mendukung GPS. Gunakan browser lain atau hubungi admin.');
-      return;
-    }
-
-    setIsScanning(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        try {
-          const record = dataStore.recordAttendance({
-            employee_id: loggedEmployee.id,
-            timestamp: wibNowISO(),
-            type_scan: type,
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude,
-            device_token: `${navigator.userAgent}`.slice(0, 80),
-            selfie_url: '',
-            note: `Presensi mandiri dari Portal Staff (GPS perangkat, akurasi ±${Math.round(pos.coords.accuracy)} m)`
-          });
-
-          const jam = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' });
-          if (record.status === 'anomaly') {
-            setSuccessMsg(`Peringatan: Absen ${type.toUpperCase()} direkam jam ${jam} WIB, namun ditandai ANOMALI karena posisi ${Math.round(record.distance_meters)} m dari kantor (batas 100 m).`);
-          } else {
-            setSuccessMsg(`Sukses! Absen ${type.toUpperCase()} disimpan jam ${jam} WIB (${Math.round(record.distance_meters)} m dari kantor).`);
-          }
-        } catch (err: any) {
-          setErrorMsg(err.message || 'Gagal merekam absensi');
-        } finally {
-          setIsScanning(false);
-        }
-      },
-      (err) => {
-        setIsScanning(false);
-        if (err.code === err.PERMISSION_DENIED) {
-          setErrorMsg('Akses lokasi ditolak. Izinkan akses lokasi untuk situs ini di pengaturan browser HP Anda, lalu coba lagi.');
-        } else {
-          setErrorMsg(`Gagal membaca lokasi GPS (${err.message}). Pastikan GPS aktif dan coba lagi di area terbuka.`);
-        }
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-    );
-  };
+  const deptName = dataStore.getDepartments().find(dept => dept.id === loggedEmployee.department_id)?.name || 'Umum';
+  const nextAttendanceLabel = !hasCheckedInToday ? 'Scan QR Lokasi untuk Absen Masuk' : !hasCheckedOutToday ? 'Scan QR Lokasi untuk Absen Pulang' : 'Absensi Hari Ini Selesai';
 
   // Calendar setup (Current month)
   const getDaysInMonth = () => {
@@ -131,10 +83,10 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
       {/* Header */}
       <div className="bg-[#1F4B36] text-white p-6 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="space-y-1">
-          <span className="text-[10px] font-black uppercase text-emerald-300 tracking-wider">Selamat Datang di Portal Mandiri,</span>
+          <span className="text-[10px] font-black uppercase text-emerald-300 tracking-wider">Selamat Datang di ARI SPORTINDO,</span>
           <h1 className="text-xl font-bold">{loggedEmployee.name}</h1>
           <p className="text-xs text-emerald-100 font-medium uppercase tracking-wider">
-            Departemen ID: {loggedEmployee.department_id} &middot; Peran: {loggedEmployee.role}
+            {deptName} &middot; Peran: {loggedEmployee.role}
           </p>
         </div>
         <div className="bg-emerald-800/40 border border-emerald-600/30 rounded-xl p-3 text-right">
@@ -143,13 +95,13 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
         </div>
       </div>
 
-      {/* Grid: Clock & Fast Check-In vs Today Status */}
+      {/* Grid: Clock & single attendance entry point vs Today Status */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         
-        {/* Box 1: Widget Jam & Quick Action */}
+        {/* Box 1: Widget Jam & QR attendance action */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4 md:col-span-2">
           <h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
-            <Clock className="w-4 h-4 text-[#1F4B36]" /> Terminal Scan Absensi Cepat
+            <Fingerprint className="w-4 h-4 text-[#1F4B36]" /> Absensi QR Lokasi
           </h3>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -163,57 +115,30 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
             {/* Info lokasi GPS */}
             <div className="space-y-2 bg-gray-50 p-4 rounded-xl border border-gray-100 text-xs flex flex-col justify-center">
               <span className="font-bold text-gray-700 flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-[#1F4B36] shrink-0" /> Verifikasi Lokasi GPS
+                <MapPin className="w-3.5 h-3.5 text-[#1F4B36] shrink-0" /> Scan QR di Lokasi
               </span>
               <p className="text-gray-500 leading-relaxed">
-                Saat menekan tombol absen, lokasi diambil dari <b>GPS HP Anda</b> dan dicocokkan dengan
-                titik kantor. Absen di luar radius <b>100 meter</b> tetap tercatat namun ditandai anomali.
+                Absensi dilakukan dari satu pintu: buka kamera, scan QR lokasi pabrik, lalu sistem mencatat
+                masuk atau pulang sesuai urutan hari ini.
               </p>
               <p className="text-[10px] text-gray-400">
-                Pastikan GPS aktif dan izinkan akses lokasi saat browser meminta.
+                Pastikan kamera dan GPS aktif saat browser meminta izin.
               </p>
             </div>
           </div>
 
-          {/* Messages */}
-          {errorMsg && (
-            <div className="p-3 bg-rose-50 border border-rose-100 text-rose-700 rounded-lg text-xs font-semibold flex items-center gap-2 animate-pulse">
-              <AlertCircle className="w-4 h-4 shrink-0" /> {errorMsg}
-            </div>
-          )}
-
-          {successMsg && (
-            <div className="p-3 bg-emerald-50 border border-emerald-100 text-emerald-800 rounded-lg text-xs font-semibold flex items-center gap-2 animate-fade-in">
-              <CheckCircle2 className="w-4 h-4 shrink-0" /> {successMsg}
-            </div>
-          )}
-
-          {/* Check-In / Check-Out Buttons */}
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              onClick={() => handleScanAttendance('masuk')}
-              disabled={hasCheckedInToday || isScanning}
-              className={`py-3 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 border transition-all ${
-                hasCheckedInToday || isScanning
-                  ? 'bg-gray-150 border-gray-200 text-gray-400 cursor-not-allowed'
-                  : 'bg-emerald-600 hover:bg-emerald-700 text-white border-transparent cursor-pointer shadow-xs'
-              }`}
-            >
-              <Navigation className="w-4 h-4 rotate-45" /> Check-In Masuk
-            </button>
-
-            <button
-              onClick={() => handleScanAttendance('pulang')}
-              disabled={!hasCheckedInToday || hasCheckedOutToday || isScanning}
-              className={`py-3 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 border transition-all ${
-                !hasCheckedInToday || hasCheckedOutToday || isScanning
-                  ? 'bg-gray-150 border-gray-200 text-gray-400 cursor-not-allowed'
-                  : 'bg-rose-600 hover:bg-rose-700 text-white border-transparent cursor-pointer shadow-xs'
-              }`}
-            >
-              <Clock className="w-4 h-4" /> Check-Out Pulang
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={onOpenAttendance}
+            disabled={hasCheckedInToday && hasCheckedOutToday}
+            className={`w-full py-4 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 border transition-all ${
+              hasCheckedInToday && hasCheckedOutToday
+                ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
+                : 'bg-[#1F4B36] hover:bg-[#163826] text-white border-transparent cursor-pointer shadow-xs'
+            }`}
+          >
+            <Fingerprint className="w-5 h-5" /> {nextAttendanceLabel}
+          </button>
         </div>
 
         {/* Box 2: Indikator Status Hari Ini */}
@@ -238,9 +163,9 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
             </div>
 
             <div className="p-3 bg-emerald-50/50 border border-emerald-100 rounded-xl space-y-1">
-              <p className="font-bold text-emerald-800 text-[11px] uppercase tracking-wider">Metode Aman PIN Encrypted</p>
+              <p className="font-bold text-emerald-800 text-[11px] uppercase tracking-wider">Absensi Satu Pintu</p>
               <p className="text-[10px] text-gray-500 leading-relaxed">
-                Portal ini terproteksi keamanan enkripsi PIN ganda. Seluruh riwayat check-in disinkronkan secara real-time ke database pusat pabrik.
+                Gunakan tombol sidik jari untuk membuka kamera dan scan QR lokasi. Data absensi akan tersimpan otomatis.
               </p>
             </div>
           </div>

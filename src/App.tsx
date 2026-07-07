@@ -217,6 +217,7 @@ export default function App() {
   const [handoffPopup, setHandoffPopup] = useState<ProductionHandoff | null>(null);
   const [productionTaskPopup, setProductionTaskPopup] = useState<ProductionJob | null>(null);
   const [packingTaskPopup, setPackingTaskPopup] = useState<PackingTask | null>(null);
+  const [openLocationScannerSignal, setOpenLocationScannerSignal] = useState(0);
   const productionTaskSeenKey = (employeeId: string, jobId: string) => `nxty_production_task_seen_${employeeId}_${jobId}_${wibTodayStr()}`;
   const packingTaskSeenKey = (employeeId: string, taskId: string) => `nxty_packing_task_seen_${employeeId}_${taskId}_${wibTodayStr()}`;
 
@@ -534,7 +535,13 @@ export default function App() {
 
                 {currentRole === 'karyawan' && (
                   loggedEmployee ? (
-                    <EmployeeDashboard loggedEmployee={loggedEmployee} />
+                    <EmployeeDashboard
+                      loggedEmployee={loggedEmployee}
+                      onOpenAttendance={() => {
+                        setOpenLocationScannerSignal(value => value + 1);
+                        setActiveTab('absensi');
+                      }}
+                    />
                   ) : (
                     <KaryawanLoginCard onLogin={(emp) => handleLogin(sessionForEmployee(emp), emp)} />
                   )
@@ -628,7 +635,7 @@ export default function App() {
             {/* PORTAL KARYAWAN: absensi & slip gaji pribadi (wajib login PIN) */}
             {activeTab === 'absensi' && (
               loggedEmployee
-                ? <AttendanceModule isAdmin={false} lockedEmployee={loggedEmployee} />
+                ? <AttendanceModule isAdmin={false} lockedEmployee={loggedEmployee} openLocationScannerSignal={openLocationScannerSignal} />
                 : <KaryawanLoginCard onLogin={(emp) => handleLogin(sessionForEmployee(emp), emp)} />
             )}
             {activeTab === 'gaji' && (

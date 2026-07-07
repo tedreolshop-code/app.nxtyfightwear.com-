@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useId } from 'react';
-import { Html5QrcodeScanner } from 'html5-qrcode';
+import React, { useState, useEffect, useId, useRef } from 'react';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { QRCodeSVG } from 'qrcode.react';
 import { Employee, Attendance, AttendanceType, WorkSettings } from '../types';
 import { dataStore, wibNowISO } from '../dataStore';
@@ -34,30 +34,165 @@ interface AttendanceModuleProps {
   // Portal karyawan: kiosk terkunci ke karyawan ini (sudah terautentikasi PIN saat login, tanpa PIN ulang)
   lockedEmployee?: Employee | null;
   assistingAdmin?: Employee | null;
+  openLocationScannerSignal?: number;
 }
 
 const EmployeeQrScanner: React.FC<{ onScan: (value: string) => void }> = ({ onScan }) => {
   const rawId = useId();
   const elementId = `employee-qr-reader-${rawId.replace(/:/g, '')}`;
+  const onScanRef = useRef(onScan);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const scanCompletedRef = useRef(false);
+  const [cameras, setCameras] = useState<Array<{ id: string; label: string }>>([]);
+  const [selectedCameraId, setSelectedCameraId] = useState('');
+  const [isStartingCamera, setIsStartingCamera] = useState(false);
+  const [isCameraRunning, setIsCameraRunning] = useState(false);
+  const [cameraError, setCameraError] = useState('');
 
   useEffect(() => {
-    const scanner = new Html5QrcodeScanner(elementId, {
-      fps: 10,
-      qrbox: { width: 240, height: 240 },
-      rememberLastUsedCamera: true,
-      supportedScanTypes: [0]
-    }, false);
-    scanner.render((decodedText) => {
-      onScan(decodedText);
-      void scanner.clear();
-    }, () => undefined);
-    return () => { void scanner.clear().catch(() => undefined); };
-  }, [elementId, onScan]);
+    onScanRef.current = onScan;
+  }, [onScan]);
 
-  return <div id={elementId} className="overflow-hidden rounded-xl" />;
+  const explainCameraError = (error: unknown) => {
+    const raw = error instanceof Error ? error.message : String(error || '');
+    const lower = raw.toLowerCase();
+    if (!window.isSecureContext) {
+      return 'Kamera browser hanya bisa aktif lewat HTTPS atau localhost. Buka aplikasi dari domain HTTPS jika memakai HP/tablet/laptop lain.';
+    }
+    if (lower.includes('permission') || lower.includes('notallowed')) {
+      return 'Izin kamera ditolak. Izinkan akses kamera untuk situs ini di pengaturan browser, lalu buka ulang scanner.';
+    }
+    if (lower.includes('notfound') || lower.includes('device not found') || lower.includes('no cameras')) {
+      return 'Kamera tidak ditemukan di perangkat ini. Pastikan kamera tidak sedang dipakai aplikasi lain.';
+    }
+    if (lower.includes('notreadable') || lower.includes('could not start')) {
+      return 'Kamera tidak bisa dinyalakan. Tutup aplikasi lain yang memakai kamera, lalu coba lagi.';
+    }
+    return raw || 'Kamera gagal dinyalakan. Coba pilih kamera lain atau buka lewat browser Chrome/Safari terbaru.';
+  };
+
+  const stopCamera = async () => {
+    const scanner = scannerRef.current;
+    if (!scanner) return;
+    try {
+      if (scanner.isScanning) await scanner.stop();
+    } finally {
+      scanner.clear();
+      setIsCameraRunning(false);
+    }
+  };
+
+  const startCamera = async (cameraId = selectedCameraId) => {
+    setCameraError('');
+    setIsStartingCamera(true);
+    scanCompletedRef.current = false;
+
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('Browser tidak mendukung akses kamera.');
+      }
+      if (!window.isSecureContext) {
+        throw new Error('Halaman tidak aman untuk akses kamera.');
+      }
+
+      if (!scannerRef.current) {
+        scannerRef.current = new Html5Qrcode(elementId, {
+          formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+          verbose: false
+        });
+      }
+
+      if (scannerRef.current.isScanning) {
+        await scannerRef.current.stop();
+      }
+
+      const availableCameras = await Html5Qrcode.getCameras();
+      setCameras(availableCameras);
+
+      const preferredCamera =
+        availableCameras.find(camera => camera.id === cameraId) ||
+        availableCameras.find(camera => /back|rear|environment|belakang/i.test(camera.label)) ||
+        availableCameras[0];
+
+      if (preferredCamera) setSelectedCameraId(preferredCamera.id);
+
+      const cameraConfig = preferredCamera
+        ? preferredCamera.id
+        : { facingMode: { ideal: 'environment' } };
+
+      await scannerRef.current.start(
+        cameraConfig,
+        {
+          fps: 10,
+          qrbox: (viewfinderWidth, viewfinderHeight) => {
+            const size = Math.max(180, Math.min(260, viewfinderWidth - 32, viewfinderHeight - 32));
+            return { width: size, height: size };
+          },
+          aspectRatio: 1,
+          disableFlip: false
+        },
+        async (decodedText) => {
+          if (scanCompletedRef.current) return;
+          scanCompletedRef.current = true;
+          onScanRef.current(decodedText);
+          await stopCamera();
+        },
+        () => undefined
+      );
+      setIsCameraRunning(true);
+    } catch (error) {
+      setCameraError(explainCameraError(error));
+      setIsCameraRunning(false);
+    } finally {
+      setIsStartingCamera(false);
+    }
+  };
+
+  useEffect(() => {
+    void startCamera();
+    return () => { void stopCamera(); };
+  }, [elementId]);
+
+  return (
+    <div className="space-y-3">
+      <div id={elementId} className="overflow-hidden rounded-xl bg-gray-950 min-h-[260px] flex items-center justify-center text-xs text-gray-400" />
+
+      {cameraError && (
+        <p className="rounded-lg border border-rose-100 bg-rose-50 p-3 text-xs leading-relaxed text-rose-700">
+          {cameraError}
+        </p>
+      )}
+
+      <div className="flex flex-col sm:flex-row gap-2">
+        {cameras.length > 1 && (
+          <select
+            value={selectedCameraId}
+            onChange={(event) => {
+              setSelectedCameraId(event.target.value);
+              void startCamera(event.target.value);
+            }}
+            className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700"
+          >
+            {cameras.map((camera, index) => (
+              <option key={camera.id} value={camera.id}>{camera.label || `Kamera ${index + 1}`}</option>
+            ))}
+          </select>
+        )}
+
+        <button
+          type="button"
+          onClick={() => void startCamera()}
+          disabled={isStartingCamera}
+          className="rounded-lg bg-[#1F4B36] px-4 py-2 text-xs font-bold text-white disabled:cursor-wait disabled:bg-gray-300"
+        >
+          {isStartingCamera ? 'Menyambungkan...' : isCameraRunning ? 'Muat Ulang Kamera' : 'Nyalakan Kamera'}
+        </button>
+      </div>
+    </div>
+  );
 };
 
-export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, lockedEmployee, assistingAdmin }) => {
+export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, lockedEmployee, assistingAdmin, openLocationScannerSignal }) => {
   // Navigation Mode
   const [activeMode, setActiveMode] = useState<'pola_a_kiosk' | 'pola_b_dashboard'>('pola_a_kiosk');
 
@@ -134,6 +269,13 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
       setActiveMode('pola_a_kiosk');
     }
   }, [lockedEmployee]);
+
+  useEffect(() => {
+    if (lockedEmployee && openLocationScannerSignal) {
+      setStatusMessage(null);
+      setShowLocationScanner(true);
+    }
+  }, [lockedEmployee, openLocationScannerSignal]);
 
   // Numpad key triggers for Kiosk mode PIN Pad
   const handleNumpadClick = (num: string) => {
@@ -589,8 +731,8 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                   <UserCheck className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-sm tracking-tight text-white uppercase">Terminal Absensi Terpadu</h3>
-                  <p className="text-[10px] text-emerald-200/80 font-medium">Sistem Digital &bull; CV. ARI SPORTINDO</p>
+                  <h3 className="font-extrabold text-sm tracking-tight text-white uppercase">Absensi ARI SPORTINDO</h3>
+                  <p className="text-[10px] text-emerald-200/80 font-medium">Scan QR lokasi untuk masuk dan pulang kerja</p>
                 </div>
               </div>
 
@@ -833,8 +975,8 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
 
             {/* Bottom Info bar */}
             <div className="bg-[#0e2419] px-6 py-3 border-t border-[#163826] text-[10px] text-emerald-300/60 flex flex-col sm:flex-row justify-between items-center gap-2 font-mono">
-              <span>SINKRONISASI GPS: AKTIF (Radius 100m)</span>
-              <span>VERSI SISTEM: KIOSK PORTAL ADAPTIVE</span>
+              <span>GPS aktif untuk cek lokasi pabrik</span>
+              <span>ARI SPORTINDO</span>
             </div>
 
           </div>
@@ -962,7 +1104,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                   <h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider flex items-center gap-2">
                     <Calendar className="w-4 h-4 text-[#1F4B36]" /> Riwayat Log Absensi Lengkap
                   </h3>
-                  <p className="text-[10px] text-gray-400 mt-0.5">Semua data scan absensi karyawan yang tersinkronisasi.</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">Semua data scan absensi karyawan yang sudah tersimpan.</p>
                 </div>
 
                 {/* Clean Button */}
@@ -981,7 +1123,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                   <button onClick={exportAttendanceCsv} className="ml-auto px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-100 cursor-pointer"><Download className="w-3 h-3 inline mr-1" /> CSV</button>
                 </div>
                 {historyPeriod === 'custom' && <div className="grid grid-cols-2 gap-2"><input type="date" value={historyStart} onChange={e => setHistoryStart(e.target.value)} className="border border-gray-200 rounded-lg p-2 text-xs" /><input type="date" value={historyEnd} min={historyStart} onChange={e => setHistoryEnd(e.target.value)} className="border border-gray-200 rounded-lg p-2 text-xs" /></div>}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2"><div className="relative"><Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-gray-400" /><input value={historySearch} onChange={e => setHistorySearch(e.target.value)} placeholder="Cari nama atau username..." className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-xs" /></div><div className="grid grid-cols-3 gap-1.5"><select value={historyType} onChange={e => setHistoryType(e.target.value as typeof historyType)} className="min-w-0 border border-gray-200 rounded-lg px-1.5 text-[10px]"><option value="all">Semua Scan</option><option value="masuk">Masuk</option><option value="pulang">Pulang</option></select><select value={historyStatus} onChange={e => setHistoryStatus(e.target.value as typeof historyStatus)} className="min-w-0 border border-gray-200 rounded-lg px-1.5 text-[10px]"><option value="all">Semua Status</option><option value="normal">Normal</option><option value="late">Terlambat</option><option value="anomaly">Anomali</option></select><select value={historyMethod} onChange={e => setHistoryMethod(e.target.value as typeof historyMethod)} className="min-w-0 border border-gray-200 rounded-lg px-1.5 text-[10px]"><option value="all">Semua Metode</option><option value="gps_self">Mandiri GPS</option><option value="admin_qr">Dibantu Admin</option></select></div></div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2"><div className="relative"><Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-gray-400" /><input value={historySearch} onChange={e => setHistorySearch(e.target.value)} placeholder="Cari nama atau username..." className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-xs" /></div><div className="grid grid-cols-3 gap-1.5"><select value={historyType} onChange={e => setHistoryType(e.target.value as typeof historyType)} className="min-w-0 border border-gray-200 rounded-lg px-1.5 text-[10px]"><option value="all">Semua Scan</option><option value="masuk">Masuk</option><option value="pulang">Pulang</option></select><select value={historyStatus} onChange={e => setHistoryStatus(e.target.value as typeof historyStatus)} className="min-w-0 border border-gray-200 rounded-lg px-1.5 text-[10px]"><option value="all">Semua Status</option><option value="normal">Normal</option><option value="late">Terlambat</option><option value="anomaly">Anomali</option></select><select value={historyMethod} onChange={e => setHistoryMethod(e.target.value as typeof historyMethod)} className="min-w-0 border border-gray-200 rounded-lg px-1.5 text-[10px]"><option value="all">Semua Metode</option><option value="gps_self">GPS Karyawan</option><option value="admin_qr">Dibantu Admin</option></select></div></div>
                 <p className="text-[10px] text-gray-400">Menampilkan {filteredHistory.length} log · {periodBounds.start} s/d {periodBounds.end}</p>
               </div>
 

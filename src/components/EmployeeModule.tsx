@@ -726,7 +726,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                 <Lock className="w-3.5 h-3.5" /> 3. Keamanan PIN Akses (Log-In)
               </h4>
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">PIN Login Mandiri (4 Digit Angka)</label>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">PIN Login Karyawan (4 Digit Angka)</label>
                 <input
                   type="password"
                   maxLength={4}
@@ -739,7 +739,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                 <p className="text-[10px] text-gray-400 mt-1.5 leading-relaxed">
                   {editEmpId
                     ? 'Isi hanya jika ingin mengganti PIN karyawan ini. Kosongkan untuk mempertahankan PIN lama.'
-                    : 'PIN dienkripsi secara aman saat disimpan guna mencegah kebocoran data.'}
+                    : 'PIN disimpan dengan aman untuk menjaga akses akun karyawan.'}
                 </p>
               </div>
             </div>
