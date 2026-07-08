@@ -24,13 +24,27 @@ const TABLE = 'ari_store';
 const ATT_TABLE = 'ari_attendance';
 const ATT_KEY = 'attendance';
 const ATT_PENDING_KEY = 'nxty_attendance_pending';
-// Karyawan disimpan SATU BARIS PER KARYAWAN di tabel terpisah, dengan Supabase
-// sebagai sumber data utama (upsert/hapus per baris — tidak ada array besar yang
-// saling menimpa). Lihat pushEmployeesToCloud & jalur employees di initCloudSync.
-const EMP_TABLE = 'ari_employees';
-const EMP_KEY = 'employees';
-
 export const isCloudEnabled = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+
+// Data master/transaksi yang RAWAN HILANG bila disimpan sebagai satu array besar
+// (last-writer-wins) kini disimpan SATU BARIS PER RECORD di tabel per-key, dengan
+// Supabase sebagai sumber data utama: upsert/hapus per baris, tidak saling menimpa.
+// Tambah key baru di sini untuk memindahkannya ke model per-baris.
+interface PerRowSync {
+  key: string;        // key localStorage (tanpa prefix nxty_) & key di dataStore
+  table: string;      // nama tabel Supabase
+  ready: boolean;     // true setelah tarikan awal selesai (gerbang anti-timpa seed/migrasi)
+  appendOnly?: boolean; // log yang terus bertambah & tak pernah dihapus per-baris (hanya
+                        // dikosongkan sekaligus) — lewati delete-not-in agar filter tidak
+                        // membengkak seiring data. Hapus semua hanya saat daftar dikosongkan.
+}
+const PER_ROW: PerRowSync[] = [
+  { key: 'employees', table: 'ari_employees', ready: !isCloudEnabled },
+  { key: 'products', table: 'ari_products', ready: !isCloudEnabled },
+  { key: 'raw_materials', table: 'ari_raw_materials', ready: !isCloudEnabled },
+  { key: 'stock_movements', table: 'ari_stock_movements', ready: !isCloudEnabled, appendOnly: true },
+];
+const perRowByKey = new Map(PER_ROW.map(cfg => [cfg.key, cfg]));
 
 export type CloudStatus = 'offline' | 'connecting' | 'online' | 'error';
 let status: CloudStatus = isCloudEnabled ? 'connecting' : 'offline';
@@ -51,28 +65,21 @@ if (isCloudEnabled) {
 let applyingRemote = false;
 export const isApplyingRemote = () => applyingRemote;
 
-// Gerbang kesiapan karyawan: selama tarikan awal dari Supabase belum selesai,
-// tulisan karyawan (mis. data contoh/seed atau migrasi) TIDAK boleh di-push,
-// supaya tidak menimpa/menghapus data yang sebenarnya sudah ada di database.
-// Saat cloud tidak dikonfigurasi, langsung dianggap siap (mode offline biasa).
-let employeesReady = !isCloudEnabled;
-export const isEmployeesReady = () => employeesReady;
-
 // Debounce push per key supaya input beruntun tidak membanjiri jaringan
 const pendingTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 
-// ===================== Jalur khusus karyawan (per baris) =====================
+// ===================== Jalur umum per-baris (Supabase = sumber data utama) =====================
 
-type EmployeeLike = { id: string };
+type RowLike = { id: string };
 
-const readLocalEmployees = (): EmployeeLike[] => {
-  try { return JSON.parse(localStorage.getItem(`nxty_${EMP_KEY}`) || '[]'); } catch { return []; }
+const readLocalRows = (key: string): RowLike[] => {
+  try { return JSON.parse(localStorage.getItem(`nxty_${key}`) || '[]'); } catch { return []; }
 };
 
-const writeLocalEmployees = (rows: EmployeeLike[]) => {
+const writeLocalRows = (key: string, rows: RowLike[]) => {
   applyingRemote = true;
   try {
-    localStorage.setItem(`nxty_${EMP_KEY}`, JSON.stringify(rows));
+    localStorage.setItem(`nxty_${key}`, JSON.stringify(rows));
     window.dispatchEvent(new Event('nxty_storage_change'));
   } finally {
     applyingRemote = false;
@@ -80,30 +87,34 @@ const writeLocalEmployees = (rows: EmployeeLike[]) => {
 };
 
 /**
- * Simpan SELURUH daftar karyawan ke Supabase secara per-baris:
- * - setiap karyawan di-upsert (onConflict id) — aman dari tabrakan array besar,
- * - karyawan yang tidak lagi ada di daftar dihapus dari database.
- * No-op sampai tarikan awal selesai (employeesReady) agar seed/migrasi tidak
+ * Simpan SELURUH daftar sebuah key ke Supabase secara per-baris:
+ * - setiap record di-upsert (onConflict id) — aman dari tabrakan array besar,
+ * - record yang tidak lagi ada di daftar dihapus dari database.
+ * No-op sampai tarikan awal selesai (cfg.ready) agar seed/migrasi tidak
  * menghapus data asli di database sebelum kita membacanya.
  */
-export const pushEmployeesToCloud = (list: EmployeeLike[]): void => {
-  if (!client || applyingRemote || !employeesReady) return;
+const pushRowsToCloud = (cfg: PerRowSync, list: RowLike[]): void => {
+  if (!client || applyingRemote || !cfg.ready) return;
   void (async () => {
     try {
-      if (list.length > 0) {
-        const rows = list.map(emp => ({ id: emp.id, value: emp, updated_at: new Date().toISOString() }));
-        const { error: upErr } = await client!.from(EMP_TABLE).upsert(rows, { onConflict: 'id' });
+      const clean = list.filter(r => r && r.id);
+      if (clean.length > 0) {
+        const rows = clean.map(r => ({ id: r.id, value: r, updated_at: new Date().toISOString() }));
+        const { error: upErr } = await client!.from(cfg.table).upsert(rows, { onConflict: 'id' });
         if (upErr) throw upErr;
-        const keep = `(${list.map(emp => `"${emp.id}"`).join(',')})`;
-        const { error: delErr } = await client!.from(EMP_TABLE).delete().not('id', 'in', keep);
-        if (delErr) throw delErr;
+        // Log append-only: jangan hapus baris lama (filter NOT IN bisa membengkak).
+        if (!cfg.appendOnly) {
+          const keep = `(${clean.map(r => `"${r.id}"`).join(',')})`;
+          const { error: delErr } = await client!.from(cfg.table).delete().not('id', 'in', keep);
+          if (delErr) throw delErr;
+        }
       } else {
-        const { error } = await client!.from(EMP_TABLE).delete().neq('id', '');
+        const { error } = await client!.from(cfg.table).delete().neq('id', '');
         if (error) throw error;
       }
       if (status !== 'online') setStatus('online');
     } catch (e) {
-      console.error('[cloudSync] Gagal menyimpan karyawan ke Supabase:', e);
+      console.error(`[cloudSync] Gagal menyimpan "${cfg.key}" ke Supabase:`, e);
       setStatus('error');
     }
   })();
@@ -114,8 +125,9 @@ export const pushKeyToCloud = (key: string, data: unknown): void => {
   if (!client || applyingRemote) return;
   // Absensi TIDAK ikut jalur array utuh — punya jalur per-baris sendiri (pushAttendanceToCloud).
   if (key === ATT_KEY) return;
-  // Karyawan juga punya jalur per-baris sendiri (Supabase = sumber data utama).
-  if (key === EMP_KEY) { pushEmployeesToCloud(data as EmployeeLike[]); return; }
+  // Key per-baris (karyawan, produk, bahan baku, mutasi stok) punya jalurnya sendiri.
+  const perRow = perRowByKey.get(key);
+  if (perRow) { pushRowsToCloud(perRow, data as RowLike[]); return; }
   if (pendingTimers[key]) clearTimeout(pendingTimers[key]);
   pendingTimers[key] = setTimeout(async () => {
     delete pendingTimers[key];
@@ -241,7 +253,7 @@ export const initCloudSync = async (): Promise<void> => {
     try {
       for (const row of data || []) {
         if (row.key === ATT_KEY) continue; // absensi model lama diabaikan — pakai tabel per-baris
-        if (row.key === EMP_KEY) continue; // karyawan diabaikan — pakai tabel per-baris (ari_employees)
+        if (perRowByKey.has(row.key)) continue; // key per-baris diabaikan — pakai tabelnya sendiri
         localStorage.setItem(`nxty_${row.key}`, JSON.stringify(row.value));
       }
     } finally {
@@ -268,57 +280,64 @@ export const initCloudSync = async (): Promise<void> => {
       console.error('[cloudSync] Gagal sinkron tabel absensi (sudah jalankan supabase/setup.sql terbaru?):', e);
     }
 
-    // Karyawan: Supabase adalah sumber data utama. Tarik semua baris dan jadikan
-    // itu isi karyawan lokal. Bila database masih kosong (instalasi baru), unggah
-    // data lokal (seed) sebagai isian awal. Setelah ini employeesReady = true,
-    // sehingga tambah/edit/hapus karyawan mulai tersimpan langsung ke database.
-    try {
-      const { data: empRows, error: empErr } = await client.from(EMP_TABLE).select('id, value');
-      if (empErr) throw empErr;
-      const cloudEmps = (empRows || [])
-        .map(r => r.value as EmployeeLike)
-        .filter(r => r && r.id);
-      employeesReady = true;
-      if (cloudEmps.length > 0) {
-        writeLocalEmployees(cloudEmps);
-      } else {
-        const local = readLocalEmployees();
-        if (local.length > 0) pushEmployeesToCloud(local);
+    // Key per-baris (karyawan, produk, bahan baku, mutasi stok): Supabase adalah
+    // sumber data utama. Tarik semua baris dan jadikan itu isi lokal. Bila database
+    // masih kosong (instalasi baru), unggah data lokal (seed) sebagai isian awal.
+    // Setelah ini cfg.ready = true, sehingga tambah/edit/hapus mulai tersimpan
+    // langsung ke database dan tidak bisa "hilang kembali ke data awal".
+    for (const cfg of PER_ROW) {
+      try {
+        const { data: rows, error: rowErr } = await client.from(cfg.table).select('id, value');
+        if (rowErr) throw rowErr;
+        const cloudRows = (rows || [])
+          .map(r => r.value as RowLike)
+          .filter(r => r && r.id);
+        cfg.ready = true;
+        if (cloudRows.length > 0) {
+          writeLocalRows(cfg.key, cloudRows);
+        } else {
+          const local = readLocalRows(cfg.key);
+          if (local.length > 0) pushRowsToCloud(cfg, local);
+        }
+      } catch (e) {
+        // Tabel belum dibuat (setup.sql terbaru belum dijalankan) → jalan lokal saja.
+        cfg.ready = true;
+        console.error(`[cloudSync] Gagal sinkron tabel "${cfg.table}" (sudah jalankan supabase/setup.sql terbaru?):`, e);
       }
-    } catch (e) {
-      // Tabel belum dibuat (setup.sql terbaru belum dijalankan) → jalan lokal saja.
-      employeesReady = true;
-      console.error('[cloudSync] Gagal sinkron tabel karyawan (sudah jalankan supabase/setup.sql terbaru?):', e);
     }
 
     // Realtime: perubahan dari perangkat lain langsung masuk
-    client
-      .channel('ari_store_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: TABLE }, (payload) => {
-        const row = payload.new as { key?: string; value?: unknown } | null;
-        if (row && row.key !== undefined && row.key !== ATT_KEY && row.key !== EMP_KEY) {
-          applyRemoteValue(row.key, row.value);
-        }
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: EMP_TABLE }, (payload) => {
-        const rec = (payload.new as { value?: EmployeeLike } | null)?.value;
-        if (!rec?.id) return;
-        const local = readLocalEmployees();
-        if (!local.some(r => r.id === rec.id)) writeLocalEmployees([...local, rec]);
-      })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: EMP_TABLE }, (payload) => {
-        const rec = (payload.new as { value?: EmployeeLike } | null)?.value;
-        if (!rec?.id) return;
-        const local = readLocalEmployees();
-        writeLocalEmployees(local.some(r => r.id === rec.id)
-          ? local.map(r => r.id === rec.id ? rec : r)
-          : [...local, rec]);
-      })
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: EMP_TABLE }, (payload) => {
-        const oldId = (payload.old as { id?: string } | null)?.id;
-        if (!oldId) return;
-        writeLocalEmployees(readLocalEmployees().filter(r => r.id !== oldId));
-      })
+    const channel = client.channel('ari_store_changes');
+    channel.on('postgres_changes', { event: '*', schema: 'public', table: TABLE }, (payload) => {
+      const row = payload.new as { key?: string; value?: unknown } | null;
+      if (row && row.key !== undefined && row.key !== ATT_KEY && !perRowByKey.has(row.key)) {
+        applyRemoteValue(row.key, row.value);
+      }
+    });
+    // Handler realtime per-baris untuk tiap key (upsert/hapus berdasarkan id).
+    for (const cfg of PER_ROW) {
+      channel
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: cfg.table }, (payload) => {
+          const rec = (payload.new as { value?: RowLike } | null)?.value;
+          if (!rec?.id) return;
+          const local = readLocalRows(cfg.key);
+          if (!local.some(r => r.id === rec.id)) writeLocalRows(cfg.key, [...local, rec]);
+        })
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: cfg.table }, (payload) => {
+          const rec = (payload.new as { value?: RowLike } | null)?.value;
+          if (!rec?.id) return;
+          const local = readLocalRows(cfg.key);
+          writeLocalRows(cfg.key, local.some(r => r.id === rec.id)
+            ? local.map(r => r.id === rec.id ? rec : r)
+            : [...local, rec]);
+        })
+        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: cfg.table }, (payload) => {
+          const oldId = (payload.old as { id?: string } | null)?.id;
+          if (!oldId) return;
+          writeLocalRows(cfg.key, readLocalRows(cfg.key).filter(r => r.id !== oldId));
+        });
+    }
+    channel
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: ATT_TABLE }, (payload) => {
         const rec = (payload.new as { value?: AttendanceRecordLike } | null)?.value;
         if (!rec?.id) return;

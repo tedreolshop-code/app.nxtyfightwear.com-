@@ -123,3 +123,40 @@ create policy "ari_employees_delete" on public.ari_employees
 
 -- Hapus sisa data karyawan model lama (array utuh) dari ari_store bila ada.
 delete from public.ari_store where key = 'employees';
+
+-- ============================================================
+-- Tabel gudang: SATU BARIS PER RECORD (produk, bahan baku, mutasi stok).
+-- Sama seperti karyawan: Supabase jadi sumber data utama sehingga stok &
+-- riwayat mutasi tidak "hilang kembali ke data awal" saat dipakai produksi.
+-- ============================================================
+do $$
+declare
+  t text;
+  old_key text;
+begin
+  foreach t in array array['ari_products','ari_raw_materials','ari_stock_movements'] loop
+    execute format('create table if not exists public.%I (id text primary key, value jsonb not null, updated_at timestamptz not null default now())', t);
+
+    if not exists (
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t
+    ) then
+      execute format('alter publication supabase_realtime add table public.%I', t);
+    end if;
+
+    execute format('alter table public.%I enable row level security', t);
+    execute format('drop policy if exists "%s_read" on public.%I', t, t);
+    execute format('create policy "%s_read" on public.%I for select using (true)', t, t);
+    execute format('drop policy if exists "%s_write" on public.%I', t, t);
+    execute format('create policy "%s_write" on public.%I for insert with check (true)', t, t);
+    execute format('drop policy if exists "%s_update" on public.%I', t, t);
+    execute format('create policy "%s_update" on public.%I for update using (true)', t, t);
+    execute format('drop policy if exists "%s_delete" on public.%I', t, t);
+    execute format('create policy "%s_delete" on public.%I for delete using (true)', t, t);
+  end loop;
+
+  -- Hapus sisa data model lama (array utuh) dari ari_store bila ada.
+  foreach old_key in array array['products','raw_materials','stock_movements'] loop
+    delete from public.ari_store where key = old_key;
+  end loop;
+end $$;
