@@ -84,7 +84,7 @@ export const OrderModule: React.FC = () => {
     const total = selectedItems.reduce((acc, curr) => acc + curr.subtotal, 0);
 
     const newOrder: Order = {
-      id: `ord-${Date.now().toString().slice(-4)}`,
+      id: `ord-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
       order_number: orderNumber,
       customer_name: customerName,
       customer_phone: customerPhone,

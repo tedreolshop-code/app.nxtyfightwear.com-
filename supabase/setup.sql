@@ -125,16 +125,27 @@ create policy "ari_employees_delete" on public.ari_employees
 delete from public.ari_store where key = 'employees';
 
 -- ============================================================
--- Tabel gudang: SATU BARIS PER RECORD (produk, bahan baku, mutasi stok).
--- Sama seperti karyawan: Supabase jadi sumber data utama sehingga stok &
--- riwayat mutasi tidak "hilang kembali ke data awal" saat dipakai produksi.
+-- Tabel per-baris untuk SEMUA data operasional: SATU BARIS PER RECORD.
+-- Supabase jadi sumber data utama sehingga stok, penjualan, order, produksi,
+-- gaji, kasbon, pembelian, dan faktur tidak "hilang kembali ke data awal".
+-- (create table if not exists → aman dijalankan ulang.)
 -- ============================================================
 do $$
 declare
   t text;
   old_key text;
 begin
-  foreach t in array array['ari_products','ari_raw_materials','ari_stock_movements'] loop
+  foreach t in array array[
+    'ari_departments','ari_customers','ari_assets',
+    'ari_products','ari_raw_materials','ari_stock_movements',
+    'ari_orders','ari_marketplace_sales','ari_marketplace_item_sales',
+    'ari_invoices','ari_delivery_notes','ari_returns',
+    'ari_production_jobs','ari_production_handoffs','ari_rejected_goods',
+    'ari_production_task_logs','ari_production_logs','ari_packing_tasks',
+    'ari_purchases','ari_daily_expenses',
+    'ari_payroll_weekly','ari_cash_advances','ari_cash_advance_transactions',
+    'ari_attendance_adjustments','ari_notifications'
+  ] loop
     execute format('create table if not exists public.%I (id text primary key, value jsonb not null, updated_at timestamptz not null default now())', t);
 
     if not exists (
@@ -156,7 +167,17 @@ begin
   end loop;
 
   -- Hapus sisa data model lama (array utuh) dari ari_store bila ada.
-  foreach old_key in array array['products','raw_materials','stock_movements'] loop
+  foreach old_key in array array[
+    'departments','customers','assets',
+    'products','raw_materials','stock_movements',
+    'orders','marketplace_sales','marketplace_item_sales',
+    'invoices','delivery_notes','returns',
+    'production_jobs','production_handoffs','rejected_goods',
+    'production_task_logs','production_logs','packing_tasks',
+    'purchases','daily_expenses',
+    'payroll_weekly','cash_advances','cash_advance_transactions',
+    'attendance_adjustments','notifications'
+  ] loop
     delete from public.ari_store where key = old_key;
   end loop;
 end $$;

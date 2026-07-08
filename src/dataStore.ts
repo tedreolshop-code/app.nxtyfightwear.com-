@@ -793,7 +793,7 @@ class DataStore {
     });
 
     productionLogs.unshift({
-      id: `PR-${Date.now().toString().slice(-4)}`,
+      id: `PR-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
       department_id: deptId,
       product_id: productId,
       product_name: product.name,

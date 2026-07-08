@@ -39,10 +39,40 @@ interface PerRowSync {
                         // membengkak seiring data. Hapus semua hanya saat daftar dikosongkan.
 }
 const PER_ROW: PerRowSync[] = [
+  // Master
   { key: 'employees', table: 'ari_employees', ready: !isCloudEnabled },
+  { key: 'departments', table: 'ari_departments', ready: !isCloudEnabled },
+  { key: 'customers', table: 'ari_customers', ready: !isCloudEnabled },
+  { key: 'assets', table: 'ari_assets', ready: !isCloudEnabled },
+  // Gudang
   { key: 'products', table: 'ari_products', ready: !isCloudEnabled },
   { key: 'raw_materials', table: 'ari_raw_materials', ready: !isCloudEnabled },
   { key: 'stock_movements', table: 'ari_stock_movements', ready: !isCloudEnabled, appendOnly: true },
+  // Penjualan
+  { key: 'orders', table: 'ari_orders', ready: !isCloudEnabled },
+  { key: 'marketplace_sales', table: 'ari_marketplace_sales', ready: !isCloudEnabled },
+  { key: 'marketplace_item_sales', table: 'ari_marketplace_item_sales', ready: !isCloudEnabled },
+  { key: 'invoices', table: 'ari_invoices', ready: !isCloudEnabled },
+  { key: 'delivery_notes', table: 'ari_delivery_notes', ready: !isCloudEnabled },
+  { key: 'returns', table: 'ari_returns', ready: !isCloudEnabled },
+  // Produksi
+  { key: 'production_jobs', table: 'ari_production_jobs', ready: !isCloudEnabled },
+  { key: 'production_handoffs', table: 'ari_production_handoffs', ready: !isCloudEnabled },
+  { key: 'rejected_goods', table: 'ari_rejected_goods', ready: !isCloudEnabled },
+  { key: 'production_task_logs', table: 'ari_production_task_logs', ready: !isCloudEnabled },
+  { key: 'production_logs', table: 'ari_production_logs', ready: !isCloudEnabled, appendOnly: true },
+  { key: 'packing_tasks', table: 'ari_packing_tasks', ready: !isCloudEnabled },
+  // Pembelian & pengeluaran
+  { key: 'purchases', table: 'ari_purchases', ready: !isCloudEnabled },
+  { key: 'daily_expenses', table: 'ari_daily_expenses', ready: !isCloudEnabled },
+  // Gaji / kasbon
+  { key: 'payroll_weekly', table: 'ari_payroll_weekly', ready: !isCloudEnabled },
+  { key: 'cash_advances', table: 'ari_cash_advances', ready: !isCloudEnabled },
+  { key: 'cash_advance_transactions', table: 'ari_cash_advance_transactions', ready: !isCloudEnabled },
+  // Absensi (koreksi/ACC)
+  { key: 'attendance_adjustments', table: 'ari_attendance_adjustments', ready: !isCloudEnabled },
+  // Notifikasi
+  { key: 'notifications', table: 'ari_notifications', ready: !isCloudEnabled },
 ];
 const perRowByKey = new Map(PER_ROW.map(cfg => [cfg.key, cfg]));
 
@@ -118,6 +148,20 @@ const pushRowsToCloud = (cfg: PerRowSync, list: RowLike[]): void => {
       setStatus('error');
     }
   })();
+};
+
+/**
+ * Isian awal tabel kosong (upsert TANPA hapus). Dipakai saat migrasi/instalasi
+ * baru supaya data lokal atau data model-lama (array di ari_store) terangkat ke
+ * tabel per-baris tanpa risiko saling menghapus antar perangkat.
+ */
+const seedRowsToCloud = async (cfg: PerRowSync, list: RowLike[]): Promise<void> => {
+  if (!client) return;
+  const clean = list.filter(r => r && r.id);
+  if (clean.length === 0) return;
+  const rows = clean.map(r => ({ id: r.id, value: r, updated_at: new Date().toISOString() }));
+  const { error } = await client.from(cfg.table).upsert(rows, { onConflict: 'id' });
+  if (error) throw error;
 };
 
 /** Push satu key (tanpa prefix nxty_) ke Supabase. Dipanggil dataStore setiap kali menulis. */
@@ -249,6 +293,10 @@ export const initCloudSync = async (): Promise<void> => {
     const { data, error } = await client.from(TABLE).select('key, value');
     if (error) throw error;
 
+    // Nilai model-lama (array utuh) di ari_store — dipakai sebagai sumber isian
+    // awal saat migrasi ke tabel per-baris, agar data lama tidak hilang.
+    const legacyStore = new Map((data || []).map(row => [row.key as string, row.value]));
+
     applyingRemote = true;
     try {
       for (const row of data || []) {
@@ -296,8 +344,16 @@ export const initCloudSync = async (): Promise<void> => {
         if (cloudRows.length > 0) {
           writeLocalRows(cfg.key, cloudRows);
         } else {
+          // Tabel per-baris masih kosong → isi awal dari data lokal, atau dari
+          // data model-lama (array di ari_store) bila lokal kosong (mis. migrasi
+          // di perangkat baru). Pakai upsert TANPA hapus agar aman antar perangkat.
           const local = readLocalRows(cfg.key);
-          if (local.length > 0) pushRowsToCloud(cfg, local);
+          const legacy = Array.isArray(legacyStore.get(cfg.key)) ? legacyStore.get(cfg.key) as RowLike[] : [];
+          const seed = local.length > 0 ? local : legacy;
+          if (seed.length > 0) {
+            if (local.length === 0) writeLocalRows(cfg.key, seed);
+            await seedRowsToCloud(cfg, seed);
+          }
         }
       } catch (e) {
         // Tabel belum dibuat (setup.sql terbaru belum dijalankan) → jalan lokal saja.
