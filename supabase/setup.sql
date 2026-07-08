@@ -78,8 +78,10 @@ drop policy if exists "ari_attendance_delete" on public.ari_attendance;
 create policy "ari_attendance_delete" on public.ari_attendance
   for delete using (true);
 
--- Hapus sisa data absensi model lama (array utuh) dari ari_store bila ada.
-delete from public.ari_store where key = 'attendance';
+-- CATATAN: data model lama (array utuh) di ari_store SENGAJA TIDAK dihapus.
+-- Aplikasi mengabaikannya saat membaca (pakai tabel per-baris), dan menyimpannya
+-- sebagai cadangan + sumber isian awal (seed) saat migrasi. Menghapusnya lebih
+-- awal berisiko menghilangkan data sebelum sempat termigrasi ke tabel per-baris.
 
 -- ============================================================
 -- Tabel karyawan: SATU BARIS PER KARYAWAN (bukan satu array utuh).
@@ -121,8 +123,7 @@ drop policy if exists "ari_employees_delete" on public.ari_employees;
 create policy "ari_employees_delete" on public.ari_employees
   for delete using (true);
 
--- Hapus sisa data karyawan model lama (array utuh) dari ari_store bila ada.
-delete from public.ari_store where key = 'employees';
+-- (Data karyawan model lama di ari_store sengaja dibiarkan sebagai cadangan.)
 
 -- ============================================================
 -- Tabel per-baris untuk SEMUA data operasional: SATU BARIS PER RECORD.
@@ -133,7 +134,6 @@ delete from public.ari_store where key = 'employees';
 do $$
 declare
   t text;
-  old_key text;
 begin
   foreach t in array array[
     'ari_departments','ari_customers','ari_assets',
@@ -166,18 +166,7 @@ begin
     execute format('create policy "%s_delete" on public.%I for delete using (true)', t, t);
   end loop;
 
-  -- Hapus sisa data model lama (array utuh) dari ari_store bila ada.
-  foreach old_key in array array[
-    'departments','customers','assets',
-    'products','raw_materials','stock_movements',
-    'orders','marketplace_sales','marketplace_item_sales',
-    'invoices','delivery_notes','returns',
-    'production_jobs','production_handoffs','rejected_goods',
-    'production_task_logs','production_logs','packing_tasks',
-    'purchases','daily_expenses',
-    'payroll_weekly','cash_advances','cash_advance_transactions',
-    'attendance_adjustments','notifications'
-  ] loop
-    delete from public.ari_store where key = old_key;
-  end loop;
+  -- CATATAN: data model lama (array utuh) di ari_store SENGAJA TIDAK dihapus.
+  -- Dibiarkan sebagai cadangan + sumber isian awal (seed) saat migrasi ke tabel
+  -- per-baris. Aplikasi sudah mengabaikannya saat membaca, jadi tidak mengganggu.
 end $$;
