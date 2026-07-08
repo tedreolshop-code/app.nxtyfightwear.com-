@@ -80,3 +80,46 @@ create policy "ari_attendance_delete" on public.ari_attendance
 
 -- Hapus sisa data absensi model lama (array utuh) dari ari_store bila ada.
 delete from public.ari_store where key = 'attendance';
+
+-- ============================================================
+-- Tabel karyawan: SATU BARIS PER KARYAWAN (bukan satu array utuh).
+-- Supabase menjadi SUMBER DATA UTAMA untuk karyawan: tambah/edit/hapus
+-- ditulis langsung per baris, sehingga tidak ada lagi "array besar" yang
+-- saling menimpa dan membuat karyawan baru hilang kembali ke data awal.
+-- ============================================================
+create table if not exists public.ari_employees (
+  id text primary key,
+  value jsonb not null,
+  updated_at timestamptz not null default now()
+);
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'ari_employees'
+  ) then
+    alter publication supabase_realtime add table public.ari_employees;
+  end if;
+end $$;
+
+alter table public.ari_employees enable row level security;
+
+drop policy if exists "ari_employees_read" on public.ari_employees;
+create policy "ari_employees_read" on public.ari_employees
+  for select using (true);
+
+drop policy if exists "ari_employees_write" on public.ari_employees;
+create policy "ari_employees_write" on public.ari_employees
+  for insert with check (true);
+
+drop policy if exists "ari_employees_update" on public.ari_employees;
+create policy "ari_employees_update" on public.ari_employees
+  for update using (true);
+
+drop policy if exists "ari_employees_delete" on public.ari_employees;
+create policy "ari_employees_delete" on public.ari_employees
+  for delete using (true);
+
+-- Hapus sisa data karyawan model lama (array utuh) dari ari_store bila ada.
+delete from public.ari_store where key = 'employees';
