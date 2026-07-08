@@ -29,7 +29,9 @@ import {
   Sparkles
 } from 'lucide-react';
 
-export const PurchasesExpensesModule: React.FC = () => {
+// mode: bila diisi, modul hanya menampilkan satu bagian saja (dipakai untuk
+// memisah menu "Pembelian" dan "Pengeluaran" menjadi dua menu tersendiri).
+export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses' }> = ({ mode }) => {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [expenses, setExpenses] = useState<DailyExpense[]>([]);
   const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>([]);
@@ -66,7 +68,9 @@ export const PurchasesExpensesModule: React.FC = () => {
 
   // General Filter & Search states
   const [deleteTarget, setDeleteTarget] = useState<{ id: string, type: 'purchase' | 'expense' } | null>(null);
-  const [activeTab, setActiveTab] = useState<'expenses' | 'purchases'>('purchases');
+  // Saat mode diisi, tab dikunci ke bagian itu (pemisahan menu).
+  const [activeTabState, setActiveTab] = useState<'expenses' | 'purchases'>('purchases');
+  const activeTab: 'expenses' | 'purchases' = mode ?? activeTabState;
   const [isPoModalOpen, setIsPoModalOpen] = useState(false);
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [poViewMode, setPoViewMode] = useState<'spreadsheet' | 'interactive'>('spreadsheet');
@@ -630,31 +634,44 @@ export const PurchasesExpensesModule: React.FC = () => {
               <FileSpreadsheet className="w-5 h-5" />
             </span>
             <div>
-              <h1 className="text-xl font-black text-emerald-900 font-sans tracking-tight">PO & Pengeluaran Kas</h1>
-              <p className="text-xs text-emerald-800/60">Pembelian barang/PO dengan template Excel dan pencatatan kas keluar operasional harian</p>
+              <h1 className="text-xl font-black text-emerald-900 font-sans tracking-tight">
+                {mode === 'purchases' ? 'Pembelian / PO' : mode === 'expenses' ? 'Pengeluaran Kas' : 'PO & Pengeluaran Kas'}
+              </h1>
+              <p className="text-xs text-emerald-800/60">
+                {mode === 'purchases'
+                  ? 'Pembelian barang/PO dengan template Excel'
+                  : mode === 'expenses'
+                  ? 'Pencatatan kas keluar operasional harian'
+                  : 'Pembelian barang/PO dengan template Excel dan pencatatan kas keluar operasional harian'}
+              </p>
             </div>
           </div>
 
           {/* Action Buttons */}
           <div className="flex gap-2">
-            <button
-              onClick={() => setIsPoModalOpen(true)}
-              className="bg-emerald-800 hover:bg-emerald-950 text-white font-bold py-2 px-4 rounded-xl transition-all flex items-center gap-2 text-xs"
-            >
-              <Plus className="w-4 h-4" />
-              Terbitkan PO Baru
-            </button>
-            <button
-              onClick={() => setIsExpenseModalOpen(true)}
-              className="bg-emerald-800 hover:bg-emerald-950 text-white font-bold py-2 px-4 rounded-xl transition-all flex items-center gap-2 text-xs"
-            >
-              <Plus className="w-4 h-4" />
-              Catat Pengeluaran Baru
-            </button>
+            {activeTab === 'purchases' && (
+              <button
+                onClick={() => setIsPoModalOpen(true)}
+                className="bg-emerald-800 hover:bg-emerald-950 text-white font-bold py-2 px-4 rounded-xl transition-all flex items-center gap-2 text-xs"
+              >
+                <Plus className="w-4 h-4" />
+                Terbitkan PO Baru
+              </button>
+            )}
+            {activeTab === 'expenses' && (
+              <button
+                onClick={() => setIsExpenseModalOpen(true)}
+                className="bg-emerald-800 hover:bg-emerald-950 text-white font-bold py-2 px-4 rounded-xl transition-all flex items-center gap-2 text-xs"
+              >
+                <Plus className="w-4 h-4" />
+                Catat Pengeluaran Baru
+              </button>
+            )}
           </div>
         </div>
-        
-        {/* TAB CONTROLLERS - EVERGREEN SHIFT */}
+
+        {/* TAB CONTROLLERS — hanya tampil saat modul menampilkan keduanya (mode kosong) */}
+        {!mode && (
         <div className="flex bg-emerald-950/5 p-1 rounded-xl text-xs font-semibold self-start md:self-auto shadow-inner border border-emerald-800/10">
           <button
             onClick={() => setActiveTab('purchases')}
@@ -675,10 +692,12 @@ export const PurchasesExpensesModule: React.FC = () => {
             Pengeluaran Harian
           </button>
         </div>
+        )}
       </div>
 
       {/* OVERVIEW STATS (KPI BREAKDOWNS) - EVERGREEN LINES */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {(!mode || mode === 'purchases') && (
         <div className="bg-white border border-emerald-800/20 p-5 rounded-2xl shadow-xs hover:shadow-sm hover:border-emerald-800/45 transition-all relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full -mr-6 -mt-6 group-hover:scale-110 transition-transform"></div>
           <span className="text-[10px] text-emerald-800/60 font-bold uppercase tracking-wider block">Total Pembelian PO</span>
@@ -689,7 +708,9 @@ export const PurchasesExpensesModule: React.FC = () => {
             <CheckCircle2 className="w-3 h-3 text-emerald-600 inline" /> {purchases.length} Dokumen PO diterbitkan
           </p>
         </div>
+        )}
 
+        {(!mode || mode === 'expenses') && (
         <div className="bg-white border border-emerald-800/20 p-5 rounded-2xl shadow-xs hover:shadow-sm hover:border-emerald-800/45 transition-all relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-24 h-24 bg-rose-500/5 rounded-full -mr-6 -mt-6 group-hover:scale-110 transition-transform"></div>
           <span className="text-[10px] text-emerald-800/60 font-bold uppercase tracking-wider block">Total Pengeluaran Kas</span>
@@ -700,7 +721,9 @@ export const PurchasesExpensesModule: React.FC = () => {
             <TrendingDown className="w-3 h-3 text-rose-500 inline" /> {expenses.length} Transaksi operasional tercatat
           </p>
         </div>
+        )}
 
+        {(!mode || mode === 'purchases') && (<>
         <div className="bg-white border border-emerald-800/20 p-5 rounded-2xl shadow-xs hover:shadow-sm hover:border-emerald-800/45 transition-all relative overflow-hidden">
           <span className="text-[10px] text-emerald-800/60 font-bold uppercase tracking-wider block">Supplier Terbanyak PO</span>
           <div className="mt-2.5">
@@ -748,6 +771,7 @@ export const PurchasesExpensesModule: React.FC = () => {
             </div>
           </div>
         </div>
+        </>)}
       </div>
 
         {/* CORE CONTENT */}

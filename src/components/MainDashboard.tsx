@@ -235,7 +235,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName }) 
   const kartuPenjualan: StatCard[] = [
     { label: 'Penjualan Hari Ini', value: formatIDR(penjualanHariIni), sub: 'Detail item + rekap channel + pesanan', icon: TrendingUp, tab: 'penjualan', accent: accents.emerald },
     { label: 'Pesanan Aktif', value: formatIDR(nilaiOrderAktif), sub: `${orderAktif.length} pesanan · ${orderBaru.length} menunggu diproses`, warn: orderBaru.length > 0, icon: ShoppingBag, tab: 'penjualan', accent: accents.blue },
-    { label: 'Pengeluaran Hari Ini', value: formatIDR(pengeluaranHariIni), sub: 'Pengeluaran harian + PO bahan baku', icon: Wallet, tab: 'pembelian', accent: accents.rose },
+    { label: 'Pengeluaran Hari Ini', value: formatIDR(pengeluaranHariIni), sub: 'Pengeluaran harian + PO bahan baku', icon: Wallet, tab: 'pengeluaran', accent: accents.rose },
   ];
 
   const kartuProduksi: StatCard[] = [

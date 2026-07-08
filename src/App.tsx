@@ -30,6 +30,7 @@ import {
   Archive,
   LayoutDashboard,
   ShoppingCart,
+  TrendingDown,
   FileSpreadsheet,
   Activity,
   LogOut,
@@ -49,7 +50,8 @@ const ACTIVE_ROLES: Array<{ id: UserRole; label: string; desc: string }> = [
 const MENUS: Array<{ id: string; label: string; icon: React.ComponentType<{ className?: string }>; roles: UserRole[] }> = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['owner', 'admin_penjualan', 'admin_gudang', 'karyawan'] },
   { id: 'penjualan', label: 'Penjualan', icon: ShoppingBag, roles: ['owner', 'admin_penjualan'] },
-  { id: 'pembelian', label: 'Pembelian & Pengeluaran', icon: ShoppingCart, roles: ['owner', 'admin_penjualan'] },
+  { id: 'pembelian', label: 'Pembelian', icon: ShoppingCart, roles: ['owner', 'admin_penjualan'] },
+  { id: 'pengeluaran', label: 'Pengeluaran', icon: TrendingDown, roles: ['owner', 'admin_penjualan'] },
   { id: 'gudang', label: 'Gudang', icon: Archive, roles: ['owner', 'admin_gudang'] },
   { id: 'produksi', label: 'Produksi', icon: Hammer, roles: ['owner', 'admin_gudang', 'karyawan'] },
   { id: 'karyawan', label: 'Karyawan', icon: Users, roles: ['owner'] },
@@ -801,7 +803,8 @@ export default function App() {
             )}
 
             {/* PEMBELIAN & PENGELUARAN (format approved, modul apa adanya) */}
-            {activeTab === 'pembelian' && <PurchasesExpensesModule />}
+            {activeTab === 'pembelian' && <PurchasesExpensesModule mode="purchases" />}
+            {activeTab === 'pengeluaran' && <PurchasesExpensesModule mode="expenses" />}
 
             {/* GUDANG */}
             {activeTab === 'gudang' && <WarehouseInventoryModule userRole={currentRole} />}
