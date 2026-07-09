@@ -350,6 +350,8 @@ export default function App() {
 
   const permittedMenus = MENUS.filter(m => {
     if (!m.roles.includes(currentRole)) return false;
+    // Owner selalu melihat semua menu role-nya — allowed_tabs lama bisa belum memuat menu baru
+    if (currentRole === 'owner') return true;
     if (!loggedEmployee?.allowed_tabs?.length) return true;
     return loggedEmployee.allowed_tabs.includes(m.id);
   });
