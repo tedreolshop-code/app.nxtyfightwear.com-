@@ -353,7 +353,7 @@ export const InvoiceModule: React.FC<InvoiceModuleProps> = ({ isAdmin, userRole 
                   <input
                     type="number"
                     min={1}
-                    value={itemQty}
+                    value={itemQty || ''}
                     onChange={(e) => setItemQty(Number(e.target.value))}
                     className="w-16 bg-white border border-gray-200 rounded px-2 py-1 text-xs text-center"
                   />
@@ -407,7 +407,7 @@ export const InvoiceModule: React.FC<InvoiceModuleProps> = ({ isAdmin, userRole 
                   <label className="block text-xs font-medium text-gray-500 mb-1">PPN (%)</label>
                   <input
                     type="number"
-                    value={invoiceTax}
+                    value={invoiceTax || ''}
                     onChange={(e) => setInvoiceTax(Number(e.target.value))}
                     className="w-full bg-gray-50 border border-gray-200 rounded px-3 py-1.5 text-xs font-mono"
                   />

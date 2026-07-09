@@ -973,11 +973,11 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                         <div className="grid grid-cols-2 gap-2">
                           <div>
                             <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Qty Selesai</label>
-                            <input type="number" min={0} value={taskQtyDone} onChange={event => setTaskQtyDone(Number(event.target.value))} className="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-xs font-mono font-bold" />
+                            <input type="number" min={0} value={taskQtyDone || ''} onChange={event => setTaskQtyDone(Number(event.target.value))} className="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-xs font-mono font-bold" />
                           </div>
                           <div>
                             <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Qty Reject</label>
-                            <input type="number" min={0} value={taskQtyRejected} onChange={event => setTaskQtyRejected(Number(event.target.value))} className="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-xs font-mono font-bold" />
+                            <input type="number" min={0} value={taskQtyRejected || ''} onChange={event => setTaskQtyRejected(Number(event.target.value))} className="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-xs font-mono font-bold" />
                           </div>
                         </div>
                         <div>
@@ -1794,7 +1794,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                             <input
                               type="number"
                               min={1}
-                              value={output.target_qty}
+                              value={output.target_qty || ''}
                               onChange={event => setManualOutputs(items => items.map((item, itemIndex) => itemIndex === index ? { ...item, target_qty: Number(event.target.value) } : item))}
                               className="col-span-3 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono font-bold"
                             />
@@ -1841,7 +1841,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                                 <option value="">Pilih bahan</option>
                                 {manualFilteredMaterials.map(item => <option key={item.id} value={item.id}>{item.name} - stok {item.current_stock} {item.unit}</option>)}
                               </select>
-                              <input type="number" min={0} step="0.01" value={material.qty} onChange={event => setManualMaterials(items => items.map((item, itemIndex) => itemIndex === index ? { ...item, qty: Number(event.target.value) } : item))} className="col-span-3 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono font-bold" placeholder={selected?.unit || 'Qty'} />
+                              <input type="number" min={0} step="0.01" value={material.qty || ''} onChange={event => setManualMaterials(items => items.map((item, itemIndex) => itemIndex === index ? { ...item, qty: Number(event.target.value) } : item))} className="col-span-3 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono font-bold" placeholder={selected?.unit || 'Qty'} />
                               <button type="button" onClick={() => setManualMaterials(items => items.length === 1 ? items : items.filter((_, itemIndex) => itemIndex !== index))} className="col-span-1 rounded-lg bg-gray-100 text-gray-500 text-xs font-bold cursor-pointer">×</button>
                             </div>
                           );
@@ -1931,7 +1931,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                     <input
                       type="number"
                       min={1}
-                      value={productionQty}
+                      value={productionQty || ''}
                       onChange={(e) => {
                         const qty = Math.max(1, Number(e.target.value));
                         setProductionQty(qty);
@@ -2093,11 +2093,11 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                         <div className="grid grid-cols-2 gap-2">
                           <div>
                             <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Bagus</label>
-                            <input type="number" min={0} value={output.good_qty} onChange={event => setFinalOutputs(items => items.map((item, itemIndex) => itemIndex === index ? { ...item, good_qty: Number(event.target.value) } : item))} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono font-bold" />
+                            <input type="number" min={0} value={output.good_qty || ''} onChange={event => setFinalOutputs(items => items.map((item, itemIndex) => itemIndex === index ? { ...item, good_qty: Number(event.target.value) } : item))} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono font-bold" />
                           </div>
                           <div>
                             <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Reject</label>
-                            <input type="number" min={0} value={output.reject_qty} onChange={event => setFinalOutputs(items => items.map((item, itemIndex) => itemIndex === index ? { ...item, reject_qty: Number(event.target.value) } : item))} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono font-bold" />
+                            <input type="number" min={0} value={output.reject_qty || ''} onChange={event => setFinalOutputs(items => items.map((item, itemIndex) => itemIndex === index ? { ...item, reject_qty: Number(event.target.value) } : item))} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono font-bold" />
                           </div>
                         </div>
                         <input value={output.reject_reason} onChange={event => setFinalOutputs(items => items.map((item, itemIndex) => itemIndex === index ? { ...item, reject_reason: event.target.value } : item))} placeholder="Alasan reject bila ada" className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs" />

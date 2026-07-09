@@ -1591,7 +1591,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                   <input
                     type="number"
                     step="0.5"
-                    value={daysWorked}
+                    value={daysWorked || ''}
                     onChange={(e) => setDaysWorked(Number(e.target.value))}
                     className="w-full bg-emerald-50/10 border border-emerald-800/25 rounded-lg px-3 py-2 text-emerald-950 font-semibold focus:bg-white focus:outline-none focus:border-emerald-700"
                     required
@@ -1601,7 +1601,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                   <label className="block font-bold text-emerald-800 uppercase tracking-wider mb-1">Jam Lembur ACC</label>
                   <input
                     type="number"
-                    value={overtimeHours}
+                    value={overtimeHours || ''}
                     onChange={(e) => setOvertimeHours(Number(e.target.value))}
                     className="w-full bg-emerald-50/10 border border-emerald-800/25 rounded-lg px-3 py-2 text-emerald-950 font-semibold focus:bg-white focus:outline-none focus:border-emerald-700"
                     required
@@ -1614,7 +1614,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                     <span className="absolute left-3 top-2 text-emerald-800/60 font-bold">Rp</span>
                     <input
                       type="number"
-                      value={bonus}
+                      value={bonus || ''}
                       onChange={(e) => setBonus(Number(e.target.value))}
                       className="pl-9 w-full bg-emerald-50/10 border border-emerald-800/25 rounded-lg px-3 py-2 font-mono text-emerald-950 font-bold focus:bg-white focus:outline-none focus:border-emerald-700"
                       required
@@ -1627,7 +1627,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                     <span className="absolute left-3 top-2 text-emerald-800/60 font-bold">Rp</span>
                     <input
                       type="number"
-                      value={kasbonDeduction}
+                      value={kasbonDeduction || ''}
                       onChange={(e) => setKasbonDeduction(Number(e.target.value))}
                       className="pl-9 w-full bg-emerald-50/10 border border-emerald-800/25 rounded-lg px-3 py-2 font-mono text-emerald-950 font-bold focus:bg-white focus:outline-none focus:border-emerald-700"
                       required
@@ -1687,7 +1687,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                   <label className="block font-bold text-emerald-800 uppercase tracking-wider mb-1">Hari Kerja</label>
                   <input
                     type="number"
-                    value={editDaysWorked}
+                    value={editDaysWorked || ''}
                     onChange={(e) => setEditDaysWorked(Number(e.target.value))}
                     className="w-full bg-emerald-50/10 border border-emerald-800/25 rounded-lg px-3 py-2 text-emerald-950 font-semibold focus:bg-white focus:outline-none focus:border-emerald-700"
                     required
@@ -1697,7 +1697,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                   <label className="block font-bold text-emerald-800 uppercase tracking-wider mb-1">Jam Lembur</label>
                   <input
                     type="number"
-                    value={editOvertimeHours}
+                    value={editOvertimeHours || ''}
                     onChange={(e) => setEditOvertimeHours(Number(e.target.value))}
                     className="w-full bg-emerald-50/10 border border-emerald-800/25 rounded-lg px-3 py-2 text-emerald-950 font-semibold focus:bg-white focus:outline-none focus:border-emerald-700"
                     required
@@ -1710,7 +1710,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                     <span className="absolute left-3 top-2 text-emerald-800/60 font-bold">Rp</span>
                     <input
                       type="number"
-                      value={editBasePay}
+                      value={editBasePay || ''}
                       onChange={(e) => setEditBasePay(Number(e.target.value))}
                       className="pl-9 w-full bg-emerald-50/10 border border-emerald-800/25 rounded-lg px-3 py-2 font-mono text-emerald-950 font-bold focus:bg-white focus:outline-none focus:border-emerald-700"
                       required
@@ -1723,7 +1723,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                     <span className="absolute left-3 top-2 text-emerald-800/60 font-bold">Rp</span>
                     <input
                       type="number"
-                      value={editBonus}
+                      value={editBonus || ''}
                       onChange={(e) => setEditBonus(Number(e.target.value))}
                       className="pl-9 w-full bg-emerald-50/10 border border-emerald-800/25 rounded-lg px-3 py-2 font-mono text-emerald-950 font-bold focus:bg-white focus:outline-none focus:border-emerald-700"
                       required
@@ -1737,7 +1737,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                     <span className="absolute left-3 top-2 text-emerald-800/60 font-bold">Rp</span>
                     <input
                       type="number"
-                      value={editKasbonDeduction}
+                      value={editKasbonDeduction || ''}
                       onChange={(e) => setEditKasbonDeduction(Number(e.target.value))}
                       className="pl-9 w-full bg-emerald-50/10 border border-emerald-800/25 rounded-lg px-3 py-2 font-mono text-emerald-950 font-bold focus:bg-white focus:outline-none focus:border-emerald-700"
                       required
@@ -1750,7 +1750,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                     <span className="absolute left-3 top-2 text-emerald-800/60 font-bold">Rp</span>
                     <input
                       type="number"
-                      value={editTotalPay}
+                      value={editTotalPay || ''}
                       onChange={(e) => setEditTotalPay(Number(e.target.value))}
                       className="pl-9 w-full bg-emerald-800/10 border border-emerald-800/40 rounded-lg px-3 py-2 font-mono text-emerald-950 font-black focus:bg-white focus:outline-none focus:border-emerald-700"
                       required

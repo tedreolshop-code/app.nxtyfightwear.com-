@@ -25,6 +25,7 @@ export const OrderModule: React.FC = () => {
   const [selectedItems, setSelectedItems] = useState<OrderItem[]>([]);
   const [currentProductId, setCurrentProductId] = useState('');
   const [currentQty, setCurrentQty] = useState(1);
+  const [shippingFee, setShippingFee] = useState(0);
 
   useEffect(() => {
     loadData();
@@ -43,6 +44,7 @@ export const OrderModule: React.FC = () => {
 
   const handleAddItem = () => {
     if (!currentProductId) return;
+    if (currentQty < 1) { alert('Qty harus minimal 1!'); return; }
     const prod = products.find(p => p.id === currentProductId);
     if (!prod) return;
 
@@ -81,7 +83,8 @@ export const OrderModule: React.FC = () => {
     }
 
     const orderNumber = `ORD/${new Date().getFullYear()}/${(new Date().getMonth() + 1).toString().padStart(2, '0')}/${(orders.length + 1).toString().padStart(3, '0')}`;
-    const total = selectedItems.reduce((acc, curr) => acc + curr.subtotal, 0);
+    const cleanShippingFee = Math.max(0, shippingFee || 0);
+    const total = selectedItems.reduce((acc, curr) => acc + curr.subtotal, 0) + cleanShippingFee;
 
     const newOrder: Order = {
       id: `ord-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
@@ -92,6 +95,7 @@ export const OrderModule: React.FC = () => {
       marketplace_name: source === 'online' ? marketplaceName : undefined,
       date: new Date().toISOString().split('T')[0],
       items: selectedItems,
+      shipping_fee: cleanShippingFee,
       total,
       status: 'pending',
       notes
@@ -107,6 +111,7 @@ export const OrderModule: React.FC = () => {
     setSource('offline');
     setNotes('');
     setSelectedItems([]);
+    setShippingFee(0);
     setShowAddForm(false);
     
     alert(`Order ${orderNumber} berhasil dicatat! Anda dapat meneruskannya ke proses produksi sekarang.`);
@@ -414,8 +419,9 @@ export const OrderModule: React.FC = () => {
                     <input
                       type="number"
                       min={1}
-                      value={currentQty}
-                      onChange={(e) => setCurrentQty(Math.max(1, Number(e.target.value)))}
+                      value={currentQty || ''}
+                      onChange={(e) => setCurrentQty(Number(e.target.value))}
+                      placeholder="Qty"
                       className="w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-xs font-mono"
                     />
                   </div>
@@ -476,14 +482,37 @@ export const OrderModule: React.FC = () => {
                   </table>
                 </div>
                 {selectedItems.length > 0 && (
-                  <div className="text-right text-xs font-bold text-gray-800 space-y-2 pt-2">
-                    <div>Total Belanja: <span className="text-lg font-black text-[var(--color-evergreen)] font-mono ml-1">{formatIDR(selectedItems.reduce((acc, curr) => acc + curr.subtotal, 0))}</span></div>
-                    <button
-                      type="submit"
-                      className="bg-[var(--color-evergreen)] hover:bg-[var(--color-evergreen-dark)] text-white text-xs font-bold px-4 py-2 rounded shadow-sm"
-                    >
-                      Simpan Orderan
-                    </button>
+                  <div className="pt-2 space-y-3">
+                    {/* Ongkir + rincian total */}
+                    <div className="flex flex-col sm:flex-row sm:items-end sm:justify-end gap-3">
+                      <div className="sm:w-52">
+                        <label className="block text-[10px] text-gray-400 font-semibold uppercase mb-1">Ongkir / Biaya Kirim (IDR)</label>
+                        <div className="relative">
+                          <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400 text-xs font-mono">Rp</span>
+                          <input
+                            type="number"
+                            min={0}
+                            value={shippingFee || ''}
+                            onChange={(e) => setShippingFee(Number(e.target.value))}
+                            placeholder="0 jika gratis / ambil sendiri"
+                            className="w-full bg-white border border-gray-200 rounded pl-8 pr-3 py-1.5 text-xs font-mono font-bold"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right text-xs font-bold text-gray-800 space-y-1">
+                      <div className="text-gray-500 font-semibold">Subtotal Barang: <span className="font-mono ml-1">{formatIDR(selectedItems.reduce((acc, curr) => acc + curr.subtotal, 0))}</span></div>
+                      {shippingFee > 0 && (
+                        <div className="text-gray-500 font-semibold">Ongkir: <span className="font-mono ml-1">+{formatIDR(shippingFee)}</span></div>
+                      )}
+                      <div>Total Tagihan: <span className="text-lg font-black text-[var(--color-evergreen)] font-mono ml-1">{formatIDR(selectedItems.reduce((acc, curr) => acc + curr.subtotal, 0) + Math.max(0, shippingFee || 0))}</span></div>
+                      <button
+                        type="submit"
+                        className="bg-[var(--color-evergreen)] hover:bg-[var(--color-evergreen-dark)] text-white text-xs font-bold px-4 py-2 rounded shadow-sm mt-1"
+                      >
+                        Simpan Orderan
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -542,7 +571,12 @@ export const OrderModule: React.FC = () => {
                         </p>
                       )}
                     </td>
-                    <td className="p-3 text-right font-mono font-bold text-gray-800">{formatIDR(ord.total)}</td>
+                    <td className="p-3 text-right font-mono font-bold text-gray-800">
+                      {formatIDR(ord.total)}
+                      {(ord.shipping_fee ?? 0) > 0 && (
+                        <p className="text-[10px] text-gray-400 font-normal whitespace-nowrap">incl. ongkir {formatIDR(ord.shipping_fee!)}</p>
+                      )}
+                    </td>
                     <td className="p-3 text-center">{getStatusBadge(ord.status)}</td>
                     <td className="p-3 text-center space-y-1">{getShippingBadge(ord)}{ord.tracking_number && <p className="text-[10px] font-mono text-gray-500">{ord.tracking_number}</p>}</td>
                     <td className="p-3 text-center space-y-1">

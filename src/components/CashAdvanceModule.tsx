@@ -246,7 +246,7 @@ export const CashAdvanceModule: React.FC<CashAdvanceModuleProps> = ({ actor }) =
 
           <div className="grid grid-cols-2 gap-3">
             <div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Tanggal</label><input type="date" value={date} onChange={event => setDate(event.target.value)} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm" required /></div>
-            <div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Nominal</label><input type="number" min={1} value={amount} onChange={event => setAmount(Number(event.target.value))} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm font-mono font-bold" required /></div>
+            <div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Nominal</label><input type="number" min={1} value={amount || ''} onChange={event => setAmount(Number(event.target.value))} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm font-mono font-bold" required /></div>
           </div>
 
           <div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Catatan</label><textarea value={note} onChange={event => setNote(event.target.value)} rows={3} placeholder="Contoh: kasbon bahan pokok, pembayaran tunai, koreksi saldo" className="w-full border border-gray-200 rounded-lg p-2.5 text-sm" /></div>

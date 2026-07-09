@@ -498,6 +498,7 @@ export interface Order {
   marketplace_name?: string; // Shopee, Tokopedia, TikTok Shop, etc.
   date: string;
   items: OrderItem[];
+  shipping_fee?: number; // Ongkir untuk order langsung/non-marketplace (masuk ke total)
   total: number;
   status: 'pending' | 'production' | 'completed' | 'cancelled';
   notes?: string;

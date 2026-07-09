@@ -762,7 +762,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                     <span className="absolute left-2.5 top-2 text-[10px] text-gray-400 font-bold">Rp</span>
                     <input
                       type="number"
-                      value={rateHarian}
+                      value={rateHarian || ''}
                       onChange={(e) => setRateHarian(Number(e.target.value))}
                       className="pl-7 w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-xs font-mono text-gray-850 focus:outline-none focus:border-emerald-600"
                       required
@@ -776,7 +776,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                     <span className="absolute left-2.5 top-2 text-[10px] text-gray-400 font-bold">Rp</span>
                     <input
                       type="number"
-                      value={rateLembur}
+                      value={rateLembur || ''}
                       onChange={(e) => setRateLembur(Number(e.target.value))}
                       className="pl-7 w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-xs font-mono text-gray-850 focus:outline-none focus:border-emerald-600"
                       required
@@ -790,7 +790,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                     <input
                       type="number"
                       min="0"
-                      value={defaultLiveTikTokBonus}
+                      value={defaultLiveTikTokBonus || ''}
                       onChange={(e) => setDefaultLiveTikTokBonus(Number(e.target.value))}
                       className="pl-7 w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-xs font-mono text-gray-850 focus:outline-none focus:border-emerald-600"
                     />
@@ -803,7 +803,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                     <input
                       type="number"
                       min="0"
-                      value={defaultAttendanceBonus}
+                      value={defaultAttendanceBonus || ''}
                       onChange={(e) => setDefaultAttendanceBonus(Number(e.target.value))}
                       className="pl-7 w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-xs font-mono text-gray-850 focus:outline-none focus:border-emerald-600"
                     />
@@ -816,7 +816,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                     <input
                       type="number"
                       min="0"
-                      value={defaultWeeklyKasbonDeduction}
+                      value={defaultWeeklyKasbonDeduction || ''}
                       onChange={(e) => setDefaultWeeklyKasbonDeduction(Number(e.target.value))}
                       className="pl-7 w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-xs font-mono text-gray-850 focus:outline-none focus:border-emerald-600"
                     />
@@ -1254,7 +1254,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                           <input 
                             type="number" 
                             step="0.5"
-                            value={modalDaysWorked} 
+                            value={modalDaysWorked || ''} 
                             onChange={(e) => setModalDaysWorked(Number(e.target.value))}
                             className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono font-bold text-gray-800 w-full"
                             min={0}
@@ -1267,7 +1267,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                           <input 
                             type="number" 
                             step="0.1"
-                            value={modalOvertimeHours} 
+                            value={modalOvertimeHours || ''} 
                             onChange={(e) => setModalOvertimeHours(Number(e.target.value))}
                             className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono font-bold text-gray-800 w-full"
                             min={0}
@@ -1279,7 +1279,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                           <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider">Bonus / Tunjangan (Rp)</label>
                           <input 
                             type="number" 
-                            value={modalBonus} 
+                            value={modalBonus || ''} 
                             onChange={(e) => setModalBonus(Number(e.target.value))}
                             className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono font-bold text-gray-800 w-full"
                             min={0}
@@ -1296,7 +1296,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                           </div>
                           <input 
                             type="number" 
-                            value={modalKasbonDeduction} 
+                            value={modalKasbonDeduction || ''} 
                             onChange={(e) => setModalKasbonDeduction(Math.min(modalOutstandingKasbon, Number(e.target.value)))}
                             className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono font-bold text-amber-900 w-full"
                             min={0}
@@ -1369,7 +1369,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                             <label className="block text-[10px] font-bold text-amber-800 mb-1 uppercase tracking-wider">Jumlah Hari Kerja</label>
                             <input 
                               type="number" 
-                              value={editDaysWorked} 
+                              value={editDaysWorked || ''} 
                               onChange={(e) => setEditDaysWorked(Number(e.target.value))}
                               className="bg-white border border-amber-200 rounded-lg px-3 py-2 text-xs font-mono font-bold text-gray-800 w-full"
                               min={0}
@@ -1382,7 +1382,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                             <input 
                               type="number" 
                               step="0.1"
-                              value={editOvertimeHours} 
+                              value={editOvertimeHours || ''} 
                               onChange={(e) => setEditOvertimeHours(Number(e.target.value))}
                               className="bg-white border border-amber-200 rounded-lg px-3 py-2 text-xs font-mono font-bold text-gray-800 w-full"
                               min={0}
@@ -1394,7 +1394,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                             <label className="block text-[10px] font-bold text-amber-800 mb-1 uppercase tracking-wider">Bonus / Tunjangan (Rp)</label>
                             <input 
                               type="number" 
-                              value={editBonus} 
+                              value={editBonus || ''} 
                               onChange={(e) => setEditBonus(Number(e.target.value))}
                               className="bg-white border border-amber-200 rounded-lg px-3 py-2 text-xs font-mono font-bold text-gray-800 w-full"
                               min={0}
@@ -1406,7 +1406,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                             <label className="block text-[10px] font-bold text-amber-800 mb-1 uppercase tracking-wider">Potongan Kasbon (Rp)</label>
                             <input 
                               type="number" 
-                              value={editKasbonDeduction} 
+                              value={editKasbonDeduction || ''} 
                               onChange={(e) => setEditKasbonDeduction(Number(e.target.value))}
                               className="bg-white border border-amber-200 rounded-lg px-3 py-2 text-xs font-mono font-bold text-rose-900 w-full"
                               min={0}
