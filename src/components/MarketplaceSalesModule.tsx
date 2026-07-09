@@ -242,6 +242,7 @@ export const MarketplaceSalesModule: React.FC = () => {
 
   const handleStartEditItem = (item: MarketplaceItemSale) => {
     setEditingItemId(item.id);
+    setIsModalOpen(true); // buka modal form — tanpa ini tombol Edit tidak menampilkan apa pun
     setInputDate(item.date);
     setOrderNumber(item.order_number);
     
