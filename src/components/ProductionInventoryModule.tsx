@@ -331,6 +331,10 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
       assigned_employees: assignedEmployees
     };
 
+    const materialSummary = materialsPlanned.map(item => `- ${item.material_name}: ${item.qty} ${item.unit}`).join('\n');
+    const employeeWarning = assignedEmployees.length === 0 ? '\nPERHATIAN: belum ada karyawan yang ditugaskan.\n' : '';
+    if (!window.confirm(`Buat order produksi ${orderNumber}?\n\nStok bahan baku berikut akan LANGSUNG dipotong dari persediaan:\n${materialSummary}\n${employeeWarning}\nLanjutkan?`)) return;
+
     const result = dataStore.createManualProductionJob(job);
     if (!result.ok) {
       return alert(`Order produksi tidak bisa dibuat karena bahan kurang:\n- ${result.shortages.join('\n- ')}`);
@@ -1744,24 +1748,37 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                 </div>
 
                 <form onSubmit={handleCreateManualProductionJob} className="space-y-4">
-                  <div className="grid grid-cols-3 gap-2">
+                  {/* Indikator progres: selesai = centang, aktif = solid, terkunci = abu redup */}
+                  <div className="flex items-center">
                     {[
-                      { step: 1, label: 'Detail' },
-                      { step: 2, label: 'Bahan' },
-                      { step: 3, label: 'Tahapan' },
-                    ].map(item => (
-                      <button
-                        key={item.step}
-                        type="button"
-                        onClick={() => {
-                          if (item.step === 2 && !manualBasicValid) return alert('Pilih departemen dan output produk dulu.');
-                          if (item.step === 3 && (!manualBasicValid || !manualMaterialsValid)) return alert('Lengkapi departemen, output, dan bahan dulu.');
-                          setManualStep(item.step as 1 | 2 | 3);
-                        }}
-                        className={`rounded-lg border px-3 py-2 text-xs font-bold cursor-pointer ${manualStep === item.step ? 'bg-[var(--color-evergreen)] text-white border-[var(--color-evergreen)]' : 'bg-gray-50 text-gray-500 border-gray-200'}`}
-                      >
-                        {item.step}. {item.label}
-                      </button>
+                      { step: 1, label: 'Detail', unlocked: true, done: manualBasicValid },
+                      { step: 2, label: 'Bahan', unlocked: manualBasicValid, done: manualMaterialsValid },
+                      { step: 3, label: 'Tahapan', unlocked: manualBasicValid && manualMaterialsValid, done: manualStagesValid },
+                    ].map((item, index) => (
+                      <React.Fragment key={item.step}>
+                        {index > 0 && <div className={`flex-1 h-0.5 mx-2 rounded ${item.unlocked ? 'bg-emerald-300' : 'bg-gray-200'}`} />}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (item.step === 2 && !manualBasicValid) return alert('Pilih departemen dan output produk dulu.');
+                            if (item.step === 3 && (!manualBasicValid || !manualMaterialsValid)) return alert('Lengkapi departemen, output, dan bahan dulu.');
+                            setManualStep(item.step as 1 | 2 | 3);
+                          }}
+                          className={`flex items-center gap-1.5 ${item.unlocked ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}
+                          title={item.unlocked ? `Buka langkah ${item.step}` : 'Lengkapi langkah sebelumnya dulu'}
+                        >
+                          <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black border-2 ${
+                            manualStep === item.step
+                              ? 'bg-[var(--color-evergreen)] text-white border-[var(--color-evergreen)]'
+                              : item.done && item.unlocked
+                                ? 'bg-emerald-100 text-emerald-700 border-emerald-400'
+                                : 'bg-white text-gray-400 border-gray-300'
+                          }`}>
+                            {item.done && item.unlocked && manualStep !== item.step ? <Check className="w-3.5 h-3.5" /> : item.step}
+                          </span>
+                          <span className={`text-[11px] font-bold ${manualStep === item.step ? 'text-[var(--color-evergreen)]' : item.unlocked ? 'text-gray-600' : 'text-gray-400'}`}>{item.label}</span>
+                        </button>
+                      </React.Fragment>
                     ))}
                   </div>
 
@@ -1775,9 +1792,14 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                               key={department.id}
                               type="button"
                               onClick={() => setManualDepartment(department.id)}
-                              className={`text-left rounded-xl border p-3 cursor-pointer ${manualDepartmentId === department.id ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'}`}
+                              className={`relative text-left rounded-xl border-2 p-3 cursor-pointer transition-colors ${manualDepartmentId === department.id ? 'bg-emerald-50 border-[var(--color-evergreen)] text-emerald-900 shadow-sm' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'}`}
                             >
-                              <p className="text-xs font-black">{department.label}</p>
+                              {manualDepartmentId === department.id && (
+                                <span className="absolute top-2 right-2 w-5 h-5 rounded-full bg-[var(--color-evergreen)] text-white flex items-center justify-center">
+                                  <Check className="w-3 h-3" />
+                                </span>
+                              )}
+                              <p className="text-xs font-black pr-6">{department.label}</p>
                               <p className="text-[10px] mt-1 leading-relaxed">{department.description}</p>
                             </button>
                           ))}
@@ -1814,10 +1836,10 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                               onChange={event => setManualOutputs(items => items.map((item, itemIndex) => itemIndex === index ? { ...item, target_qty: Number(event.target.value) } : item))}
                               className="col-span-3 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono font-bold"
                             />
-                            <button type="button" onClick={() => setManualOutputs(items => items.length === 1 ? items : items.filter((_, itemIndex) => itemIndex !== index))} className="col-span-1 rounded-lg bg-gray-100 text-gray-500 text-xs font-bold cursor-pointer">×</button>
+                            <button type="button" title="Hapus baris" onClick={() => setManualOutputs(items => items.length === 1 ? items : items.filter((_, itemIndex) => itemIndex !== index))} className="col-span-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-100 text-xs font-bold cursor-pointer">×</button>
                           </div>
                         ))}
-                        <button type="button" onClick={() => setManualOutputs(items => [...items, { product_id: '', target_qty: 1 }])} className="text-xs font-bold text-[var(--color-evergreen)] flex items-center gap-1 cursor-pointer"><Plus className="w-3.5 h-3.5" /> Tambah output</button>
+                        <button type="button" onClick={() => setManualOutputs(items => [...items, { product_id: '', target_qty: 1 }])} className="text-xs font-semibold text-gray-500 hover:text-[var(--color-evergreen)] border border-dashed border-gray-300 hover:border-emerald-300 rounded-lg px-3 py-1.5 flex items-center gap-1 cursor-pointer transition-colors"><Plus className="w-3.5 h-3.5" /> Tambah output</button>
                       </div>
 
                       <div>
@@ -1843,7 +1865,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
 
                   {manualStep === 2 && (
                     <div className="space-y-3">
-                      <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-3 text-xs text-emerald-800">
+                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs text-gray-600">
                         {manualDepartment && <p><b>Departemen:</b> {manualDepartment.label}</p>}
                         {manualSelectedOutputs.map(item => <p key={item.product.id}><b>{item.product.name}</b> · target {item.target_qty} pcs</p>)}
                       </div>
@@ -1858,11 +1880,11 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                                 {manualFilteredMaterials.map(item => <option key={item.id} value={item.id}>{item.name} - stok {item.current_stock} {item.unit}</option>)}
                               </select>
                               <input type="number" min={0} step="0.01" value={material.qty || ''} onChange={event => setManualMaterials(items => items.map((item, itemIndex) => itemIndex === index ? { ...item, qty: Number(event.target.value) } : item))} className="col-span-3 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono font-bold" placeholder={selected?.unit || 'Qty'} />
-                              <button type="button" onClick={() => setManualMaterials(items => items.length === 1 ? items : items.filter((_, itemIndex) => itemIndex !== index))} className="col-span-1 rounded-lg bg-gray-100 text-gray-500 text-xs font-bold cursor-pointer">×</button>
+                              <button type="button" title="Hapus baris" onClick={() => setManualMaterials(items => items.length === 1 ? items : items.filter((_, itemIndex) => itemIndex !== index))} className="col-span-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-100 text-xs font-bold cursor-pointer">×</button>
                             </div>
                           );
                         })}
-                        <button type="button" onClick={() => setManualMaterials(items => [...items, { material_id: '', qty: 1 }])} className="text-xs font-bold text-[var(--color-evergreen)] flex items-center gap-1 cursor-pointer"><Plus className="w-3.5 h-3.5" /> Tambah bahan</button>
+                        <button type="button" onClick={() => setManualMaterials(items => [...items, { material_id: '', qty: 1 }])} className="text-xs font-semibold text-gray-500 hover:text-[var(--color-evergreen)] border border-dashed border-gray-300 hover:border-emerald-300 rounded-lg px-3 py-1.5 flex items-center gap-1 cursor-pointer transition-colors"><Plus className="w-3.5 h-3.5" /> Tambah bahan</button>
                       </div>
                     </div>
                   )}
@@ -1874,12 +1896,27 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                         <textarea value={manualStages} onChange={event => setManualStages(event.target.value)} rows={4} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-[var(--color-evergreen)]" />
                         <p className="text-[10px] text-gray-400 mt-1">Satu baris = satu tahap. Bisa disesuaikan per order.</p>
                       </div>
-                      <div className="bg-gray-50 border border-gray-100 rounded-lg p-3 text-xs space-y-1">
-                        <p className="font-bold text-gray-700">Ringkasan</p>
-                        <p>Departemen: {manualDepartment?.label || '-'}</p>
-                        <p>{manualSelectedOutputs.length} output produk</p>
-                        <p>{manualSelectedMaterials.length} bahan baku</p>
-                        <p>{manualEmployeeIds.length} karyawan ditugaskan</p>
+                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs space-y-2 text-gray-600">
+                        <p className="font-bold text-gray-700">Ringkasan — periksa sebelum membuat order</p>
+                        <p><b>Departemen:</b> {manualDepartment?.label || '-'}</p>
+                        <div>
+                          <p className="font-semibold text-gray-700">Output produk:</p>
+                          {manualSelectedOutputs.map(item => (
+                            <p key={item.product.id} className="pl-2">• {item.product.name} ({item.product.variant}) — target {item.target_qty} pcs</p>
+                          ))}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-gray-700">Bahan baku yang akan dipotong dari stok:</p>
+                          {manualSelectedMaterials.map(item => (
+                            <p key={item.material.id} className="pl-2">• {item.material.name} — {item.qty} {item.material.unit}</p>
+                          ))}
+                        </div>
+                        <p><b>Karyawan:</b> {manualEmployeeIds.length > 0 ? `${manualEmployeeIds.length} orang ditugaskan` : ''}</p>
+                        {manualEmployeeIds.length === 0 && (
+                          <p className="flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 font-semibold">
+                            <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> Belum ada karyawan ditugaskan — order tetap bisa dibuat, tugaskan nanti dari tracker.
+                          </p>
+                        )}
                       </div>
                     </div>
                   )}
@@ -1899,8 +1936,8 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                         Lanjut
                       </button>
                     ) : (
-                      <button type="submit" disabled={!manualStagesValid || !manualMaterialsValid} className={`flex-1 py-2.5 rounded-lg font-bold text-xs shadow-md flex items-center justify-center gap-1.5 ${manualStagesValid && manualMaterialsValid ? 'bg-[var(--color-evergreen)] hover:bg-[var(--color-evergreen-dark)] text-white cursor-pointer' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
-                        <Clipboard className="w-4 h-4" />
+                      <button type="submit" disabled={!manualStagesValid || !manualMaterialsValid} className={`flex-1 py-2.5 rounded-lg font-bold text-xs shadow-md flex items-center justify-center gap-1.5 ${manualStagesValid && manualMaterialsValid ? 'bg-amber-600 hover:bg-amber-700 text-white cursor-pointer' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
+                        <AlertTriangle className="w-4 h-4" />
                         Buat Order &amp; Potong Bahan
                       </button>
                     )}
@@ -1908,92 +1945,6 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                 </form>
               </div>}
 
-              {false && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
-                <div className="border-b border-gray-100 pb-3 flex items-center gap-1.5">
-                  <Hammer className="w-4.5 h-4.5 text-[var(--color-evergreen)]" />
-                  <h3 className="font-bold text-sm text-gray-800">Catat Hasil Produksi Baru</h3>
-                </div>
-
-                <form onSubmit={handlePostProduction} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 mb-1">Barang yang Diproduksi</label>
-                    <select
-                      value={selectedProductId}
-                      onChange={(e) => {
-                        const pid = e.target.value;
-                        setSelectedProductId(pid);
-                        if (RECIPES[pid]) {
-                          const cons = RECIPES[pid].map(recipe => ({
-                            material_id: recipe.material_id,
-                            qty: recipe.qtyPerUnit * productionQty
-                          }));
-                          setCustomMaterials(cons);
-                        } else {
-                          setCustomMaterials([]);
-                        }
-                      }}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[var(--color-evergreen)] font-sans text-gray-800"
-                      required
-                    >
-                      <option value="">-- Pilih Produk Jadi --</option>
-                      {getFilteredProducts().map(p => (
-                        <option key={p.id} value={p.id}>{p.name} ({p.variant})</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 mb-1">Jumlah Hasil Produksi (Unit)</label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={productionQty || ''}
-                      onChange={(e) => {
-                        const qty = Math.max(1, Number(e.target.value));
-                        setProductionQty(qty);
-                        if (selectedProductId && RECIPES[selectedProductId]) {
-                          const cons = RECIPES[selectedProductId].map(recipe => ({
-                            material_id: recipe.material_id,
-                            qty: recipe.qtyPerUnit * qty
-                          }));
-                          setCustomMaterials(cons);
-                        }
-                      }}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono font-bold text-gray-800"
-                      required
-                    />
-                  </div>
-
-                  {/* Formula display helper */}
-                  {selectedProductId && (
-                    <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 space-y-2">
-                      <span className="text-[10px] font-black text-[var(--color-evergreen)] block uppercase tracking-wide">Estimasi Bahan Baku yang Akan Dikonsumsi:</span>
-                      <div className="space-y-2">
-                        {customMaterials.map((mat, idx) => {
-                          const m = rawMaterials.find(x => x.id === mat.material_id)!;
-                          const isSufficient = m.current_stock >= mat.qty;
-                          return (
-                            <div key={idx} className="flex justify-between items-center text-xs font-medium">
-                              <span className="text-gray-600 font-sans">{m.name}</span>
-                              <span className={isSufficient ? 'text-gray-800 font-mono' : 'text-rose-600 font-bold font-mono'}>
-                                {mat.qty} {m.unit} <span className="text-[10px] text-gray-400 block sm:inline">(Tersedia: {m.current_stock} {m.unit})</span>
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  <button
-                    type="submit"
-                    className="w-full bg-[var(--color-evergreen)] hover:bg-[var(--color-evergreen-dark)] text-white py-2.5 rounded-lg font-bold text-xs shadow-md flex items-center justify-center gap-1.5 cursor-pointer transition-all"
-                  >
-                    <Hammer className="w-4 h-4" />
-                    Selesaikan Produksi &amp; Potong Bahan
-                  </button>
-                </form>
-              </div>}
               </>
             ) : (
               <div className="bg-amber-50 text-[var(--color-evergreen)] border border-amber-200 rounded-xl p-6 text-center space-y-3">
