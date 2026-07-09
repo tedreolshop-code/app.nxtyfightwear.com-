@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { dataStore, wibTodayStr } from '../dataStore';
+import { dataStore, wibTodayStr, currentWeeklyPayrollPeriod } from '../dataStore';
 import { brandName, brandLegalName } from '../brand';
-import { Employee, Attendance, PayrollWeekly } from '../types';
-import { Clock, Calendar, FileText, CheckCircle2, Fingerprint, MapPin, ExternalLink } from 'lucide-react';
+import { Employee, Attendance, PayrollWeekly, AttendanceAdjustment } from '../types';
+import { Clock, Calendar, FileText, CheckCircle2, Fingerprint, MapPin, ExternalLink, Wallet } from 'lucide-react';
+import { AttendanceBonusBalanceCard } from './AttendanceBonusPanel';
 
 interface EmployeeDashboardProps {
   loggedEmployee: Employee;
@@ -79,6 +80,28 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
   const daysInMonth = getDaysInMonth();
   const currentMonthName = new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
 
+  // Saldo gaji berjalan (periode Sabtu-Jumat), dihitung otomatis dari absensi
+  const formatIDR = (val: number) =>
+    new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(val);
+  const runningPeriod = currentWeeklyPayrollPeriod();
+  const myPeriodAtt = attendanceLogs.filter(a => {
+    if (a.employee_id !== loggedEmployee.id) return false;
+    const d = a.timestamp.split('T')[0];
+    return d >= runningPeriod.start && d <= runningPeriod.end;
+  });
+  const myPeriodDates = Array.from(new Set(myPeriodAtt.map(a => a.timestamp.split('T')[0])));
+  const myRunningDays = myPeriodDates
+    .map(date => myPeriodAtt.find(log => log.timestamp.startsWith(date) && log.type_scan === 'pulang')?.work_fraction ?? 1)
+    .reduce((sum: number, value) => sum + value, 0);
+  const myPeriodAdjustments: AttendanceAdjustment[] = dataStore.getAttendanceAdjustments()
+    .filter(item => item.employee_id === loggedEmployee.id && item.date >= runningPeriod.start && item.date <= runningPeriod.end && item.type !== 'ignored');
+  const myRunningOvertimeHours = myPeriodAdjustments.filter(item => item.type === 'overtime').reduce((sum, item) => sum + (item.overtime_minutes || 0), 0) / 60;
+  const myRunningLiveBonus = myPeriodAdjustments.filter(item => item.type === 'live_tiktok').reduce((sum, item) => sum + (item.bonus_amount || 0), 0);
+  const myRunningPay = myRunningDays * loggedEmployee.rate_harian
+    + Math.round(myRunningOvertimeHours * loggedEmployee.rate_lembur_per_jam)
+    + myRunningLiveBonus;
+  const payDateLabel = new Date(`${runningPeriod.payDate}T12:00:00Z`).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Jakarta' });
+
   return (
     <div className="space-y-6 animate-fade-in text-left">
       {/* Header */}
@@ -94,6 +117,25 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
           <p className="text-[10px] font-semibold text-emerald-200">ID Pegawai</p>
           <p className="text-sm font-black font-mono tracking-wider text-emerald-100">{loggedEmployee.id}</p>
         </div>
+      </div>
+
+      {/* SALDO: gaji berjalan minggu ini + bonus kehadiran bulan ini */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4 space-y-1.5">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 flex items-center gap-1.5">
+            <Wallet className="w-4 h-4" /> Saldo Gaji Minggu Ini
+          </span>
+          <p className="text-2xl font-black font-mono text-emerald-900">{formatIDR(myRunningPay)}</p>
+          <p className="text-xs text-emerald-700">
+            {myRunningDays} hari hadir × {formatIDR(loggedEmployee.rate_harian)}
+            {myRunningOvertimeHours > 0 && <> + lembur {Math.round(myRunningOvertimeHours * 100) / 100} jam</>}
+            {myRunningLiveBonus > 0 && <> + bonus live {formatIDR(myRunningLiveBonus)}</>}
+          </p>
+          <p className="text-[11px] text-emerald-600">
+            Periode Sabtu–Jumat · Dibayarkan: <b>{payDateLabel}</b>
+          </p>
+        </div>
+        <AttendanceBonusBalanceCard employee={loggedEmployee} />
       </div>
 
       {/* Grid: Clock & single attendance entry point vs Today Status */}

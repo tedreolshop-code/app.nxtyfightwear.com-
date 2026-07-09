@@ -32,6 +32,7 @@ import {
   ,PackingTask
   ,AttendanceAdjustment
   ,CashAdvanceTransaction
+  ,AttendanceBonusPayout
 } from './types';
 import { pushKeyToCloud, pushAttendanceToCloud, clearAttendanceInCloud } from './cloudSync';
 
@@ -84,6 +85,25 @@ const COORDS = {
 export const wibNowISO = (): string =>
   new Date(Date.now() + 7 * 3600 * 1000).toISOString().replace('Z', '+07:00');
 export const wibTodayStr = (): string => wibNowISO().split('T')[0];
+
+/**
+ * Periode gaji mingguan berjalan: Sabtu s/d Jumat, dibayarkan hari Sabtu
+ * setelah periode berakhir. Minggu adalah hari libur.
+ */
+export const currentWeeklyPayrollPeriod = (): { start: string; end: string; payDate: string } => {
+  const today = new Date(`${wibTodayStr()}T00:00:00Z`);
+  const dow = today.getUTCDay(); // 0=Minggu ... 6=Sabtu
+  // Sabtu awal periode: Sabtu terakhir yang <= hari ini
+  const sinceSaturday = (dow + 1) % 7; // Sabtu=0, Minggu=1, Senin=2, ... Jumat=6
+  const start = new Date(today);
+  start.setUTCDate(today.getUTCDate() - sinceSaturday);
+  const end = new Date(start);
+  end.setUTCDate(start.getUTCDate() + 6); // Jumat
+  const payDate = new Date(start);
+  payDate.setUTCDate(start.getUTCDate() + 7); // Sabtu berikutnya
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  return { start: fmt(start), end: fmt(end), payDate: fmt(payDate) };
+};
 
 const INITIAL_DEPARTMENTS: Department[] = [
   { id: 'dept-eva-foam', name: 'Eva Foam', latitude: COORDS.eva_foam.lat, longitude: COORDS.eva_foam.lng },
@@ -462,6 +482,73 @@ class DataStore {
   setCashAdvanceTransactions = (data: CashAdvanceTransaction[]) => this.set('cash_advance_transactions', data);
 
   getPayrollWeekly = (): PayrollWeekly[] => this.get('payroll_weekly', INITIAL_PAYROLL_WEEKLY);
+
+  getAttendanceBonusPayouts = (): AttendanceBonusPayout[] => this.get('attendance_bonus_payouts', []);
+  setAttendanceBonusPayouts = (data: AttendanceBonusPayout[]) => this.set('attendance_bonus_payouts', data);
+
+  /**
+   * Evaluasi bonus kehadiran satu karyawan untuk satu bulan — MURNI dari data absensi.
+   * GUGUR bila ada: telat (net, setelah kompensasi disetujui), tidak hadir di hari
+   * kerja, atau masuk setengah hari. Hari Minggu tidak dihitung sebagai hari kerja.
+   * Untuk bulan berjalan, ketidakhadiran hanya dinilai untuk tanggal yang sudah lewat.
+   */
+  evaluateAttendanceBonus = (employeeId: string, month: string): {
+    workingDays: number; presentDays: number; lateMinutesNet: number; halfDays: number;
+    absentDates: string[]; halfDayDates: string[];
+    status: 'aman' | 'gugur'; reasons: string[]; amount: number;
+  } => {
+    const employee = this.getEmployees().find(e => e.id === employeeId);
+    const settings = this.getWorkSettings();
+    const bonusAmount = employee?.default_attendance_bonus ?? settings.monthly_bonus_amount;
+
+    const today = wibTodayStr();
+    const [year, mon] = month.split('-').map(Number);
+    const daysInMonth = new Date(year, mon, 0).getDate();
+    const isCurrentMonth = month === today.slice(0, 7);
+
+    // Kumpulkan hari kerja bulan ini (tanpa Minggu; bulan berjalan: hanya s/d kemarin untuk penilaian absen)
+    const workingDates: string[] = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${month}-${String(d).padStart(2, '0')}`;
+      const dow = new Date(`${dateStr}T00:00:00Z`).getUTCDay();
+      if (dow === 0) continue; // Minggu libur
+      if (isCurrentMonth && dateStr >= today) continue; // hari ini/masa depan belum dinilai
+      workingDates.push(dateStr);
+    }
+
+    const logs = this.getAttendance().filter(a => a.employee_id === employeeId && a.timestamp.startsWith(month));
+    const presentDates = new Set(logs.filter(a => a.type_scan === 'masuk').map(a => a.timestamp.slice(0, 10)));
+    const halfDayDates = Array.from(new Set(
+      logs.filter(a => a.type_scan === 'pulang' && a.work_fraction === 0.5).map(a => a.timestamp.slice(0, 10))
+    )).sort();
+
+    const totalLate = logs.reduce((sum, a) => sum + (a.late_minutes || 0), 0);
+    const compensated = this.getAttendanceAdjustments()
+      .filter(item => item.employee_id === employeeId && item.date.startsWith(month) && item.type !== 'ignored')
+      .reduce((sum, item) => sum + (item.late_compensation_minutes || 0), 0);
+    const lateMinutesNet = Math.max(0, totalLate - compensated);
+
+    const absentDates = workingDates.filter(date => !presentDates.has(date));
+
+    const fmtShort = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+    const reasons: string[] = [];
+    if (lateMinutesNet > 0) reasons.push(`Telat ${lateMinutesNet} menit`);
+    if (absentDates.length > 0) reasons.push(`Tidak hadir ${absentDates.length} hari (${absentDates.slice(0, 3).map(fmtShort).join(', ')}${absentDates.length > 3 ? ', …' : ''})`);
+    if (halfDayDates.length > 0) reasons.push(`Setengah hari ${halfDayDates.length}x (${halfDayDates.slice(0, 3).map(fmtShort).join(', ')}${halfDayDates.length > 3 ? ', …' : ''})`);
+
+    const status: 'aman' | 'gugur' = reasons.length === 0 ? 'aman' : 'gugur';
+    return {
+      workingDays: workingDates.length,
+      presentDays: workingDates.length - absentDates.length,
+      lateMinutesNet,
+      halfDays: halfDayDates.length,
+      absentDates,
+      halfDayDates,
+      status,
+      reasons,
+      amount: status === 'aman' ? bonusAmount : 0,
+    };
+  };
   setPayrollWeekly = (data: PayrollWeekly[]) => this.set('payroll_weekly', data);
 
   getCustomers = (): Customer[] => this.get('customers', INITIAL_CUSTOMERS);

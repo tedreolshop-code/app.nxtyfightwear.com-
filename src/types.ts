@@ -98,6 +98,24 @@ export interface ProductionLog {
 export type AttendanceType = 'masuk' | 'pulang';
 export type AttendanceStatus = 'normal' | 'anomaly';
 
+// Slip bonus kehadiran bulanan — diterbitkan tiap tanggal 1 untuk bulan sebelumnya.
+// Bulan GUGUR tetap dicatat (amount 0 + alasan) sebagai bukti riwayat.
+export interface AttendanceBonusPayout {
+  id: string;
+  employee_id: string;
+  employee_name: string;
+  month: string; // 'YYYY-MM' bulan yang dinilai
+  amount: number; // 0 bila gugur
+  status: 'cair' | 'gugur';
+  reason?: string; // alasan gugur (dari data absensi)
+  working_days: number;
+  present_days: number;
+  late_minutes_net: number;
+  half_days: number;
+  issued_at: string;
+  issued_by?: string;
+}
+
 export interface Attendance {
   id: string;
   employee_id: string;

@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Employee, PayrollWeekly, CashAdvance, Attendance, AttendanceAdjustment, CashAdvanceTransaction } from '../types';
 import { dataStore, wibNowISO } from '../dataStore';
 import { brandName, brandLegalName } from '../brand';
-import { Printer, Landmark, DollarSign, Plus, CheckCircle2, Sliders, History, Trash2, X, Calculator, Edit2, FileSpreadsheet } from 'lucide-react';
+import { Printer, Landmark, DollarSign, Plus, CheckCircle2, Sliders, History, Trash2, X, Calculator, Edit2, FileSpreadsheet, Wallet, Award } from 'lucide-react';
+import { AttendanceBonusPanel, AttendanceBonusBalanceCard, AttendanceBonusHistoryList } from './AttendanceBonusPanel';
+import { currentWeeklyPayrollPeriod } from '../dataStore';
 
 interface PayrollModuleProps {
   isAdmin: boolean;
@@ -16,18 +18,22 @@ const toDateInputValue = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 
+// Periode gaji mingguan: SABTU s/d JUMAT, dibayarkan hari Sabtu setelahnya (Minggu libur).
+// Default form = periode yang jatuh tempo pada Sabtu terdekat (termasuk hari ini bila Sabtu).
 const getSaturdayPayrollRange = () => {
   const today = new Date();
   const day = today.getDay();
-  const daysUntilSaturday = (6 - day + 7) % 7;
-  const saturday = new Date(today);
-  saturday.setDate(today.getDate() + daysUntilSaturday);
-  const monday = new Date(saturday);
-  monday.setDate(saturday.getDate() - 5);
+  const daysUntilSaturday = (6 - day + 7) % 7; // 0 bila hari ini Sabtu
+  const paySaturday = new Date(today);
+  paySaturday.setDate(today.getDate() + daysUntilSaturday);
+  const start = new Date(paySaturday);
+  start.setDate(paySaturday.getDate() - 7); // Sabtu minggu sebelumnya
+  const end = new Date(paySaturday);
+  end.setDate(paySaturday.getDate() - 1); // Jumat
 
   return {
-    start: toDateInputValue(monday),
-    end: toDateInputValue(saturday)
+    start: toDateInputValue(start),
+    end: toDateInputValue(end)
   };
 };
 
@@ -63,6 +69,9 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
   const [editBonus, setEditBonus] = useState(0);
   const [editKasbonDeduction, setEditKasbonDeduction] = useState(0);
   const [editTotalPay, setEditTotalPay] = useState(0);
+
+  // Tab admin: gaji mingguan vs bonus kehadiran bulanan
+  const [payrollTab, setPayrollTab] = useState<'gaji' | 'bonus'>('gaji');
 
   // Creation/Edit states
   const [selectedEmpId, setSelectedEmpId] = useState('');
@@ -137,30 +146,10 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
       const computedOvertime = approvedAdjustments.filter(item => item.type === 'overtime').reduce((sum, item) => sum + (item.overtime_minutes || 0), 0) / 60;
       setOvertimeHours(Math.round(computedOvertime * 100) / 100);
 
-      // Bonus kehadiran otomatis mengikuti default per karyawan untuk payroll Senin-Sabtu.
-      const settings = dataStore.getWorkSettings();
-      const end = new Date(`${periodEnd}T00:00:00+07:00`);
-      const isSaturdayPayroll = end.getDay() === 6;
-      const nextDay = new Date(end.getTime() + 86400000);
-      const isMonthEnd = nextDay.getMonth() !== end.getMonth();
-      const periodApprovedAdjustments = adjustments.filter(item => item.employee_id === selectedEmpId && item.date >= periodStart && item.date <= periodEnd && item.type !== 'ignored');
-      const periodLate = empAtt.reduce((sum, log) => sum + (log.late_minutes || 0), 0);
-      const periodLateCompensation = periodApprovedAdjustments.reduce((sum, item) => sum + (item.late_compensation_minutes || 0), 0);
-      const periodNetLate = Math.max(0, periodLate - periodLateCompensation);
-      const employeeAttendanceBonus = emp.default_attendance_bonus ?? settings.monthly_bonus_amount;
-      const weeklyAttendanceBonus = isSaturdayPayroll && computedDaysWorked >= 6 && periodNetLate === 0 ? employeeAttendanceBonus : 0;
-      let legacyMonthlyAttendanceBonus = 0;
-      if (!isSaturdayPayroll && isMonthEnd) {
-        const monthPrefix = periodEnd.slice(0, 7);
-        const monthLogs = attendance.filter(log => log.employee_id === selectedEmpId && log.timestamp.startsWith(monthPrefix));
-        const monthApprovedAdjustments = adjustments.filter(item => item.employee_id === selectedEmpId && item.date.startsWith(monthPrefix) && item.type !== 'ignored');
-        const monthDays = new Set(monthLogs.filter(log => log.type_scan === 'masuk').map(log => log.timestamp.slice(0, 10))).size;
-        const totalLate = monthLogs.reduce((sum, log) => sum + (log.late_minutes || 0), 0);
-        const approvedLateCompensation = monthApprovedAdjustments.reduce((sum, item) => sum + (item.late_compensation_minutes || 0), 0);
-        const netLate = Math.max(0, totalLate - approvedLateCompensation);
-        legacyMonthlyAttendanceBonus = monthDays >= settings.monthly_bonus_min_days && netLate === 0 ? employeeAttendanceBonus : 0;
-      }
-      setBonus(weeklyAttendanceBonus + legacyMonthlyAttendanceBonus + liveBonus);
+      // Bonus di slip mingguan hanya bonus kerja (Live TikTok, dsb).
+      // Bonus KEHADIRAN tidak ikut di sini — diakumulasi bulanan dan dibayarkan
+      // terpisah tiap tanggal 1 lewat tab "Bonus Kehadiran".
+      setBonus(liveBonus);
 
       // Find cash advance balance to pre-populate deduction
       const advances = cashAdvances.filter(c => c.employee_id === selectedEmpId);
@@ -659,6 +648,27 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
       const myCashAdvanceTransactions = cashAdvanceTransactions.filter(transaction => transaction.employee_id === loggedEmployee.id).slice(0, 20);
       const totalSisaKasbon = myAdvances.reduce((sum, item) => sum + item.remaining_balance, 0);
 
+      // Saldo gaji berjalan: periode Sabtu-Jumat yang sedang berlangsung, dihitung dari absensi
+      const runningPeriod = currentWeeklyPayrollPeriod();
+      const myPeriodAtt = attendance.filter(a => {
+        if (a.employee_id !== loggedEmployee.id) return false;
+        const d = a.timestamp.split('T')[0];
+        return d >= runningPeriod.start && d <= runningPeriod.end;
+      });
+      const myPeriodDates = Array.from(new Set(myPeriodAtt.map(a => a.timestamp.split('T')[0])));
+      const myDayFractions = myPeriodDates.map(date => {
+        const checkout = myPeriodAtt.find(log => log.timestamp.startsWith(date) && log.type_scan === 'pulang');
+        return checkout?.work_fraction ?? 1;
+      });
+      const myRunningDays = myDayFractions.reduce((sum, value) => sum + value, 0);
+      const myPeriodAdjustments = adjustments.filter(item => item.employee_id === loggedEmployee.id && item.date >= runningPeriod.start && item.date <= runningPeriod.end && item.type !== 'ignored');
+      const myRunningOvertimeHours = myPeriodAdjustments.filter(item => item.type === 'overtime').reduce((sum, item) => sum + (item.overtime_minutes || 0), 0) / 60;
+      const myRunningLiveBonus = myPeriodAdjustments.filter(item => item.type === 'live_tiktok').reduce((sum, item) => sum + (item.bonus_amount || 0), 0);
+      const myRunningPay = myRunningDays * loggedEmployee.rate_harian
+        + Math.round(myRunningOvertimeHours * loggedEmployee.rate_lembur_per_jam)
+        + myRunningLiveBonus;
+      const payDateLabel = new Date(`${runningPeriod.payDate}T12:00:00Z`).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Jakarta' });
+
       return (
         <div className="space-y-6">
           {/* Header Title */}
@@ -672,6 +682,25 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
             <p className="text-xs text-emerald-200">
               Sistem Informasi Penggajian &amp; Transparansi Upah {brandName()}. Silakan pantau rincian gaji mingguan dan riwayat kasbon Anda di bawah.
             </p>
+          </div>
+
+          {/* SALDO BERJALAN: gaji minggu ini + bonus kehadiran bulan ini */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4 space-y-1.5">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 flex items-center gap-1.5">
+                <Wallet className="w-4 h-4" /> Saldo Gaji Minggu Ini
+              </span>
+              <p className="text-2xl font-black font-mono text-emerald-900">{formatIDR(myRunningPay)}</p>
+              <p className="text-xs text-emerald-700">
+                {myRunningDays} hari hadir × {formatIDR(loggedEmployee.rate_harian)}
+                {myRunningOvertimeHours > 0 && <> + lembur {Math.round(myRunningOvertimeHours * 100) / 100} jam</>}
+                {myRunningLiveBonus > 0 && <> + bonus live {formatIDR(myRunningLiveBonus)}</>}
+              </p>
+              <p className="text-[11px] text-emerald-600">
+                Periode {runningPeriod.start.slice(8, 10)}/{runningPeriod.start.slice(5, 7)} s/d {runningPeriod.end.slice(8, 10)}/{runningPeriod.end.slice(5, 7)} · Dibayarkan: <b>{payDateLabel}</b>
+              </p>
+            </div>
+            <AttendanceBonusBalanceCard employee={loggedEmployee} />
           </div>
 
           {/* Profile Card & Kasbon Overview */}
@@ -806,6 +835,9 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
               </table>
             </div>
           </div>
+
+          {/* Riwayat bonus kehadiran bulanan (termasuk bulan gugur + alasannya) */}
+          <AttendanceBonusHistoryList employeeId={loggedEmployee.id} />
 
           {/* ================= PRINT & PREVIEW SYSTEM ================= */}
           {previewPayroll && (
@@ -1030,6 +1062,29 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
 
   return (
     <div className="space-y-8">
+      {/* Tab: Gaji Mingguan vs Bonus Kehadiran */}
+      <div className="no-print bg-white p-1 rounded-xl border border-gray-200 inline-flex gap-1">
+        <button
+          onClick={() => setPayrollTab('gaji')}
+          className={`px-4 py-1.5 rounded-lg text-sm font-semibold cursor-pointer flex items-center gap-1.5 ${
+            payrollTab === 'gaji' ? 'bg-[var(--color-evergreen)] text-white' : 'text-gray-600 hover:bg-gray-100'
+          }`}
+        >
+          <Wallet className="w-3.5 h-3.5" /> Gaji Mingguan
+        </button>
+        <button
+          onClick={() => setPayrollTab('bonus')}
+          className={`px-4 py-1.5 rounded-lg text-sm font-semibold cursor-pointer flex items-center gap-1.5 ${
+            payrollTab === 'bonus' ? 'bg-[var(--color-evergreen)] text-white' : 'text-gray-600 hover:bg-gray-100'
+          }`}
+        >
+          <Award className="w-3.5 h-3.5" /> Bonus Kehadiran
+        </button>
+      </div>
+
+      {payrollTab === 'bonus' && <AttendanceBonusPanel issuedBy="Admin" />}
+
+      <div className={payrollTab === 'bonus' ? 'hidden' : 'contents'}>
       <div className="no-print space-y-6">
 
         {/* Statistics Dashboard Block */}
@@ -1889,6 +1944,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
         </div>
       )}
 
+      </div>
     </div>
   );
 };
