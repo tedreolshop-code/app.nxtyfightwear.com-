@@ -319,9 +319,15 @@ export interface MarketplaceSale {
   admin_name: string;
 }
 
+// Status order marketplace. Data lama tanpa status dianggap 'terkirim'
+// agar angka laporan historis tidak berubah.
+export type MarketplaceSaleStatus = 'diproses' | 'terkirim' | 'cancel' | 'retur';
+
 export interface MarketplaceItemSale {
   id: string;
   product_id?: string; // Link opsional ke produk gudang; jika terisi, stok produk jadi dipotong otomatis
+  status?: MarketplaceSaleStatus;
+  retur_to_stock?: boolean; // khusus status retur: barang layak jual dikembalikan ke stok?
   date: string;
   order_number: string;
   marketplace_ref: string; // e.g., Tokopedia, Shopee, TikTok Shop, etc.

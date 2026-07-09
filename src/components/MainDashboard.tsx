@@ -77,7 +77,8 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName }) 
   const dailyRekap = dataStore.getMarketplaceSales();
   const salesByChannelOnDate = (date: string): ChannelTotals => {
     const t = emptyTotals();
-    itemSales.filter(s => s.date === date).forEach(s => { t[channelOf(s.marketplace_ref)] += s.total; });
+    itemSales.filter(s => s.date === date && (s.status ?? 'terkirim') !== 'cancel' && (s.status ?? 'terkirim') !== 'retur')
+      .forEach(s => { t[channelOf(s.marketplace_ref)] += s.total; });
     dailyRekap.filter(s => s.date === date).forEach(s => { t[channelOf(s.channel)] += s.revenue; });
     orders.filter(o => o.date === date && o.status !== 'cancelled')
       .forEach(o => { t[channelOf(o.source === 'online' ? o.marketplace_name : undefined)] += o.total; });

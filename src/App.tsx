@@ -463,7 +463,10 @@ export default function App() {
   const reportInvoices = dataStore.getInvoices().filter(item => isInReportPeriod(item.date));
   const reportOrders = dataStore.getOrders().filter(item => isInReportPeriod(item.date) && item.status !== 'cancelled');
   const reportMarketplaceSales = dataStore.getMarketplaceSales().filter(item => isInReportPeriod(item.date));
-  const reportMarketplaceItemSales = dataStore.getMarketplaceItemSales().filter(item => isInReportPeriod(item.date));
+  // Order cancel/retur tidak dihitung sebagai penjualan (data lama tanpa status = terkirim)
+  const reportMarketplaceItemSales = dataStore.getMarketplaceItemSales().filter(item =>
+    isInReportPeriod(item.date) && (item.status ?? 'terkirim') !== 'cancel' && (item.status ?? 'terkirim') !== 'retur'
+  );
   const reportDailyExpenses = dataStore.getDailyExpenses().filter(item => isInReportPeriod(item.date));
   const reportPurchases = dataStore.getPurchases().filter(item => isInReportPeriod(item.date) && item.status !== 'cancelled');
   const reportProductionJobs = dataStore.getProductionJobs().filter(item => isInReportPeriod(item.created_at));
@@ -576,7 +579,7 @@ export default function App() {
           pelanggan: item.description,
           qty: item.qty,
           total: item.total,
-          status: 'tercatat',
+          status: item.status ?? 'terkirim',
         })),
       ]);
     } else if (type === 'expenses') {

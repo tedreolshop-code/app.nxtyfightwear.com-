@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MarketplaceSale, MarketplaceItemSale, Product } from '../types';
+import { MarketplaceSale, MarketplaceItemSale, MarketplaceSaleStatus, Product } from '../types';
 import { dataStore } from '../dataStore';
 import { brandName, brandLegalName } from '../brand';
 import { 
@@ -22,8 +22,31 @@ import {
   ArrowUpDown,
   ShoppingBasket,
   HelpCircle,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Undo2
 } from 'lucide-react';
+
+// Status order marketplace: data lama tanpa status dianggap Terkirim
+const saleStatus = (item: MarketplaceItemSale): MarketplaceSaleStatus => item.status || 'terkirim';
+
+// Baris cancel & retur tidak dihitung dalam omset/statistik
+const isCounted = (item: MarketplaceItemSale): boolean => {
+  const s = saleStatus(item);
+  return s === 'terkirim' || s === 'diproses';
+};
+
+// Apakah stok produk telah dikembalikan ke gudang pada status ini
+const stockWasReturned = (item: MarketplaceItemSale): boolean => {
+  const s = saleStatus(item);
+  return s === 'cancel' || (s === 'retur' && item.retur_to_stock === true);
+};
+
+const STATUS_META: Record<MarketplaceSaleStatus, { label: string; className: string }> = {
+  diproses: { label: 'Diproses', className: 'bg-blue-100 text-blue-800 border-blue-200' },
+  terkirim: { label: 'Terkirim', className: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
+  cancel: { label: 'Cancel', className: 'bg-rose-100 text-rose-700 border-rose-200' },
+  retur: { label: 'Retur', className: 'bg-amber-100 text-amber-800 border-amber-200' },
+};
 
 export const MarketplaceSalesModule: React.FC = () => {
   // Tabs: 'item_sales' (the requested detailed log) or 'daily_rekap' (the original summary channel)
@@ -38,8 +61,12 @@ export const MarketplaceSalesModule: React.FC = () => {
   const [startDate, setStartDate] = useState<string>('2026-05-01'); // Match MEI 2026 in user picture
   const [endDate, setEndDate] = useState<string>('2026-07-31');
   const [filterMarketplace, setFilterMarketplace] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<'newest' | 'oldest'>('newest');
+
+  // Dropdown ubah status yang sedang terbuka (id baris)
+  const [statusMenuItemId, setStatusMenuItemId] = useState<string | null>(null);
 
   // Input states for NEW DETAILED SALE
   const [inputDate, setInputDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -51,7 +78,11 @@ export const MarketplaceSalesModule: React.FC = () => {
   const [qty, setQty] = useState<number>(1);
   const [price, setPrice] = useState<number>(0);
   const [adminFee, setAdminFee] = useState<number>(0);
-  const [staffName, setStaffName] = useState<string>('Admin Online Siska');
+  // Nama penginput diambil dari akun yang sedang login (bukan hardcode)
+  const [staffName, setStaffName] = useState<string>(() => {
+    try { return JSON.parse(localStorage.getItem('nxty_session') || 'null')?.name || 'Admin'; } catch { return 'Admin'; }
+  });
+  const [inputStatus, setInputStatus] = useState<MarketplaceSaleStatus>('diproses');
 
   // Old Daily Rekap States
   const [dailyChannel, setDailyChannel] = useState<'tokopedia' | 'tiktok' | 'shopee'>('tokopedia');
@@ -139,12 +170,14 @@ export const MarketplaceSalesModule: React.FC = () => {
     const updatedItemSales = dataStore.getMarketplaceItemSales();
 
     if (editingItemId) {
-      // Edit Mode — kembalikan stok lama dulu, lalu potong sesuai input baru
+      // Edit Mode — kembalikan stok lama dulu, lalu potong sesuai input baru.
+      // Baris cancel/retur-ke-stok dilewati: stoknya memang sudah kembali ke gudang.
       const oldItem = updatedItemSales.find(item => item.id === editingItemId);
-      if (oldItem?.product_id) {
+      const oldStockOut = oldItem ? !stockWasReturned(oldItem) : true;
+      if (oldItem?.product_id && oldStockOut) {
         dataStore.adjustProductStock(oldItem.product_id, oldItem.qty, `Koreksi edit penjualan ${oldItem.order_number}`);
       }
-      if (linkedProductId) {
+      if (linkedProductId && oldItem && !stockWasReturned(oldItem)) {
         dataStore.adjustProductStock(linkedProductId, -qty, `Terjual - ${marketplaceRef} ${orderNumber.trim() || editingItemId}`);
       }
 
@@ -179,6 +212,7 @@ export const MarketplaceSalesModule: React.FC = () => {
       const newDetailedSale: MarketplaceItemSale = {
         id: Math.random().toString(36).substring(2, 11),
         product_id: linkedProductId,
+        status: inputStatus,
         date: inputDate,
         order_number: orderNumber.trim() || 'NP-' + Math.floor(100000 + Math.random() * 900000),
         marketplace_ref: marketplaceRef === 'Custom' ? customMarketplaceRef.trim() || 'Other' : marketplaceRef,
@@ -306,6 +340,45 @@ export const MarketplaceSalesModule: React.FC = () => {
     setDailyRevenue(0);
   };
 
+  // Ubah status order + sesuaikan stok gudang bila perlu
+  const handleChangeStatus = (item: MarketplaceItemSale, newStatus: MarketplaceSaleStatus) => {
+    setStatusMenuItemId(null);
+    const oldStatus = saleStatus(item);
+    if (oldStatus === newStatus) return;
+
+    // Retur: tanyakan apakah barang layak jual dikembalikan ke stok
+    let returToStock: boolean | undefined = undefined;
+    if (newStatus === 'retur') {
+      if (item.product_id) {
+        returToStock = window.confirm(
+          `Barang retur "${item.description}" (${item.qty} pcs) dikembalikan ke stok gudang?\n\nOK = Ya, layak jual kembali\nCancel = Tidak (barang rusak)`
+        );
+      } else {
+        returToStock = false;
+      }
+    }
+
+    // Sinkronkan stok: bandingkan posisi stok lama vs baru
+    const wasReturned = stockWasReturned(item);
+    const willBeReturned = newStatus === 'cancel' || (newStatus === 'retur' && returToStock === true);
+    if (item.product_id && wasReturned !== willBeReturned) {
+      if (willBeReturned) {
+        dataStore.adjustProductStock(item.product_id, item.qty, `${newStatus === 'cancel' ? 'Cancel' : 'Retur'} order ${item.order_number}`);
+      } else {
+        dataStore.adjustProductStock(item.product_id, -item.qty, `Status kembali aktif - order ${item.order_number}`);
+      }
+    }
+
+    const updated = dataStore.getMarketplaceItemSales().map(sale =>
+      sale.id === item.id ? { ...sale, status: newStatus, retur_to_stock: newStatus === 'retur' ? returToStock : undefined } : sale
+    );
+    dataStore.setMarketplaceItemSales(updated);
+    setItemSales(updated);
+    dataStore.logAudit('update', 'marketplace_item_sale',
+      `Status order ${item.order_number} (${item.description}) diubah ${STATUS_META[oldStatus].label} → ${STATUS_META[newStatus].label}${newStatus === 'retur' ? (returToStock ? ' (barang kembali ke stok)' : ' (barang rusak, tidak ke stok)') : ''}`,
+      item.id);
+  };
+
   // Delete Detailed Sale Entry
   const handleDeleteDetailedSale = (id: string) => {
     setDeleteDetailedItemId(id);
@@ -315,8 +388,9 @@ export const MarketplaceSalesModule: React.FC = () => {
     if (deleteDetailedItemId) {
       const current = dataStore.getMarketplaceItemSales();
       // Kembalikan stok produk jadi bila penjualan ini terhubung ke produk gudang
+      // (kecuali stoknya sudah kembali karena status cancel/retur-ke-stok)
       const target = current.find(sale => sale.id === deleteDetailedItemId);
-      if (target?.product_id) {
+      if (target?.product_id && !stockWasReturned(target)) {
         dataStore.adjustProductStock(target.product_id, target.qty, `Hapus penjualan ${target.order_number}`);
       }
       const updated = current.filter(sale => sale.id !== deleteDetailedItemId);
@@ -362,8 +436,11 @@ export const MarketplaceSalesModule: React.FC = () => {
     const isWithinDate = (!startDate || itemDate >= startDate) && (!endDate || itemDate <= endDate);
     
     // Marketplace channel filter
-    const isMarketplaceMatch = filterMarketplace === 'all' || 
+    const isMarketplaceMatch = filterMarketplace === 'all' ||
       item.marketplace_ref.toLowerCase() === filterMarketplace.toLowerCase();
+
+    // Status filter
+    const isStatusMatch = filterStatus === 'all' || saleStatus(item) === filterStatus;
 
     // Text search filter
     const matchesSearch = !searchQuery ? true : (
@@ -372,7 +449,7 @@ export const MarketplaceSalesModule: React.FC = () => {
       item.admin_staff.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
-    return isWithinDate && isMarketplaceMatch && matchesSearch;
+    return isWithinDate && isMarketplaceMatch && isStatusMatch && matchesSearch;
   }).sort((a, b) => {
     if (sortBy === 'newest') {
       return b.date.localeCompare(a.date) || b.id.localeCompare(a.id);
@@ -381,15 +458,21 @@ export const MarketplaceSalesModule: React.FC = () => {
     }
   });
 
-  // STATS COMPUTATION for Detailed Sales Tab
-  const totalItemQty = filteredItemSales.reduce((acc, curr) => acc + curr.qty, 0);
-  const totalItemSubtotal = filteredItemSales.reduce((acc, curr) => acc + curr.subtotal, 0);
-  const totalItemAdminFee = filteredItemSales.reduce((acc, curr) => acc + curr.admin_fee, 0);
-  const totalItemNetOmset = filteredItemSales.reduce((acc, curr) => acc + curr.total, 0);
+  // STATS COMPUTATION — cancel & retur TIDAK dihitung dalam omset
+  const countedSales = filteredItemSales.filter(isCounted);
+  const totalItemQty = countedSales.reduce((acc, curr) => acc + curr.qty, 0);
+  const totalItemSubtotal = countedSales.reduce((acc, curr) => acc + curr.subtotal, 0);
+  const totalItemAdminFee = countedSales.reduce((acc, curr) => acc + curr.admin_fee, 0);
+  const totalItemNetOmset = countedSales.reduce((acc, curr) => acc + curr.total, 0);
+  // Rincian per status
+  const deliveredNet = filteredItemSales.filter(i => saleStatus(i) === 'terkirim').reduce((acc, curr) => acc + curr.total, 0);
+  const pendingNet = filteredItemSales.filter(i => saleStatus(i) === 'diproses').reduce((acc, curr) => acc + curr.total, 0);
+  const lostSales = filteredItemSales.filter(i => !isCounted(i));
+  const lostNet = lostSales.reduce((acc, curr) => acc + curr.total, 0);
 
-  // Compute Item-specific statistics
+  // Compute Item-specific statistics (hanya baris yang dihitung)
   const itemPopularityMap: { [key: string]: { qty: number; revenue: number } } = {};
-  filteredItemSales.forEach(sale => {
+  countedSales.forEach(sale => {
     const desc = sale.description;
     if (!itemPopularityMap[desc]) {
       itemPopularityMap[desc] = { qty: 0, revenue: 0 };
@@ -418,7 +501,7 @@ export const MarketplaceSalesModule: React.FC = () => {
     csvContent += brandName() + '\n';
     csvContent += 'Laporan Penjualan Barang - Marketplace\n';
     csvContent += `Periode Filter: ${startDate || 'Semua'} s/d ${endDate || 'Semua'}\n\n`;
-    csvContent += 'TGL,No,No pesenan,Ref,Deskripsi,QTY,Harga,Subtotal,Biaya,Total,Input Oleh\n';
+    csvContent += 'TGL,No,No pesenan,Ref,Status,Deskripsi,QTY,Harga,Subtotal,Biaya,Total,Input Oleh\n';
 
     filteredItemSales.forEach((item, index) => {
       // Escape commas in description to avoid CSV breaking
@@ -428,6 +511,7 @@ export const MarketplaceSalesModule: React.FC = () => {
         index + 1,
         `="${item.order_number}"`, // Forces Excel to treat order number as string (no scientific notation)
         item.marketplace_ref,
+        STATUS_META[saleStatus(item)].label.toUpperCase(),
         `"${cleanDesc}"`,
         item.qty,
         item.price,
@@ -439,8 +523,11 @@ export const MarketplaceSalesModule: React.FC = () => {
       csvContent += row + '\n';
     });
 
-    // Append Summary Row
-    csvContent += `\n,,,TOTAL TERJUAL,,${totalItemQty},,,${totalItemAdminFee > 0 ? `-${totalItemAdminFee}` : '0'},${totalItemNetOmset},\n`;
+    // Append Summary Row (cancel & retur tidak ikut dijumlah)
+    csvContent += `\n,,,TOTAL EFEKTIF (tanpa cancel/retur),,,${totalItemQty},,,${totalItemAdminFee > 0 ? `-${totalItemAdminFee}` : '0'},${totalItemNetOmset},\n`;
+    if (lostSales.length > 0) {
+      csvContent += `,,,CANCEL/RETUR,,,${lostSales.reduce((s, i) => s + i.qty, 0)},,,,-${lostNet},\n`;
+    }
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -561,10 +648,10 @@ export const MarketplaceSalesModule: React.FC = () => {
                 <DollarSign className="w-5 h-5" />
               </div>
               <div className="space-y-0.5">
-                <span className="text-[11px] text-gray-500 font-black uppercase tracking-wider block">Total Omset Bersih</span>
-                <p className="text-2xl font-black text-evergreen font-mono">{formatIDR(totalItemNetOmset)}</p>
-                <span className="text-[10px] text-emerald-600 font-bold block">
-                  Kotor: {formatIDR(totalItemSubtotal)}
+                <span className="text-[11px] text-gray-500 font-black uppercase tracking-wider block">Omset Bersih (Terkirim)</span>
+                <p className="text-2xl font-black text-evergreen font-mono">{formatIDR(deliveredNet)}</p>
+                <span className="text-[10px] text-blue-600 font-bold block">
+                  Diproses (pending): {formatIDR(pendingNet)}
                 </span>
               </div>
               <div className="absolute -right-2 -bottom-2 opacity-10 text-evergreen pointer-events-none">
@@ -573,6 +660,16 @@ export const MarketplaceSalesModule: React.FC = () => {
             </div>
 
           </div>
+
+          {/* Strip peringatan omset hangus karena cancel/retur */}
+          {lostSales.length > 0 && (
+            <div className="flex items-center gap-2.5 bg-rose-50 border border-rose-200 rounded-xl px-4 py-2.5 text-xs">
+              <Undo2 className="w-4 h-4 text-rose-600 shrink-0" />
+              <span className="text-rose-800">
+                <b>{lostSales.length} order Cancel/Retur</b> pada filter ini — omset hangus <b className="font-mono">{formatIDR(lostNet)}</b> (tidak dihitung dalam total di atas).
+              </span>
+            </div>
+          )}
 
           {/* MAIN GRID: Input & List */}
           <div className="space-y-4">
@@ -626,6 +723,30 @@ export const MarketplaceSalesModule: React.FC = () => {
                         />
                       </div>
                     </div>
+
+                    {/* Status awal order (khusus entri baru; ubah selanjutnya lewat badge di tabel) */}
+                    {!editingItemId && (
+                      <div>
+                        <label className="block text-gray-500 font-semibold mb-1">Status Order</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setInputStatus('diproses')}
+                            className={`py-2 rounded-lg border text-[11px] font-bold ${inputStatus === 'diproses' ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 text-gray-600 bg-gray-50'}`}
+                          >
+                            Diproses
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setInputStatus('terkirim')}
+                            className={`py-2 rounded-lg border text-[11px] font-bold ${inputStatus === 'terkirim' ? 'bg-emerald-600 text-white border-emerald-600' : 'border-gray-200 text-gray-600 bg-gray-50'}`}
+                          >
+                            Terkirim
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-gray-400 mt-1">Cancel/Retur diubah nanti dari kolom Status di tabel laporan.</p>
+                      </div>
+                    )}
 
                     {/* Order Number & Marketplace Channel */}
                     <div className="grid grid-cols-2 gap-3">
@@ -808,7 +929,7 @@ export const MarketplaceSalesModule: React.FC = () => {
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
                   {/* Start Date */}
                   <div>
                     <label className="block text-[10px] text-gray-400 font-bold mb-1 uppercase">Mulai TGL</label>
@@ -844,6 +965,22 @@ export const MarketplaceSalesModule: React.FC = () => {
                       <option value="shopee">Shopee</option>
                       <option value="tiktok shop">TikTok Shop</option>
                       <option value="lazada">Lazada</option>
+                    </select>
+                  </div>
+
+                  {/* Status Filter */}
+                  <div>
+                    <label className="block text-[10px] text-gray-400 font-bold mb-1 uppercase">Status</label>
+                    <select
+                      value={filterStatus}
+                      onChange={(e) => setFilterStatus(e.target.value)}
+                      className="w-full bg-gray-50 border border-gray-200 rounded px-2.5 py-1 text-xs font-semibold text-gray-600 focus:outline-none focus:ring-1 focus:ring-evergreen"
+                    >
+                      <option value="all">Semua Status</option>
+                      <option value="diproses">Diproses</option>
+                      <option value="terkirim">Terkirim</option>
+                      <option value="cancel">Cancel</option>
+                      <option value="retur">Retur</option>
                     </select>
                   </div>
 
@@ -893,6 +1030,7 @@ export const MarketplaceSalesModule: React.FC = () => {
                         <th className="p-3 border-r border-white/10 w-10">No</th>
                         <th className="p-3 border-r border-white/10 text-left">No pesenan</th>
                         <th className="p-3 border-r border-white/10 text-left">Ref</th>
+                        <th className="p-3 border-r border-white/10 text-center w-24">Status</th>
                         <th className="p-3 border-r border-white/10 text-left">Deskripsi</th>
                         <th className="p-3 border-r border-white/10 text-center w-12">QTY</th>
                         <th className="p-3 border-r border-white/10 text-right w-24">Harga</th>
@@ -905,13 +1043,13 @@ export const MarketplaceSalesModule: React.FC = () => {
                     <tbody className="divide-y divide-gray-150 font-mono bg-white">
                       {filteredItemSales.length === 0 ? (
                         <tr>
-                          <td colSpan={11} className="p-8 text-center text-xs text-gray-400 italic font-sans">
+                          <td colSpan={12} className="p-8 text-center text-xs text-gray-400 italic font-sans">
                             Tidak ada rincian data penjualan yang sesuai filter.
                           </td>
                         </tr>
                       ) : (
                         filteredItemSales.map((item, index) => (
-                          <tr key={item.id} className="hover:bg-emerald-50/15 border-b border-emerald-100/30 transition-colors">
+                          <tr key={item.id} className={`hover:bg-emerald-50/15 border-b border-emerald-100/30 transition-colors ${!isCounted(item) ? 'opacity-55 bg-gray-50/50' : ''}`}>
                             <td className="p-3 text-center border-r border-emerald-100/70 font-mono text-emerald-950 font-bold bg-emerald-50/30 whitespace-nowrap align-middle">
                               {formatDateExcel(item.date)}
                             </td>
@@ -929,6 +1067,37 @@ export const MarketplaceSalesModule: React.FC = () => {
                                 {item.marketplace_ref}
                               </span>
                             </td>
+                            <td className="p-3 text-center border-r border-emerald-100/50 relative">
+                              <button
+                                type="button"
+                                onClick={() => setStatusMenuItemId(statusMenuItemId === item.id ? null : item.id)}
+                                className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider font-sans border cursor-pointer hover:ring-1 hover:ring-gray-300 ${STATUS_META[saleStatus(item)].className}`}
+                                title="Klik untuk ubah status"
+                              >
+                                {STATUS_META[saleStatus(item)].label} ▾
+                              </button>
+                              {statusMenuItemId === item.id && (
+                                <>
+                                  <div className="fixed inset-0 z-30" onClick={() => setStatusMenuItemId(null)} />
+                                  <div className="absolute z-40 left-1/2 -translate-x-1/2 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl p-1 w-32 font-sans">
+                                    {(Object.keys(STATUS_META) as MarketplaceSaleStatus[]).map(s => (
+                                      <button
+                                        key={s}
+                                        type="button"
+                                        onClick={() => handleChangeStatus(item, s)}
+                                        className={`w-full text-left px-2.5 py-1.5 rounded text-[10px] font-bold hover:bg-gray-50 flex items-center justify-between ${saleStatus(item) === s ? 'bg-gray-100' : ''}`}
+                                      >
+                                        <span className={`px-1.5 py-0.5 rounded border text-[9px] uppercase ${STATUS_META[s].className}`}>{STATUS_META[s].label}</span>
+                                        {saleStatus(item) === s && <span className="text-gray-400">✓</span>}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </>
+                              )}
+                              {saleStatus(item) === 'retur' && (
+                                <span className="block text-[8px] text-gray-400 font-sans mt-0.5">{item.retur_to_stock ? 'ke stok' : 'rusak'}</span>
+                              )}
+                            </td>
                             <td className="p-3 text-gray-900 font-bold font-sans truncate max-w-[160px] border-r border-emerald-100/50" title={item.description}>
                               {item.description}
                             </td>
@@ -938,7 +1107,7 @@ export const MarketplaceSalesModule: React.FC = () => {
                             <td className="p-3 text-right text-red-600 font-bold border-r border-emerald-100/50">
                               {item.admin_fee > 0 ? `-${formatIDR(item.admin_fee)}` : 'Rp0'}
                             </td>
-                            <td className="p-3 text-right font-black text-evergreen border-r border-emerald-100/50 text-[12px]">{formatIDR(item.total)}</td>
+                            <td className={`p-3 text-right font-black border-r border-emerald-100/50 text-[12px] ${isCounted(item) ? 'text-evergreen' : 'text-gray-400 line-through'}`}>{formatIDR(item.total)}</td>
                             <td className="p-3 text-center whitespace-nowrap flex items-center justify-center gap-1.5 bg-white/30">
                               <button
                                 onClick={() => handleStartEditItem(item)}
@@ -964,7 +1133,7 @@ export const MarketplaceSalesModule: React.FC = () => {
                     {filteredItemSales.length > 0 && (
                       <tfoot className="bg-emerald-50/15 border-t border-emerald-800/20 font-semibold font-sans text-xs">
                         <tr className="text-emerald-950 font-bold">
-                          <td colSpan={5} className="p-3 text-right uppercase tracking-wider border-r border-emerald-100/50 font-black">TOTAL FILTERED:</td>
+                          <td colSpan={6} className="p-3 text-right uppercase tracking-wider border-r border-emerald-100/50 font-black">TOTAL EFEKTIF (tanpa Cancel/Retur):</td>
                           <td className="p-3 text-center font-bold font-mono text-gray-900 border-r border-emerald-100/50">{totalItemQty} Pcs</td>
                           <td className="p-3 border-r border-emerald-100/50" />
                           <td className="p-3 text-right font-mono border-r border-emerald-100/50 text-gray-800 font-bold">{formatIDR(totalItemSubtotal)}</td>
