@@ -65,8 +65,9 @@ export const MarketplaceSalesModule: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<'newest' | 'oldest'>('newest');
 
-  // Dropdown ubah status yang sedang terbuka (id baris)
-  const [statusMenuItemId, setStatusMenuItemId] = useState<string | null>(null);
+  // Pop-up ubah status (baris yang sedang diubah + pilihan retur)
+  const [statusModalItem, setStatusModalItem] = useState<MarketplaceItemSale | null>(null);
+  const [returChoice, setReturChoice] = useState<'stok' | 'rusak' | null>(null); // muncul saat pilih Retur
 
   // Input states for NEW DETAILED SALE
   const [inputDate, setInputDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -340,23 +341,13 @@ export const MarketplaceSalesModule: React.FC = () => {
     setDailyRevenue(0);
   };
 
-  // Ubah status order + sesuaikan stok gudang bila perlu
-  const handleChangeStatus = (item: MarketplaceItemSale, newStatus: MarketplaceSaleStatus) => {
-    setStatusMenuItemId(null);
+  // Ubah status order + sesuaikan stok gudang bila perlu.
+  // returToStock hanya relevan untuk status 'retur' (dipilih dari pop-up).
+  const handleChangeStatus = (item: MarketplaceItemSale, newStatus: MarketplaceSaleStatus, returToStock?: boolean) => {
+    setStatusModalItem(null);
+    setReturChoice(null);
     const oldStatus = saleStatus(item);
-    if (oldStatus === newStatus) return;
-
-    // Retur: tanyakan apakah barang layak jual dikembalikan ke stok
-    let returToStock: boolean | undefined = undefined;
-    if (newStatus === 'retur') {
-      if (item.product_id) {
-        returToStock = window.confirm(
-          `Barang retur "${item.description}" (${item.qty} pcs) dikembalikan ke stok gudang?\n\nOK = Ya, layak jual kembali\nCancel = Tidak (barang rusak)`
-        );
-      } else {
-        returToStock = false;
-      }
-    }
+    if (oldStatus === newStatus && !(newStatus === 'retur' && returToStock !== item.retur_to_stock)) return;
 
     // Sinkronkan stok: bandingkan posisi stok lama vs baru
     const wasReturned = stockWasReturned(item);
@@ -1067,35 +1058,17 @@ export const MarketplaceSalesModule: React.FC = () => {
                                 {item.marketplace_ref}
                               </span>
                             </td>
-                            <td className="p-3 text-center border-r border-emerald-100/50 relative">
+                            <td className="p-3 text-center border-r border-emerald-100/50">
                               <button
                                 type="button"
-                                onClick={() => setStatusMenuItemId(statusMenuItemId === item.id ? null : item.id)}
-                                className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider font-sans border cursor-pointer hover:ring-1 hover:ring-gray-300 ${STATUS_META[saleStatus(item)].className}`}
+                                onClick={() => { setStatusModalItem(item); setReturChoice(null); }}
+                                className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider font-sans border cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-gray-300 transition-all ${STATUS_META[saleStatus(item)].className}`}
                                 title="Klik untuk ubah status"
                               >
                                 {STATUS_META[saleStatus(item)].label} ▾
                               </button>
-                              {statusMenuItemId === item.id && (
-                                <>
-                                  <div className="fixed inset-0 z-30" onClick={() => setStatusMenuItemId(null)} />
-                                  <div className="absolute z-40 left-1/2 -translate-x-1/2 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl p-1 w-32 font-sans">
-                                    {(Object.keys(STATUS_META) as MarketplaceSaleStatus[]).map(s => (
-                                      <button
-                                        key={s}
-                                        type="button"
-                                        onClick={() => handleChangeStatus(item, s)}
-                                        className={`w-full text-left px-2.5 py-1.5 rounded text-[10px] font-bold hover:bg-gray-50 flex items-center justify-between ${saleStatus(item) === s ? 'bg-gray-100' : ''}`}
-                                      >
-                                        <span className={`px-1.5 py-0.5 rounded border text-[9px] uppercase ${STATUS_META[s].className}`}>{STATUS_META[s].label}</span>
-                                        {saleStatus(item) === s && <span className="text-gray-400">✓</span>}
-                                      </button>
-                                    ))}
-                                  </div>
-                                </>
-                              )}
                               {saleStatus(item) === 'retur' && (
-                                <span className="block text-[8px] text-gray-400 font-sans mt-0.5">{item.retur_to_stock ? 'ke stok' : 'rusak'}</span>
+                                <span className="block text-[8px] text-gray-400 font-sans mt-0.5">{item.retur_to_stock ? 'kembali ke stok' : 'barang rusak'}</span>
                               )}
                             </td>
                             <td className="p-3 text-gray-900 font-bold font-sans truncate max-w-[160px] border-r border-emerald-100/50" title={item.description}>
@@ -1370,6 +1343,95 @@ export const MarketplaceSalesModule: React.FC = () => {
 
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* POP-UP UBAH STATUS ORDER */}
+      {statusModalItem && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => { setStatusModalItem(null); setReturChoice(null); }}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-xs w-full p-5 shadow-2xl border border-gray-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Info order ringkas */}
+            <div className="flex items-start justify-between gap-2 mb-4">
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold text-gray-900">Ubah Status Order</h3>
+                <p className="text-[11px] text-gray-500 truncate mt-0.5" title={statusModalItem.description}>
+                  {statusModalItem.description}
+                </p>
+                <p className="text-[10px] text-gray-400 font-mono">
+                  {statusModalItem.order_number} · {statusModalItem.qty} pcs · {statusModalItem.marketplace_ref}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setStatusModalItem(null); setReturChoice(null); }}
+                className="text-gray-400 hover:text-gray-600 p-1 hover:bg-gray-100 rounded-full transition-colors shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {returChoice === null ? (
+              /* Langkah 1: pilih status */
+              <div className="grid grid-cols-2 gap-2">
+                {(Object.keys(STATUS_META) as MarketplaceSaleStatus[]).map(s => {
+                  const isActive = saleStatus(statusModalItem) === s;
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => {
+                        if (s === 'retur' && statusModalItem.product_id) {
+                          setReturChoice('stok'); // lanjut ke langkah pilihan retur
+                        } else {
+                          handleChangeStatus(statusModalItem, s, s === 'retur' ? false : undefined);
+                        }
+                      }}
+                      className={`py-3 rounded-xl border-2 text-xs font-bold transition-all ${STATUS_META[s].className} ${
+                        isActive ? 'ring-2 ring-offset-1 ring-gray-400' : 'hover:scale-[1.03]'
+                      }`}
+                    >
+                      {STATUS_META[s].label}
+                      {isActive && <span className="block text-[9px] font-semibold opacity-70 mt-0.5">status sekarang</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              /* Langkah 2 (khusus Retur produk gudang): barang kembali ke stok atau rusak? */
+              <div className="space-y-2">
+                <p className="text-xs text-gray-600 font-semibold">
+                  Barang retur ({statusModalItem.qty} pcs) dikembalikan ke stok gudang?
+                </p>
+                <button
+                  type="button"
+                  onClick={() => handleChangeStatus(statusModalItem, 'retur', true)}
+                  className="w-full py-3 rounded-xl border-2 border-emerald-200 bg-emerald-50 text-emerald-800 text-xs font-bold hover:bg-emerald-100 transition-colors"
+                >
+                  ✅ Ya, layak jual — kembalikan ke stok
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleChangeStatus(statusModalItem, 'retur', false)}
+                  className="w-full py-3 rounded-xl border-2 border-rose-200 bg-rose-50 text-rose-700 text-xs font-bold hover:bg-rose-100 transition-colors"
+                >
+                  ❌ Tidak, barang rusak — jangan ke stok
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReturChoice(null)}
+                  className="w-full py-2 rounded-lg text-[11px] font-semibold text-gray-500 hover:bg-gray-50"
+                >
+                  ← Kembali pilih status
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
