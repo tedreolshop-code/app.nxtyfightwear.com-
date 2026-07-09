@@ -19,6 +19,41 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
   const [departments, setDepartments] = useState<Department[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
 
+  // Filter & pencarian daftar karyawan
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterDeptId, setFilterDeptId] = useState('');
+  const [showResigned, setShowResigned] = useState(false);
+
+  // Warna badge departemen: deterministik dari id agar konsisten antar render/sesi
+  const deptBadgePalette = [
+    'bg-emerald-50 text-emerald-800 border-emerald-200',
+    'bg-sky-50 text-sky-800 border-sky-200',
+    'bg-amber-50 text-amber-800 border-amber-200',
+    'bg-violet-50 text-violet-800 border-violet-200',
+    'bg-rose-50 text-rose-800 border-rose-200',
+    'bg-teal-50 text-teal-800 border-teal-200',
+    'bg-indigo-50 text-indigo-800 border-indigo-200',
+    'bg-orange-50 text-orange-800 border-orange-200',
+  ];
+  const deptBadgeClass = (deptId?: string) => {
+    if (!deptId) return 'bg-gray-100 text-gray-700 border-gray-200';
+    let hash = 0;
+    for (let i = 0; i < deptId.length; i++) hash = (hash * 31 + deptId.charCodeAt(i)) >>> 0;
+    return deptBadgePalette[hash % deptBadgePalette.length];
+  };
+
+  const activeEmployeeCount = employees.filter(emp => emp.status_aktif).length;
+  const visibleEmployees = employees
+    .filter(emp => {
+      if (!showResigned && !emp.status_aktif) return false;
+      if (filterDeptId && emp.department_id !== filterDeptId) return false;
+      const q = searchQuery.trim().toLowerCase();
+      if (q && !`${emp.name} ${emp.username || ''}`.toLowerCase().includes(q)) return false;
+      return true;
+    })
+    // Aktif dulu, lalu urut nama A-Z
+    .sort((a, b) => (Number(b.status_aktif) - Number(a.status_aktif)) || a.name.localeCompare(b.name, 'id'));
+
   // Custom Banner Alert state
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
@@ -494,7 +529,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
     });
     dataStore.setEmployees(updated);
     setEditingEmpId(null);
-    showNotification('Konfigurasi RLS (Row Level Security) berhasil disimpan!', 'success');
+    showNotification('Hak akses menu berhasil disimpan!', 'success');
     loadData();
   };
 
@@ -520,7 +555,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
 
     onLoginEmployee(emp);
     setLoginPin('');
-    showNotification(`Berhasil masuk! Anda sekarang menggunakan hak akses: ${emp.name} (${emp.role.toUpperCase()}). Menu Anda telah dibatasi sesuai kebijakan RLS.`, 'success');
+    showNotification(`Berhasil masuk! Anda sekarang menggunakan hak akses: ${emp.name} (${emp.role.toUpperCase()}). Menu Anda menyesuaikan hak akses yang diatur.`, 'success');
   };
 
   const handleSimulateLogout = () => {
@@ -554,7 +589,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
             Portal Akses & Login Karyawan (Simulasi PIN)
           </h4>
           <p className="text-xs text-emerald-800 leading-relaxed">
-            Gunakan fitur ini untuk mensimulasikan login karyawan dengan PIN mereka. Sistem akan secara otomatis membatasi menu navigasi di sebelah kiri berdasarkan **Row Level Security (RLS)** yang telah diatur.
+            Karyawan login memakai username dan PIN. Menu navigasi akan menyesuaikan otomatis dengan hak akses yang diatur di tabel bawah.
           </p>
         </div>
 
@@ -901,9 +936,39 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
 
       {/* Employees Table List */}
       <div className="bg-white rounded-lg border border-gray-100 overflow-hidden shadow-xs">
-        <div className="p-4 bg-gray-50/50 border-b border-gray-100 flex items-center justify-between">
-          <span className="text-xs font-bold text-gray-700">Daftar Anggota Karyawan & Hak Akses Tab</span>
-          <span className="text-[10px] text-gray-400 font-mono">Total Karyawan Aktif: {employees.length}</span>
+        <div className="p-4 bg-gray-50/50 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div>
+            <span className="text-xs font-bold text-gray-700 block">Daftar Anggota Karyawan & Hak Akses Tab</span>
+            <span className="text-[10px] text-gray-400 font-mono">
+              Menampilkan {visibleEmployees.length} dari {activeEmployeeCount} karyawan aktif{showResigned ? ` (+${employees.length - activeEmployeeCount} resign)` : ''}
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Cari nama / username..."
+              className="bg-white border border-gray-200 rounded px-3 py-1.5 text-xs text-gray-800 focus:outline-none focus:border-emerald-600 w-44"
+            />
+            <select
+              value={filterDeptId}
+              onChange={(e) => setFilterDeptId(e.target.value)}
+              className="bg-white border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-800 focus:outline-none focus:border-emerald-600 cursor-pointer"
+            >
+              <option value="">Semua Departemen</option>
+              {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+            <label className="flex items-center gap-1.5 text-[10px] font-bold text-gray-500 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showResigned}
+                onChange={(e) => setShowResigned(e.target.checked)}
+                className="accent-[var(--color-evergreen)]"
+              />
+              Tampilkan resign
+            </label>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -921,7 +986,14 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
               </tr>
             </thead>
             <tbody>
-              {employees.map((emp) => {
+              {visibleEmployees.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="p-6 text-center text-xs text-gray-400">
+                    Tidak ada karyawan yang cocok dengan pencarian / filter.
+                  </td>
+                </tr>
+              )}
+              {visibleEmployees.map((emp) => {
                 const isEditing = editingEmpId === emp.id;
                 const deptObj = departments.find(d => d.id === emp.department_id);
                 return (
@@ -941,7 +1013,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                       </div>
                     </td>
                     <td className="p-3">
-                      <span className="px-2 py-0.5 bg-gray-100 border text-gray-700 rounded text-[10px] font-medium">
+                      <span className={`px-2 py-0.5 border rounded text-[10px] font-bold ${deptBadgeClass(deptObj?.id)}`}>
                         {deptObj ? deptObj.name : 'Umum / HQ'}
                       </span>
                     </td>
