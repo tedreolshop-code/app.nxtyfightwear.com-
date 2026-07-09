@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { BrandSettings } from '../types';
 import { dataStore } from '../dataStore';
 import { applyBrandTheme, brandInitials, useBrand } from '../brand';
-import { Palette, Image as ImageIcon, Save, RotateCcw, Trash2, Building2, Info } from 'lucide-react';
+import { Palette, Image as ImageIcon, Save, RotateCcw, Trash2, Building2, Info, GitBranch } from 'lucide-react';
 
 const DEFAULT_COLOR = '#1F4B36';
 
@@ -31,9 +31,24 @@ const fileToLogoDataUrl = (file: File): Promise<string> =>
     reader.readAsDataURL(file);
   });
 
+const HANDOFF_MODES: Array<{ id: 'assign' | 'queue' | 'hybrid'; label: string; desc: string }> = [
+  { id: 'hybrid', label: 'Bebas (Disarankan)', desc: 'Karyawan memilih sendiri saat serah terima: tunjuk orang tertentu ATAU lepas ke antrean.' },
+  { id: 'assign', label: 'Tunjuk Langsung', desc: 'Karyawan wajib memilih nama penerima. Cocok untuk tim kecil dengan tugas tetap.' },
+  { id: 'queue', label: 'Antrean / Ambil Sendiri', desc: 'Hasil kerja selalu masuk antrean — karyawan bagian berikutnya mengambil sendiri lewat "Tersedia untuk Diambil".' },
+];
+
 export const BrandSettingsModule: React.FC = () => {
   const saved = useBrand();
   const [draft, setDraft] = useState<BrandSettings>(saved);
+  const [handoffMode, setHandoffMode] = useState<'assign' | 'queue' | 'hybrid'>(
+    () => dataStore.getWorkSettings().production_handoff_mode || 'hybrid'
+  );
+
+  const saveHandoffMode = (mode: 'assign' | 'queue' | 'hybrid') => {
+    setHandoffMode(mode);
+    dataStore.setWorkSettings({ ...dataStore.getWorkSettings(), production_handoff_mode: mode });
+    dataStore.logAudit('update', 'work_settings', `Mengubah mode serah terima produksi menjadi "${HANDOFF_MODES.find(m => m.id === mode)?.label}"`);
+  };
   const [savedFlash, setSavedFlash] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -251,6 +266,35 @@ export const BrandSettingsModule: React.FC = () => {
             <p className="text-[10px] text-gray-400">
               Slip gaji akan mencantumkan: <b>{draft.legal_name || '(nama badan hukum belum diisi)'}</b>
             </p>
+          </div>
+
+          {/* Mode serah terima produksi — tersimpan langsung saat dipilih */}
+          <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm space-y-3">
+            <div>
+              <h3 className="font-bold text-xs text-gray-700 flex items-center gap-1.5">
+                <GitBranch className="w-3.5 h-3.5 text-evergreen" /> Mode Serah Terima Produksi
+              </h3>
+              <p className="text-[10px] text-gray-400 mt-0.5">Cara hasil kerja berpindah antar karyawan. Tersimpan otomatis saat dipilih.</p>
+            </div>
+            <div className="space-y-2">
+              {HANDOFF_MODES.map(mode => (
+                <label key={mode.id} className={`flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer transition-colors ${
+                  handoffMode === mode.id ? 'border-evergreen bg-emerald-50/60' : 'border-gray-200 hover:bg-gray-50'
+                }`}>
+                  <input
+                    type="radio"
+                    name="handoff-mode"
+                    checked={handoffMode === mode.id}
+                    onChange={() => saveHandoffMode(mode.id)}
+                    className="mt-0.5 text-evergreen focus:ring-evergreen"
+                  />
+                  <span>
+                    <span className="block text-xs font-bold text-gray-800">{mode.label}</span>
+                    <span className="block text-[10px] text-gray-500 leading-relaxed">{mode.desc}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
           </div>
 
           <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-xl flex items-start gap-2.5 text-xs text-emerald-800">

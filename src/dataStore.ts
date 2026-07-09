@@ -223,6 +223,21 @@ const INITIAL_BRAND_SETTINGS: BrandSettings = {
   primary_color: '#1F4B36',
 };
 
+// Alur produksi bawaan per departemen — dipakai bila produk belum punya alur sendiri
+export const DEFAULT_PRODUCTION_STAGES: Record<string, string[]> = {
+  'dept-eva-foam': ['Campur Bahan', 'Cetak', 'Potong', 'Finishing', 'Cek Kualitas', 'Packing'],
+  'dept-konveksi': ['Potong', 'Sablon', 'Jahit', 'Finishing', 'Cek Kualitas', 'Packing'],
+};
+
+// Saran nama tahap untuk tombol cepat di editor alur
+export const STAGE_SUGGESTIONS = ['Potong', 'Jahit', 'Sablon', 'Lem', 'Campur Bahan', 'Cetak', 'Finishing', 'Cek Kualitas', 'Packing'];
+
+/** Alur produksi efektif sebuah produk (alur produk sendiri, atau bawaan departemennya). */
+export const stagesForProduct = (product?: { department_id: string; production_stages?: string[] }): string[] => {
+  if (product?.production_stages?.length) return product.production_stages;
+  return DEFAULT_PRODUCTION_STAGES[product?.department_id || ''] || DEFAULT_PRODUCTION_STAGES['dept-konveksi'];
+};
+
 const INITIAL_WORK_SETTINGS: WorkSettings = {
   start_time: '08:00',
   end_time: '16:00',
@@ -231,7 +246,8 @@ const INITIAL_WORK_SETTINGS: WorkSettings = {
   attendance_radius_meters: 100,
   monthly_bonus_amount: 0,
   monthly_bonus_min_days: 20,
-  location_qr_token: 'ari-hq-' + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)
+  location_qr_token: 'ari-hq-' + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2),
+  production_handoff_mode: 'hybrid'
 };
 
 const INITIAL_CALIBRATION: PrinterCalibration = {

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Order, OrderItem, Product, ProductionJob, Employee } from '../types';
-import { dataStore } from '../dataStore';
-import { ShoppingBag, Plus, User, Phone, CheckCircle2, Trash2, ArrowRight, PackageCheck, Truck } from 'lucide-react';
+import { dataStore, stagesForProduct } from '../dataStore';
+import { StageListEditor } from './StageListEditor';
+import { ShoppingBag, Plus, User, Phone, CheckCircle2, Trash2, ArrowRight, PackageCheck, Truck, ListOrdered, X } from 'lucide-react';
 
 export const OrderModule: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -26,6 +27,10 @@ export const OrderModule: React.FC = () => {
   const [currentProductId, setCurrentProductId] = useState('');
   const [currentQty, setCurrentQty] = useState(1);
   const [shippingFee, setShippingFee] = useState(0);
+
+  // Preview & edit alur produksi sekali-pakai sebelum order dikirim ke produksi
+  const [productionPreviewOrder, setProductionPreviewOrder] = useState<Order | null>(null);
+  const [previewStages, setPreviewStages] = useState<Record<string, string[]>>({}); // per product_id
 
   useEffect(() => {
     loadData();
@@ -118,7 +123,18 @@ export const OrderModule: React.FC = () => {
     loadData();
   };
 
-  const handleSendToProduction = (order: Order) => {
+  // Buka modal preview alur: tampilkan tahapan tiap produk (dari master produk) yang masih bisa diedit khusus order ini
+  const openProductionPreview = (order: Order) => {
+    const stagesMap: Record<string, string[]> = {};
+    order.items.forEach(item => {
+      const product = products.find(p => p.id === item.product_id);
+      stagesMap[item.product_id] = [...stagesForProduct(product)];
+    });
+    setPreviewStages(stagesMap);
+    setProductionPreviewOrder(order);
+  };
+
+  const handleSendToProduction = (order: Order, stagesByProduct?: Record<string, string[]>) => {
     // Fase 1: cek kecukupan bahan baku SEMUA item (belum memotong apa pun)
     const allShortages = dataStore.checkMaterialsForOrder(
       order.items.map(i => ({ product_id: i.product_id, product_name: i.product_name, qty: i.qty }))
@@ -148,11 +164,11 @@ export const OrderModule: React.FC = () => {
       if (!product) return;
 
       const deptId = product.department_id as 'dept-eva-foam' | 'dept-konveksi';
-      
-      // Tahapan per departemen (diakhiri Cek Kualitas & Packing sebelum masuk gudang produk jadi)
-      const stagesList = deptId === 'dept-eva-foam'
-        ? ['Campur Bahan', 'Cetak', 'Potong', 'Finishing', 'Cek Kualitas', 'Packing']
-        : ['Potong', 'Sablon', 'Jahit', 'Finishing', 'Cek Kualitas', 'Packing'];
+
+      // Tahapan diambil dari preview yang (mungkin) diedit admin, atau alur milik produk
+      const stagesList = stagesByProduct?.[item.product_id]?.length
+        ? stagesByProduct[item.product_id]
+        : stagesForProduct(product);
 
       const stageProgress = stagesList.map((stg, index) => ({
         stage: stg,
@@ -585,7 +601,7 @@ export const OrderModule: React.FC = () => {
                       </button>
                       {ord.status === 'pending' && (
                         <button
-                          onClick={() => handleSendToProduction(ord)}
+                          onClick={() => openProductionPreview(ord)}
                           className="bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold px-2 py-1 rounded flex items-center gap-1 mx-auto shadow-xs"
                         >
                           Kirim ke Produksi <ArrowRight className="w-3 h-3" />
@@ -654,6 +670,65 @@ export const OrderModule: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Modal preview & edit alur produksi sebelum kirim ke produksi */}
+      {productionPreviewOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setProductionPreviewOrder(null)}>
+          <div className="bg-white rounded-2xl max-w-xl w-full max-h-[92vh] overflow-y-auto p-6 shadow-2xl border border-gray-100" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-start border-b border-gray-100 pb-3 mb-4">
+              <div>
+                <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                  <ListOrdered className="w-4 h-4 text-[var(--color-evergreen)]" /> Alur Produksi Order {productionPreviewOrder.order_number}
+                </h3>
+                <p className="text-[10px] text-gray-400 mt-1">
+                  Tahapan diambil dari pengaturan produk. Ubah di sini bila order ini butuh alur khusus — perubahan hanya berlaku untuk order ini.
+                </p>
+              </div>
+              <button type="button" onClick={() => setProductionPreviewOrder(null)} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
+            </div>
+
+            <div className="space-y-5">
+              {productionPreviewOrder.items.map(item => (
+                <div key={item.id} className="space-y-2">
+                  <p className="text-xs font-bold text-gray-800">
+                    {item.product_name} <span className="text-gray-400 font-normal">({item.variant}) · {item.qty} pcs</span>
+                  </p>
+                  <StageListEditor
+                    stages={previewStages[item.product_id] || []}
+                    onChange={(stages) => setPreviewStages(prev => ({ ...prev, [item.product_id]: stages }))}
+                    compact
+                  />
+                </div>
+              ))}
+
+              <div className="flex gap-3 pt-2 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setProductionPreviewOrder(null)}
+                  className="flex-1 py-2.5 border border-gray-200 rounded-xl text-xs font-bold text-gray-600 cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (Object.values(previewStages).some((stages: string[]) => stages.length === 0)) {
+                      alert('Setiap produk harus punya minimal satu tahap produksi.');
+                      return;
+                    }
+                    const order = productionPreviewOrder;
+                    setProductionPreviewOrder(null);
+                    handleSendToProduction(order, previewStages);
+                  }}
+                  className="flex-[2] py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  Kirim ke Produksi <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

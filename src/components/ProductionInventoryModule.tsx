@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Product, RawMaterial, StockMovement, ProductionLog, ProductionJob, Employee, RejectedGood, ProductionTaskLog, PackingTask } from '../types';
 import { ProductionHandoffPanel } from './ProductionHandoffPanel';
-import { dataStore, RECIPES, wibNowISO, wibTodayStr } from '../dataStore';
+import { dataStore, RECIPES, wibNowISO, wibTodayStr, stagesForProduct, DEFAULT_PRODUCTION_STAGES } from '../dataStore';
 import { brandName, brandLegalName } from '../brand';
 import { 
   Box, 
@@ -1110,9 +1110,17 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
           {/* RINGKASAN ALUR: berapa job sedang berada di tiap tahap, per departemen */}
           {!isEmployee && <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {([
-              { id: 'dept-eva-foam', label: 'Alur Eva Foam', stages: ['Campur Bahan', 'Cetak', 'Potong', 'Finishing', 'Cek Kualitas', 'Packing'] },
-              { id: 'dept-konveksi', label: 'Alur Konveksi (Jahit)', stages: ['Potong', 'Sablon', 'Jahit', 'Finishing', 'Cek Kualitas', 'Packing'] },
-            ] as const).filter(dept => !isEmployee || dept.id === currentEmployee?.department_id).map(dept => {
+              { id: 'dept-eva-foam', label: 'Alur Eva Foam' },
+              { id: 'dept-konveksi', label: 'Alur Konveksi' },
+            ] as const).map(dept => {
+              // Kolom tahap dinamis: gabungan tahap dari job aktif departemen ini (urutan sesuai alur job), fallback alur bawaan
+              const stageColumns: string[] = [];
+              scopedProductionJobs
+                .filter(j => j.department_id === dept.id && j.status !== 'completed')
+                .forEach(j => j.stages.forEach(s => { if (!stageColumns.includes(s.stage)) stageColumns.push(s.stage); }));
+              if (stageColumns.length === 0) stageColumns.push(...(DEFAULT_PRODUCTION_STAGES[dept.id] || []));
+              return { ...dept, stages: stageColumns };
+            }).filter(dept => !isEmployee || dept.id === currentEmployee?.department_id).map(dept => {
               const deptJobs = scopedProductionJobs.filter(j => j.department_id === dept.id);
               const activeJobs = deptJobs.filter(j => j.status !== 'completed');
               const doneCount = deptJobs.filter(j => j.status === 'completed').length;
@@ -1783,7 +1791,15 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                           <div key={index} className="grid grid-cols-12 gap-2">
                             <select
                               value={output.product_id}
-                              onChange={event => setManualOutputs(items => items.map((item, itemIndex) => itemIndex === index ? { ...item, product_id: event.target.value } : item))}
+                              onChange={event => {
+                                const productId = event.target.value;
+                                setManualOutputs(items => items.map((item, itemIndex) => itemIndex === index ? { ...item, product_id: productId } : item));
+                                // Output pertama menentukan alur: prefill tahapan dari pengaturan produk
+                                if (index === 0 && productId) {
+                                  const product = products.find(p => p.id === productId);
+                                  if (product) setManualStages(stagesForProduct(product).join('\n'));
+                                }
+                              }}
                               className="col-span-8 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[var(--color-evergreen)]"
                               disabled={!manualDepartmentId}
                               required={index === 0}

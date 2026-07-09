@@ -56,6 +56,8 @@ export interface Product {
   variant: string;
   harga_jual: number;
   stock: number;
+  // Urutan tahapan produksi khusus produk ini; kosong = pakai alur bawaan departemen
+  production_stages?: string[];
 }
 
 export interface RawMaterial {
@@ -139,6 +141,10 @@ export interface WorkSettings {
   monthly_bonus_amount: number;
   monthly_bonus_min_days: number;
   location_qr_token: string;
+  // Cara hasil kerja berpindah antar karyawan produksi:
+  // assign = wajib tunjuk penerima; queue = selalu lepas ke antrean (ambil sendiri);
+  // hybrid = karyawan memilih salah satu saat serah terima
+  production_handoff_mode?: 'assign' | 'queue' | 'hybrid';
 }
 
 export interface AuditEntry {
