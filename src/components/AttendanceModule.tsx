@@ -3,6 +3,7 @@ import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { QRCodeSVG } from 'qrcode.react';
 import { Employee, Attendance, AttendanceType, WorkSettings } from '../types';
 import { dataStore, wibNowISO } from '../dataStore';
+import { brandName, brandLegalName } from '../brand';
 import { 
   MapPin, 
   Camera, 
@@ -183,7 +184,7 @@ const EmployeeQrScanner: React.FC<{ onScan: (value: string) => void }> = ({ onSc
           type="button"
           onClick={() => void startCamera()}
           disabled={isStartingCamera}
-          className="rounded-lg bg-[#1F4B36] px-4 py-2 text-xs font-bold text-white disabled:cursor-wait disabled:bg-gray-300"
+          className="rounded-lg bg-[var(--color-evergreen)] px-4 py-2 text-xs font-bold text-white disabled:cursor-wait disabled:bg-gray-300"
         >
           {isStartingCamera ? 'Menyambungkan...' : isCameraRunning ? 'Muat Ulang Kamera' : 'Nyalakan Kamera'}
         </button>
@@ -584,7 +585,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-100 pb-5 no-print">
         <div>
           <h2 className="text-xl font-black text-gray-800 flex items-center gap-2">
-            <span className="p-1.5 bg-emerald-50 text-[#1F4B36] rounded-lg">
+            <span className="p-1.5 bg-emerald-50 text-[var(--color-evergreen)] rounded-lg">
               <Clock className="w-5 h-5" />
             </span>
             Sistem Absensi Karyawan
@@ -602,7 +603,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
             }}
             className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               activeMode === 'pola_a_kiosk' 
-                ? 'bg-[#1F4B36] text-white shadow-sm' 
+                ? 'bg-[var(--color-evergreen)] text-white shadow-sm' 
                 : 'text-gray-600 hover:text-gray-900'
             }`}
           >
@@ -616,7 +617,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
             }}
             className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               activeMode === 'pola_b_dashboard' 
-                ? 'bg-[#1F4B36] text-white shadow-sm' 
+                ? 'bg-[var(--color-evergreen)] text-white shadow-sm' 
                 : 'text-gray-600 hover:text-gray-900'
             }`}
           >
@@ -638,7 +639,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
         </div>
       )}
 
-      {lockedEmployee && <div className={`no-print rounded-2xl border p-4 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between ${locationVerified ? 'bg-emerald-50 border-emerald-200' : 'bg-sky-50 border-sky-200'}`}><div><p className={`text-sm font-extrabold ${locationVerified ? 'text-emerald-900' : 'text-sky-900'}`}><QrCode className="w-4 h-4 inline mr-1" /> {locationVerified ? 'Lokasi Terverifikasi' : 'Scan QR Lokasi Pabrik'}</p><p className="text-xs text-gray-600 mt-1">QR lokasi wajib dipindai sebelum mengirim absensi.</p></div><button type="button" onClick={() => setShowLocationScanner(true)} className="bg-[#1F4B36] text-white px-4 py-2 rounded-xl text-xs font-bold cursor-pointer">{locationVerified ? 'Scan Ulang' : 'Buka Kamera QR'}</button></div>}
+      {lockedEmployee && <div className={`no-print rounded-2xl border p-4 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between ${locationVerified ? 'bg-emerald-50 border-emerald-200' : 'bg-sky-50 border-sky-200'}`}><div><p className={`text-sm font-extrabold ${locationVerified ? 'text-emerald-900' : 'text-sky-900'}`}><QrCode className="w-4 h-4 inline mr-1" /> {locationVerified ? 'Lokasi Terverifikasi' : 'Scan QR Lokasi Pabrik'}</p><p className="text-xs text-gray-600 mt-1">QR lokasi wajib dipindai sebelum mengirim absensi.</p></div><button type="button" onClick={() => setShowLocationScanner(true)} className="bg-[var(--color-evergreen)] text-white px-4 py-2 rounded-xl text-xs font-bold cursor-pointer">{locationVerified ? 'Scan Ulang' : 'Buka Kamera QR'}</button></div>}
 
       {showLocationScanner && <div className="fixed inset-0 z-50 bg-black/70 p-4 flex items-center justify-center no-print"><div className="bg-white rounded-2xl w-full max-w-md p-5 space-y-4"><div className="flex justify-between"><div><h3 className="font-black">Scan QR Lokasi</h3><p className="text-xs text-gray-500">Arahkan kamera ke QR yang ditempel di pabrik.</p></div><button onClick={() => setShowLocationScanner(false)} className="cursor-pointer"><X className="w-4 h-4" /></button></div><EmployeeQrScanner onScan={handleLocationQr} /></div></div>}
 
@@ -658,8 +659,8 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
               <div><label className="text-xs font-bold">Minimum Kehadiran Bonus (hari)</label><input type="number" min="1" value={workSettings.monthly_bonus_min_days} onChange={e => setWorkSettings({...workSettings, monthly_bonus_min_days:Number(e.target.value)})} className="w-full mt-1 border rounded-lg p-2" /></div>
             </div>
             <p className="text-[11px] text-gray-500 bg-gray-50 border border-gray-100 rounded-lg p-2">Jika lokasi karyawan lebih jauh dari radius ini, absensi akan ditolak dan tidak tersimpan.</p>
-            <div className="location-qr-print-card border rounded-2xl p-4 text-center space-y-3"><p className="font-black">QR LOKASI ABSENSI · ARI SPORTINDO</p><div className="inline-flex bg-white p-2"><QRCodeSVG value={`ARI-LOCATION:${workSettings.location_qr_token}`} size={220} level="H" /></div><p className="text-xs">Scan QR ini melalui menu Absensi pada akun karyawan.</p></div>
-            <div className="flex flex-wrap gap-2"><button onClick={regenerateLocationQr} className="px-3 py-2 bg-rose-50 text-rose-700 rounded-lg text-xs font-bold cursor-pointer">Ganti QR Lokasi</button><button onClick={printLocationQr} className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-xs font-bold cursor-pointer"><Printer className="w-3.5 h-3.5 inline mr-1" /> Cetak QR</button><button onClick={saveWorkSettings} className="ml-auto px-4 py-2 bg-[#1F4B36] text-white rounded-lg text-xs font-bold cursor-pointer">Simpan Pengaturan</button></div>
+            <div className="location-qr-print-card border rounded-2xl p-4 text-center space-y-3"><p className="font-black">QR LOKASI ABSENSI · {brandName()}</p><div className="inline-flex bg-white p-2"><QRCodeSVG value={`ARI-LOCATION:${workSettings.location_qr_token}`} size={220} level="H" /></div><p className="text-xs">Scan QR ini melalui menu Absensi pada akun karyawan.</p></div>
+            <div className="flex flex-wrap gap-2"><button onClick={regenerateLocationQr} className="px-3 py-2 bg-rose-50 text-rose-700 rounded-lg text-xs font-bold cursor-pointer">Ganti QR Lokasi</button><button onClick={printLocationQr} className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-xs font-bold cursor-pointer"><Printer className="w-3.5 h-3.5 inline mr-1" /> Cetak QR</button><button onClick={saveWorkSettings} className="ml-auto px-4 py-2 bg-[var(--color-evergreen)] text-white rounded-lg text-xs font-bold cursor-pointer">Simpan Pengaturan</button></div>
           </div>
         </div>
       )}
@@ -679,10 +680,10 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
               </div>
             )}
             <div className="grid grid-cols-2 gap-2">
-              {(['masuk', 'pulang'] as AttendanceType[]).map(type => <button key={type} type="button" onClick={() => setScanType(type)} className={`py-2 rounded-lg text-xs font-bold uppercase border cursor-pointer ${scanType === type ? 'bg-[#1F4B36] text-white border-[#1F4B36]' : 'bg-white text-gray-600 border-gray-200'}`}>{type}</button>)}
+              {(['masuk', 'pulang'] as AttendanceType[]).map(type => <button key={type} type="button" onClick={() => setScanType(type)} className={`py-2 rounded-lg text-xs font-bold uppercase border cursor-pointer ${scanType === type ? 'bg-[var(--color-evergreen)] text-white border-[var(--color-evergreen)]' : 'bg-white text-gray-600 border-gray-200'}`}>{type}</button>)}
             </div>
             <div><label className="text-xs font-bold text-gray-700">Alasan bantuan</label><textarea value={assistanceReason} onChange={e => setAssistanceReason(e.target.value)} rows={2} className="mt-1 w-full border border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:border-emerald-600" /></div>
-            <button type="button" disabled={!assistedEmployee || !assistanceReason.trim() || !assistingAdmin} onClick={submitAssistedAttendance} className="w-full py-3 rounded-xl bg-[#1F4B36] disabled:bg-gray-300 text-white text-xs font-black uppercase cursor-pointer disabled:cursor-not-allowed">Konfirmasi Absensi Dibantu Admin</button>
+            <button type="button" disabled={!assistedEmployee || !assistanceReason.trim() || !assistingAdmin} onClick={submitAssistedAttendance} className="w-full py-3 rounded-xl bg-[var(--color-evergreen)] disabled:bg-gray-300 text-white text-xs font-black uppercase cursor-pointer disabled:cursor-not-allowed">Konfirmasi Absensi Dibantu Admin</button>
           </div>
         </div>
       )}
@@ -735,7 +736,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
             
             <button 
               onClick={() => setSuccessOverlay(null)}
-              className="w-full bg-[#1F4B36] text-white text-xs py-2.5 rounded-xl font-bold hover:bg-opacity-95"
+              className="w-full bg-[var(--color-evergreen)] text-white text-xs py-2.5 rounded-xl font-bold hover:bg-opacity-95"
             >
               Tutup Sekarang
             </button>
@@ -755,7 +756,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
           <div className="lg:col-span-4 space-y-4 no-print">
             <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4 shadow-xs text-left">
               <div className="flex items-center gap-2">
-                <HelpCircle className="w-5 h-5 text-[#1F4B36]" />
+                <HelpCircle className="w-5 h-5 text-[var(--color-evergreen)]" />
                 <h3 className="font-extrabold text-sm text-gray-800">Cara Absen</h3>
               </div>
               <ol className="list-decimal pl-4 space-y-1.5 text-xs text-gray-600 leading-relaxed font-medium">
@@ -768,7 +769,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
 
             <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-2 shadow-xs text-left">
               <h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-[#1F4B36]" /> Verifikasi Lokasi GPS
+                <MapPin className="w-4 h-4 text-[var(--color-evergreen)]" /> Verifikasi Lokasi GPS
               </h3>
               <p className="text-xs text-gray-500 leading-relaxed">
                 Lokasi diambil otomatis dari <b>GPS perangkat ini</b> saat tombol absen ditekan.
@@ -781,16 +782,16 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
           </div>
 
           {/* RIGHT SIDE: INTERACTIVE TOUCH KIOSK (8 Columns on Desktop) */}
-          <div className="lg:col-span-8 bg-[#122F21] rounded-3xl border border-[#163826] shadow-xl overflow-hidden text-left text-white">
+          <div className="lg:col-span-8 bg-[#122F21] rounded-3xl border border-[var(--color-evergreen-dark)] shadow-xl overflow-hidden text-left text-white">
             
             {/* Header Kiosk */}
-            <div className="bg-[#1F4B36] px-6 py-5 border-b border-[#163826] flex flex-col sm:flex-row justify-between items-center gap-3">
+            <div className="bg-[var(--color-evergreen)] px-6 py-5 border-b border-[var(--color-evergreen-dark)] flex flex-col sm:flex-row justify-between items-center gap-3">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-emerald-800/40 border border-emerald-600/30 flex items-center justify-center text-amber-400 font-bold shrink-0">
                   <UserCheck className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-sm tracking-tight text-white uppercase">Absensi ARI SPORTINDO</h3>
+                  <h3 className="font-extrabold text-sm tracking-tight text-white uppercase">Absensi {brandName()}</h3>
                   <p className="text-[10px] text-emerald-200/80 font-medium">Scan QR lokasi untuk masuk dan pulang kerja</p>
                 </div>
               </div>
@@ -813,7 +814,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
               <div className="md:col-span-7 space-y-4">
                 {lockedEmployee ? (
                   /* Portal karyawan: identitas terkunci, tidak bisa absen atas nama orang lain */
-                  <div className="bg-[#163826] border border-amber-400/40 rounded-2xl p-4 flex items-center gap-3">
+                  <div className="bg-[var(--color-evergreen-dark)] border border-amber-400/40 rounded-2xl p-4 flex items-center gap-3">
                     <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center font-black text-amber-800 text-lg shrink-0">
                       {lockedEmployee.name[0]}
                     </div>
@@ -841,14 +842,14 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                     placeholder="Ketik nama karyawan untuk mencari..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full bg-[#163826] border border-[#235339] text-white placeholder-emerald-200/50 rounded-xl pl-9 pr-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 font-medium transition-all"
+                    className="w-full bg-[var(--color-evergreen-dark)] border border-[#235339] text-white placeholder-emerald-200/50 rounded-xl pl-9 pr-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 font-medium transition-all"
                   />
                 </div>
 
                 {/* Employees Touch-Friendly Grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-2 gap-2.5 max-h-[300px] overflow-y-auto scrollbar-none pr-1">
                   {filteredEmployees.length === 0 ? (
-                    <div className="col-span-2 text-center py-10 text-xs text-emerald-200/50 italic bg-[#163826]/40 rounded-xl">
+                    <div className="col-span-2 text-center py-10 text-xs text-emerald-200/50 italic bg-[var(--color-evergreen-dark)]/40 rounded-xl">
                       Karyawan tidak ditemukan.
                     </div>
                   ) : (
@@ -865,8 +866,8 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                           }}
                           className={`p-3 rounded-2xl flex items-center gap-3 text-left transition-all cursor-pointer border ${
                             isSelected
-                              ? 'bg-[#1F4B36] border-amber-400 text-white shadow-md shadow-black/20 ring-1 ring-amber-400'
-                              : 'bg-[#163826]/60 border-[#1c4731] hover:bg-[#163826] hover:border-[#24593e] text-emerald-100'
+                              ? 'bg-[var(--color-evergreen)] border-amber-400 text-white shadow-md shadow-black/20 ring-1 ring-amber-400'
+                              : 'bg-[var(--color-evergreen-dark)]/60 border-[#1c4731] hover:bg-[var(--color-evergreen-dark)] hover:border-[#24593e] text-emerald-100'
                           }`}
                         >
                           <div className={`w-9 h-9 rounded-full border-2 shrink-0 flex items-center justify-center font-black text-sm ${
@@ -902,7 +903,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                       className={`py-3 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer border ${
                         scanType === 'masuk'
                           ? 'bg-emerald-600 text-white border-emerald-400 shadow-md shadow-black/10'
-                          : 'bg-[#163826]/40 border-[#1d4631] text-emerald-200/70 hover:bg-[#163826]'
+                          : 'bg-[var(--color-evergreen-dark)]/40 border-[#1d4631] text-emerald-200/70 hover:bg-[var(--color-evergreen-dark)]'
                       }`}
                     >
                       <Clock className="w-4 h-4 shrink-0 text-emerald-400" />
@@ -914,7 +915,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                       className={`py-3 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer border ${
                         scanType === 'pulang'
                           ? 'bg-rose-700 text-white border-rose-500 shadow-md shadow-black/10'
-                          : 'bg-[#163826]/40 border-[#1d4631] text-emerald-200/70 hover:bg-[#163826]'
+                          : 'bg-[var(--color-evergreen-dark)]/40 border-[#1d4631] text-emerald-200/70 hover:bg-[var(--color-evergreen-dark)]'
                       }`}
                     >
                       <Clock className="w-4 h-4 shrink-0 text-rose-400" />
@@ -956,7 +957,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                       key={num}
                       type="button"
                       onClick={() => handleNumpadClick(num)}
-                      className="h-11 rounded-xl bg-[#163826]/75 hover:bg-[#1f4b36] text-white text-base font-extrabold border border-[#1c4731] transition-all cursor-pointer active:scale-95 flex items-center justify-center shadow-xs"
+                      className="h-11 rounded-xl bg-[var(--color-evergreen-dark)]/75 hover:bg-[#1f4b36] text-white text-base font-extrabold border border-[#1c4731] transition-all cursor-pointer active:scale-95 flex items-center justify-center shadow-xs"
                     >
                       {num}
                     </button>
@@ -974,7 +975,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                   <button
                     type="button"
                     onClick={() => handleNumpadClick('0')}
-                    className="h-11 rounded-xl bg-[#163826]/75 hover:bg-[#1f4b36] text-white text-base font-extrabold border border-[#1c4731] transition-all cursor-pointer active:scale-95 flex items-center justify-center shadow-xs"
+                    className="h-11 rounded-xl bg-[var(--color-evergreen-dark)]/75 hover:bg-[#1f4b36] text-white text-base font-extrabold border border-[#1c4731] transition-all cursor-pointer active:scale-95 flex items-center justify-center shadow-xs"
                   >
                     0
                   </button>
@@ -1033,9 +1034,9 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
             </div>
 
             {/* Bottom Info bar */}
-            <div className="bg-[#0e2419] px-6 py-3 border-t border-[#163826] text-[10px] text-emerald-300/60 flex flex-col sm:flex-row justify-between items-center gap-2 font-mono">
+            <div className="bg-[#0e2419] px-6 py-3 border-t border-[var(--color-evergreen-dark)] text-[10px] text-emerald-300/60 flex flex-col sm:flex-row justify-between items-center gap-2 font-mono">
               <span>Radius absensi: {workSettings.attendance_radius_meters} m</span>
-              <span>ARI SPORTINDO</span>
+              <span>{brandName()}</span>
             </div>
 
           </div>
@@ -1060,7 +1061,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                 key={tab.id}
                 type="button"
                 onClick={() => setAdminAttendanceTab(tab.id)}
-                className={`px-3.5 py-2 rounded-lg text-xs font-bold cursor-pointer ${adminAttendanceTab === tab.id ? 'bg-[#1F4B36] text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                className={`px-3.5 py-2 rounded-lg text-xs font-bold cursor-pointer ${adminAttendanceTab === tab.id ? 'bg-[var(--color-evergreen)] text-white' : 'text-gray-600 hover:bg-gray-100'}`}
               >
                 {tab.label}
               </button>
@@ -1069,7 +1070,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
 
           <div className="space-y-2 no-print">
             <div className="flex flex-wrap gap-2">
-              {(['today', 'week', 'month', 'custom'] as const).map(period => <button key={period} onClick={() => setHistoryPeriod(period)} className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold cursor-pointer border ${historyPeriod === period ? 'bg-[#1F4B36] text-white border-[#1F4B36]' : 'bg-white text-gray-600 border-gray-200'}`}>{period === 'today' ? 'Hari Ini' : period === 'week' ? 'Minggu Ini' : period === 'month' ? 'Bulan Ini' : 'Custom'}</button>)}
+              {(['today', 'week', 'month', 'custom'] as const).map(period => <button key={period} onClick={() => setHistoryPeriod(period)} className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold cursor-pointer border ${historyPeriod === period ? 'bg-[var(--color-evergreen)] text-white border-[var(--color-evergreen)]' : 'bg-white text-gray-600 border-gray-200'}`}>{period === 'today' ? 'Hari Ini' : period === 'week' ? 'Minggu Ini' : period === 'month' ? 'Bulan Ini' : 'Custom'}</button>)}
               <button onClick={exportAttendanceCsv} className="ml-auto px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-100 cursor-pointer"><Download className="w-3 h-3 inline mr-1" /> CSV</button>
             </div>
             {historyPeriod === 'custom' && <div className="grid grid-cols-2 gap-2 max-w-md"><input type="date" value={historyStart} onChange={e => setHistoryStart(e.target.value)} className="border border-gray-200 rounded-lg p-2 text-xs" /><input type="date" value={historyEnd} min={historyStart} onChange={e => setHistoryEnd(e.target.value)} className="border border-gray-200 rounded-lg p-2 text-xs" /></div>}
@@ -1123,7 +1124,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               <div className="lg:col-span-7 bg-white rounded-2xl border border-gray-100 p-5 space-y-4 shadow-xs text-left">
                 <div>
-                  <h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider flex items-center gap-2"><Calendar className="w-4 h-4 text-[#1F4B36]" /> Ringkasan Harian</h3>
+                  <h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider flex items-center gap-2"><Calendar className="w-4 h-4 text-[var(--color-evergreen)]" /> Ringkasan Harian</h3>
                   <p className="text-[10px] text-gray-400 mt-0.5">Tampilan cepat untuk kondisi absensi hari ini.</p>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -1189,7 +1190,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
             <div className="lg:col-span-5 bg-white rounded-2xl border border-gray-100 p-5 space-y-4 shadow-xs text-left no-print">
               <div>
                 <h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider flex items-center gap-2">
-                  <Map className="w-4 h-4 text-[#1F4B36]" /> Radius Absensi Pabrik
+                  <Map className="w-4 h-4 text-[var(--color-evergreen)]" /> Radius Absensi Pabrik
                 </h3>
                 <p className="text-[10px] text-gray-400 mt-0.5">Absensi hanya diterima jika GPS berada dalam radius yang diatur admin.</p>
               </div>
@@ -1251,7 +1252,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
               <div className="flex justify-between items-center">
                 <div>
                   <h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-[#1F4B36]" /> Riwayat Log Absensi Lengkap
+                    <Calendar className="w-4 h-4 text-[var(--color-evergreen)]" /> Riwayat Log Absensi Lengkap
                   </h3>
                   <p className="text-[10px] text-gray-400 mt-0.5">Semua data scan absensi karyawan yang sudah tersimpan.</p>
                 </div>
@@ -1268,7 +1269,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
 
               <div className="space-y-2 no-print">
                 <div className="flex flex-wrap gap-2">
-                  {(['today', 'week', 'month', 'custom'] as const).map(period => <button key={period} onClick={() => setHistoryPeriod(period)} className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold cursor-pointer border ${historyPeriod === period ? 'bg-[#1F4B36] text-white border-[#1F4B36]' : 'bg-white text-gray-600 border-gray-200'}`}>{period === 'today' ? 'Hari Ini' : period === 'week' ? 'Minggu Ini' : period === 'month' ? 'Bulan Ini' : 'Custom'}</button>)}
+                  {(['today', 'week', 'month', 'custom'] as const).map(period => <button key={period} onClick={() => setHistoryPeriod(period)} className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold cursor-pointer border ${historyPeriod === period ? 'bg-[var(--color-evergreen)] text-white border-[var(--color-evergreen)]' : 'bg-white text-gray-600 border-gray-200'}`}>{period === 'today' ? 'Hari Ini' : period === 'week' ? 'Minggu Ini' : period === 'month' ? 'Bulan Ini' : 'Custom'}</button>)}
                   <button onClick={exportAttendanceCsv} className="ml-auto px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-100 cursor-pointer"><Download className="w-3 h-3 inline mr-1" /> CSV</button>
                 </div>
                 {historyPeriod === 'custom' && <div className="grid grid-cols-2 gap-2"><input type="date" value={historyStart} onChange={e => setHistoryStart(e.target.value)} className="border border-gray-200 rounded-lg p-2 text-xs" /><input type="date" value={historyEnd} min={historyStart} onChange={e => setHistoryEnd(e.target.value)} className="border border-gray-200 rounded-lg p-2 text-xs" /></div>}

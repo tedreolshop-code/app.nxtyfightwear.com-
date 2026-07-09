@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { dataStore, wibTodayStr } from '../dataStore';
+import { brandName, brandLegalName } from '../brand';
 import { Employee, Attendance, PayrollWeekly } from '../types';
 import { Clock, Calendar, FileText, CheckCircle2, Fingerprint, MapPin, ExternalLink } from 'lucide-react';
 
@@ -81,9 +82,9 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
   return (
     <div className="space-y-6 animate-fade-in text-left">
       {/* Header */}
-      <div className="bg-[#1F4B36] text-white p-6 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-[var(--color-evergreen)] text-white p-6 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="space-y-1">
-          <span className="text-[10px] font-black uppercase text-emerald-300 tracking-wider">Selamat Datang di ARI SPORTINDO,</span>
+          <span className="text-[10px] font-black uppercase text-emerald-300 tracking-wider">Selamat Datang di {brandName()},</span>
           <h1 className="text-xl font-bold">{loggedEmployee.name}</h1>
           <p className="text-xs text-emerald-100 font-medium uppercase tracking-wider">
             {deptName} &middot; Peran: {loggedEmployee.role}
@@ -101,13 +102,13 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
         {/* Box 1: Widget Jam & QR attendance action */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4 md:col-span-2">
           <h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
-            <Fingerprint className="w-4 h-4 text-[#1F4B36]" /> Absensi QR Lokasi
+            <Fingerprint className="w-4 h-4 text-[var(--color-evergreen)]" /> Absensi QR Lokasi
           </h3>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Realtime clock display */}
             <div className="bg-gray-50 rounded-xl p-5 border border-gray-100 text-center flex flex-col justify-center items-center">
-              <span className="text-xs font-bold text-[#1F4B36] uppercase tracking-widest">{dayName}</span>
+              <span className="text-xs font-bold text-[var(--color-evergreen)] uppercase tracking-widest">{dayName}</span>
               <span className="text-3xl font-black font-mono text-gray-800 my-1 tracking-wider">{time || '--:--:--'}</span>
               <span className="text-[10px] text-gray-400 font-semibold">{dateStr}</span>
             </div>
@@ -115,7 +116,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
             {/* Info lokasi GPS */}
             <div className="space-y-2 bg-gray-50 p-4 rounded-xl border border-gray-100 text-xs flex flex-col justify-center">
               <span className="font-bold text-gray-700 flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-[#1F4B36] shrink-0" /> Scan QR di Lokasi
+                <MapPin className="w-3.5 h-3.5 text-[var(--color-evergreen)] shrink-0" /> Scan QR di Lokasi
               </span>
               <p className="text-gray-500 leading-relaxed">
                 Absensi dilakukan dari satu pintu: buka kamera, scan QR lokasi pabrik, lalu sistem mencatat
@@ -134,7 +135,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
             className={`w-full py-4 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 border transition-all ${
               hasCheckedInToday && hasCheckedOutToday
                 ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
-                : 'bg-[#1F4B36] hover:bg-[#163826] text-white border-transparent cursor-pointer shadow-xs'
+                : 'bg-[var(--color-evergreen)] hover:bg-[var(--color-evergreen-dark)] text-white border-transparent cursor-pointer shadow-xs'
             }`}
           >
             <Fingerprint className="w-5 h-5" /> {nextAttendanceLabel}
@@ -179,9 +180,9 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
           <div className="border-b border-gray-100 pb-3 flex items-center justify-between">
             <h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
-              <Calendar className="w-4 h-4 text-[#1F4B36]" /> Kalender Kehadiran Pribadi
+              <Calendar className="w-4 h-4 text-[var(--color-evergreen)]" /> Kalender Kehadiran Pribadi
             </h3>
-            <span className="text-xs font-bold text-[#1F4B36]">{currentMonthName}</span>
+            <span className="text-xs font-bold text-[var(--color-evergreen)]">{currentMonthName}</span>
           </div>
 
           <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100 pb-2">
@@ -244,7 +245,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
           <div className="border-b border-gray-100 pb-3 flex items-center justify-between">
             <h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
-              <FileText className="w-4 h-4 text-[#1F4B36]" /> Slip Gaji Digital Terakhir
+              <FileText className="w-4 h-4 text-[var(--color-evergreen)]" /> Slip Gaji Digital Terakhir
             </h3>
             <span className="px-2 py-0.5 bg-emerald-50 text-emerald-800 rounded text-[9px] font-black uppercase tracking-wider">E-Slip Terbit</span>
           </div>
@@ -280,7 +281,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
                       <span className="font-bold font-mono">- Rp {myLastPayroll.cash_advance_deduction.toLocaleString('id-ID')}</span>
                     </div>
                   )}
-                  <div className="flex justify-between py-2 text-sm font-black text-[#1F4B36]">
+                  <div className="flex justify-between py-2 text-sm font-black text-[var(--color-evergreen)]">
                     <span>Total Bersih Diterima</span>
                     <span className="font-mono">Rp {myLastPayroll.total_pay.toLocaleString('id-ID')}</span>
                   </div>
@@ -288,8 +289,8 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
               </div>
 
               <div className="text-center">
-                <p className="text-[10px] text-gray-400 mb-2">Slip Gaji ini sah dikeluarkan secara digital oleh PT ARI SPORTINDO.</p>
-                <div className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#1F4B36] hover:underline cursor-pointer">
+                <p className="text-[10px] text-gray-400 mb-2">Slip Gaji ini sah dikeluarkan secara digital oleh {brandLegalName()}.</p>
+                <div className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[var(--color-evergreen)] hover:underline cursor-pointer">
                   <FileText className="w-3.5 h-3.5" />
                   <span>Unduh PDF Slip Resmi</span>
                   <ExternalLink className="w-3 h-3" />

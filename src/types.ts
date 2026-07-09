@@ -121,6 +121,15 @@ export interface Attendance {
   overtime_minutes?: number;
 }
 
+// Identitas brand/perusahaan — dapat diubah owner di menu Pengaturan (white label)
+export interface BrandSettings {
+  company_name: string;      // Nama brand, tampil di header, laporan, QR, dsb.
+  legal_name: string;        // Nama badan hukum untuk slip gaji ("PT ...")
+  tagline: string;           // Subjudul di bawah nama brand
+  logo_data_url: string;     // Logo (data URL base64); '' = tampilkan nama saja
+  primary_color: string;     // Warna utama tema, format hex (mis. #1F4B36)
+}
+
 export interface WorkSettings {
   start_time: string;
   end_time: string;

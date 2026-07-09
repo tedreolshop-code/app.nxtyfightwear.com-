@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Employee, PayrollWeekly, CashAdvance, Attendance, AttendanceAdjustment, CashAdvanceTransaction } from '../types';
 import { dataStore, wibNowISO } from '../dataStore';
+import { brandName, brandLegalName } from '../brand';
 import { Printer, Landmark, DollarSign, Plus, CheckCircle2, Sliders, History, Trash2, X, Calculator, Edit2, FileSpreadsheet } from 'lucide-react';
 
 interface PayrollModuleProps {
@@ -661,7 +662,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
       return (
         <div className="space-y-6">
           {/* Header Title */}
-          <div className="bg-[#1F4B36] text-white p-6 rounded-lg shadow-sm space-y-2">
+          <div className="bg-[var(--color-evergreen)] text-white p-6 rounded-lg shadow-sm space-y-2">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-bold">Informasi Slip Gaji &amp; Kasbon Saya</h2>
               <span className="text-xs bg-emerald-700/80 px-2.5 py-1 rounded-full font-mono font-semibold">
@@ -669,7 +670,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
               </span>
             </div>
             <p className="text-xs text-emerald-200">
-              Sistem Informasi Penggajian &amp; Transparansi Upah ARI SPORTINDO. Silakan pantau rincian gaji mingguan dan riwayat kasbon Anda di bawah.
+              Sistem Informasi Penggajian &amp; Transparansi Upah {brandName()}. Silakan pantau rincian gaji mingguan dan riwayat kasbon Anda di bawah.
             </p>
           </div>
 
@@ -690,11 +691,11 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                   </div>
                   <div>
                     <span className="text-gray-400 block">Rate Harian</span>
-                    <span className="font-semibold text-[#1F4B36] font-mono">{formatIDR(loggedEmployee.rate_harian)}</span>
+                    <span className="font-semibold text-[var(--color-evergreen)] font-mono">{formatIDR(loggedEmployee.rate_harian)}</span>
                   </div>
                   <div>
                     <span className="text-gray-400 block">Rate Lembur / Jam</span>
-                    <span className="font-semibold text-[#1F4B36] font-mono">{formatIDR(loggedEmployee.rate_lembur_per_jam)}</span>
+                    <span className="font-semibold text-[var(--color-evergreen)] font-mono">{formatIDR(loggedEmployee.rate_lembur_per_jam)}</span>
                   </div>
                 </div>
               </div>
@@ -786,7 +787,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                         <td className="py-3 px-3 font-mono text-gray-600">{formatIDR(pay.base_pay)}</td>
                         <td className="py-3 px-3 font-mono text-gray-600">{formatIDR(pay.bonus)}</td>
                         <td className="py-3 px-3 font-mono text-rose-600">-{formatIDR(pay.cash_advance_deduction)}</td>
-                        <td className="py-3 px-3 font-mono text-right font-bold text-[#1F4B36] bg-emerald-50/20">
+                        <td className="py-3 px-3 font-mono text-right font-bold text-[var(--color-evergreen)] bg-emerald-50/20">
                           {formatIDR(pay.total_pay)}
                         </td>
                         <td className="py-3 px-3 text-center no-print">
@@ -1084,7 +1085,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                       <button type="button" onClick={() => approveAdjustment(log, 'late_compensation')} className="px-3 py-2 rounded-lg bg-emerald-700 text-white font-bold cursor-pointer">Setujui Pengganti</button>
                     )}
                     {(log.overtime_minutes || 0) > 0 && (
-                      <button type="button" onClick={() => approveAdjustment(log, 'overtime')} className="px-3 py-2 rounded-lg bg-[#1F4B36] text-white font-bold cursor-pointer">ACC Lembur</button>
+                      <button type="button" onClick={() => approveAdjustment(log, 'overtime')} className="px-3 py-2 rounded-lg bg-[var(--color-evergreen)] text-white font-bold cursor-pointer">ACC Lembur</button>
                     )}
                     <button type="button" onClick={() => approveAdjustment(log, 'live_tiktok')} className="px-3 py-2 rounded-lg bg-pink-600 text-white font-bold cursor-pointer">Live TikTok {formatIDR(employees.find(emp => emp.id === log.employee_id)?.default_live_tiktok_bonus ?? 20000)}</button>
                     <button type="button" onClick={() => approveAdjustment(log, 'ignored')} className="px-3 py-2 rounded-lg bg-white border border-gray-200 text-gray-600 font-bold cursor-pointer">Abaikan</button>
@@ -1575,7 +1576,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                               <button type="button" onClick={() => approveAdjustment(log, 'late_compensation')} className="px-2.5 py-1 rounded bg-emerald-700 text-white font-bold text-[10px] cursor-pointer">Setujui Pengganti</button>
                             )}
                             {(log.overtime_minutes || 0) > 0 && (
-                              <button type="button" onClick={() => approveAdjustment(log, 'overtime')} className="px-2.5 py-1 rounded bg-[#1F4B36] text-white font-bold text-[10px] cursor-pointer">ACC Lembur</button>
+                              <button type="button" onClick={() => approveAdjustment(log, 'overtime')} className="px-2.5 py-1 rounded bg-[var(--color-evergreen)] text-white font-bold text-[10px] cursor-pointer">ACC Lembur</button>
                             )}
                             <button type="button" onClick={() => approveAdjustment(log, 'ignored')} className="px-2.5 py-1 rounded bg-white border border-gray-200 text-gray-600 font-bold text-[10px] cursor-pointer">Abaikan</button>
                           </div>

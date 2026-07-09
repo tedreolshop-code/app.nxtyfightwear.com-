@@ -166,7 +166,7 @@ export const CashAdvanceModule: React.FC<CashAdvanceModuleProps> = ({ actor }) =
         </div>
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <p className="text-[10px] font-black uppercase tracking-wide text-gray-400">Pembayaran Tercatat</p>
-          <p className="mt-1 text-xl font-black text-[#1F4B36] font-mono">{formatIDR(paymentTotal)}</p>
+          <p className="mt-1 text-xl font-black text-[var(--color-evergreen)] font-mono">{formatIDR(paymentTotal)}</p>
           <p className="text-[11px] text-gray-500">{employeesWithOutstanding} karyawan masih punya saldo</p>
         </div>
       </div>
@@ -176,14 +176,14 @@ export const CashAdvanceModule: React.FC<CashAdvanceModuleProps> = ({ actor }) =
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         <form onSubmit={handleSubmit} className="lg:col-span-5 bg-white border border-gray-200 rounded-xl p-4 space-y-4">
           <div>
-            <h3 className="font-black text-gray-900 flex items-center gap-2"><WalletCards className="w-4 h-4 text-[#1F4B36]" /> {activeMode.title}</h3>
+            <h3 className="font-black text-gray-900 flex items-center gap-2"><WalletCards className="w-4 h-4 text-[var(--color-evergreen)]" /> {activeMode.title}</h3>
             <p className="text-xs text-gray-500 mt-1">{activeMode.description}</p>
           </div>
 
           <div className="grid grid-cols-3 gap-2">
             {modeOptions.map(item => {
               const Icon = item.icon;
-              return <button key={item.id} type="button" onClick={() => { setMode(item.id); resetForm(); }} className={`min-h-12 px-2 py-2 rounded-lg text-[11px] font-bold border flex flex-col sm:flex-row items-center justify-center gap-1 leading-tight ${mode === item.id ? 'bg-[#1F4B36] text-white border-[#1F4B36]' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}><Icon className="w-3.5 h-3.5 shrink-0" />{item.label}</button>;
+              return <button key={item.id} type="button" onClick={() => { setMode(item.id); resetForm(); }} className={`min-h-12 px-2 py-2 rounded-lg text-[11px] font-bold border flex flex-col sm:flex-row items-center justify-center gap-1 leading-tight ${mode === item.id ? 'bg-[var(--color-evergreen)] text-white border-[var(--color-evergreen)]' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}><Icon className="w-3.5 h-3.5 shrink-0" />{item.label}</button>;
             })}
           </div>
 
@@ -251,7 +251,7 @@ export const CashAdvanceModule: React.FC<CashAdvanceModuleProps> = ({ actor }) =
 
           <div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Catatan</label><textarea value={note} onChange={event => setNote(event.target.value)} rows={3} placeholder="Contoh: kasbon bahan pokok, pembayaran tunai, koreksi saldo" className="w-full border border-gray-200 rounded-lg p-2.5 text-sm" /></div>
 
-          <button type="submit" disabled={submitDisabled} className={`w-full rounded-lg py-2.5 text-sm font-bold ${submitDisabled ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-[#1F4B36] text-white cursor-pointer hover:bg-emerald-900'}`}>{activeMode.submit}</button>
+          <button type="submit" disabled={submitDisabled} className={`w-full rounded-lg py-2.5 text-sm font-bold ${submitDisabled ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-[var(--color-evergreen)] text-white cursor-pointer hover:bg-emerald-900'}`}>{activeMode.submit}</button>
         </form>
 
         <div className="lg:col-span-7 bg-white border border-gray-200 rounded-xl p-4 space-y-4">

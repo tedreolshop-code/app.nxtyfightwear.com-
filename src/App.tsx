@@ -20,6 +20,8 @@ import { OrderModule } from './components/OrderModule';
 import { EmployeeModule } from './components/EmployeeModule';
 import { ProfileModule } from './components/ProfileModule';
 import { CashAdvanceModule } from './components/CashAdvanceModule';
+import { BrandSettingsModule } from './components/BrandSettingsModule';
+import { useBrand, brandInitials } from './brand';
 import {
   Users,
   FileText,
@@ -36,6 +38,7 @@ import {
   LogOut,
   User,
   ShieldCheck,
+  Palette,
 } from 'lucide-react';
 
 // 4 role aktif (label disederhanakan; id tetap kompatibel dengan modul lama)
@@ -61,6 +64,7 @@ const MENUS: Array<{ id: string; label: string; icon: React.ComponentType<{ clas
   { id: 'gaji', label: 'Slip Gaji', icon: FileText, roles: ['owner', 'admin_penjualan', 'admin_gudang', 'karyawan'] },
   { id: 'profil', label: 'Profil Saya', icon: User, roles: ['owner', 'admin_penjualan', 'admin_gudang', 'karyawan'] },
   { id: 'audit', label: 'Audit & Recycle Bin', icon: ShieldCheck, roles: ['owner'] },
+  { id: 'pengaturan', label: 'Pengaturan', icon: Palette, roles: ['owner'] },
 ];
 
 const MONTH_OPTIONS = [
@@ -129,10 +133,10 @@ function KaryawanLoginCard({ onLogin }: { onLogin: (emp: Employee) => void }) {
     <div className="max-w-sm mx-auto">
       <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-gray-200 p-6 space-y-5 shadow-sm">
         <div className="text-center space-y-1">
-          <div className="w-12 h-12 rounded-full bg-[#1F4B36] text-amber-400 flex items-center justify-center mx-auto">
+          <div className="w-12 h-12 rounded-full bg-[var(--color-evergreen)] text-amber-400 flex items-center justify-center mx-auto">
             <Lock className="w-5 h-5" />
           </div>
-          <h2 className="text-lg font-bold text-[#1F4B36]">Masuk</h2>
+          <h2 className="text-lg font-bold text-[var(--color-evergreen)]">Masuk</h2>
           <p className="text-sm text-gray-500">Masukkan username dan PIN Anda.</p>
         </div>
 
@@ -145,7 +149,7 @@ function KaryawanLoginCard({ onLogin }: { onLogin: (emp: Employee) => void }) {
             autoComplete="username"
             autoCapitalize="none"
             placeholder="username"
-            className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#1F4B36]"
+            className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-[var(--color-evergreen)]"
           />
         </div>
 
@@ -158,7 +162,7 @@ function KaryawanLoginCard({ onLogin }: { onLogin: (emp: Employee) => void }) {
             value={pin}
             onChange={(e) => { setPin(e.target.value.replace(/\D/g, '')); setError(''); }}
             placeholder="••••"
-            className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-center text-xl tracking-[0.5em] font-mono focus:outline-none focus:ring-1 focus:ring-[#1F4B36]"
+            className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-center text-xl tracking-[0.5em] font-mono focus:outline-none focus:ring-1 focus:ring-[var(--color-evergreen)]"
           />
         </div>
 
@@ -172,7 +176,7 @@ function KaryawanLoginCard({ onLogin }: { onLogin: (emp: Employee) => void }) {
           className={`w-full py-3 rounded-lg text-sm font-bold transition-colors ${
             !username.trim() || pin.length < 4
               ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-              : 'bg-[#1F4B36] hover:bg-[#163826] text-white cursor-pointer'
+              : 'bg-[var(--color-evergreen)] hover:bg-[var(--color-evergreen-dark)] text-white cursor-pointer'
           }`}
         >
           Masuk
@@ -200,19 +204,23 @@ const sessionForEmployee = (emp: Employee): Session => ({
 // Halaman login penuh — SATU pintu untuk semua orang (nama + PIN);
 // menu yang terbuka mengikuti akses sistem di profil masing-masing karyawan.
 function LoginPage({ onLogin }: { onLogin: (s: Session, emp?: Employee) => void }) {
+  const brand = useBrand();
   return (
-    <div className="min-h-screen w-full bg-[#1F4B36] flex items-center justify-center p-4 font-sans">
+    <div className="min-h-screen w-full bg-[var(--color-evergreen)] flex items-center justify-center p-4 font-sans">
       <div className="w-full max-w-sm space-y-6">
         {/* Brand */}
-        <div className="text-center space-y-1">
-          <h1 className="text-2xl font-black text-white tracking-tight">ARI SPORTINDO</h1>
-          <p className="text-emerald-200/80 text-sm">Sistem Produksi &amp; Manajemen</p>
+        <div className="text-center space-y-2">
+          {brand.logo_data_url && (
+            <img src={brand.logo_data_url} alt={brand.company_name} className="w-16 h-16 mx-auto rounded-xl bg-white/90 object-contain p-1" />
+          )}
+          <h1 className="text-2xl font-black text-white tracking-tight">{brand.company_name}</h1>
+          <p className="text-white/70 text-sm">{brand.tagline}</p>
         </div>
 
         <KaryawanLoginCard onLogin={(emp) => onLogin(sessionForEmployee(emp), emp)} />
 
-        <p className="text-center text-emerald-200/50 text-xs">
-          &copy; {new Date().getFullYear()} ARI SPORTINDO Production System
+        <p className="text-center text-white/50 text-xs">
+          &copy; {new Date().getFullYear()} {brand.company_name}
         </p>
       </div>
     </div>
@@ -229,6 +237,8 @@ export default function App() {
     }
   });
   const currentRole: UserRole = session?.role ?? 'owner';
+  // Pengaturan brand (white label): nama, logo, warna tema
+  const brand = useBrand();
 
   const [activeTab, setActiveTab] = useState('dashboard');
   const [loggedEmployee, setLoggedEmployee] = useState<Employee | null>(() => {
@@ -610,7 +620,7 @@ export default function App() {
     <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] max-w-md w-[calc(100%-2rem)] no-print">
       <div
         onClick={() => setToast(null)}
-        className="bg-[#1F4B36] text-white text-sm rounded-xl shadow-xl px-4 py-3 whitespace-pre-line cursor-pointer border border-emerald-900/40 animate-fadeIn"
+        className="bg-[var(--color-evergreen)] text-white text-sm rounded-xl shadow-xl px-4 py-3 whitespace-pre-line cursor-pointer border border-emerald-900/40 animate-fadeIn"
       >
         {toast}
       </div>
@@ -630,16 +640,19 @@ export default function App() {
   return (
     <div className="flex flex-col md:flex-row min-h-screen w-full bg-white font-sans text-gray-800 text-sm overflow-hidden">
       {toastEl}
-      {handoffPopup && <div className="fixed inset-0 z-[90] bg-black/55 p-4 flex items-center justify-center no-print"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-4"><div><span className="text-[10px] font-black uppercase tracking-wider text-amber-700 bg-amber-50 px-2 py-1 rounded">Tugas Produksi Baru</span><h3 className="font-black text-gray-900 mt-3">{handoffPopup.product_name}</h3><p className="text-xs text-gray-500 mt-1">{handoffPopup.from_stage} → {handoffPopup.to_stage}</p></div><div className="bg-gray-50 border border-gray-100 rounded-xl p-3 text-xs"><p>Dari: <b>{handoffPopup.from_employee_name}</b></p><p>Jumlah diterima: <b>{handoffPopup.qty_sent} pcs</b></p>{handoffPopup.notes && <p className="mt-1 text-gray-500">{handoffPopup.notes}</p>}</div><p className="text-[11px] text-amber-700">Periksa barang fisik sebelum menekan Terima pada menu Produksi.</p><div className="grid grid-cols-2 gap-2"><button onClick={() => { localStorage.setItem(`nxty_handoff_seen_${handoffPopup.id}`, '1'); setHandoffPopup(null); }} className="py-2.5 rounded-xl bg-gray-100 text-gray-700 text-xs font-bold cursor-pointer">Nanti</button><button onClick={() => { localStorage.setItem(`nxty_handoff_seen_${handoffPopup.id}`, '1'); setHandoffPopup(null); setActiveTab('produksi'); }} className="py-2.5 rounded-xl bg-[#1F4B36] text-white text-xs font-bold cursor-pointer">Lihat & Konfirmasi</button></div></div></div>}
-      {productionTaskPopup && <div className="fixed inset-0 z-[91] bg-black/55 p-4 flex items-center justify-center no-print"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-4"><div><span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-1 rounded">Ada Kerjaan Baru</span><h3 className="font-black text-gray-900 mt-3">{productionTaskPopup.product_name}</h3><p className="text-xs text-gray-500 mt-1">{productionTaskPopup.order_number || productionTaskPopup.id} · tahap {productionTaskPopup.current_stage}</p></div><div className="bg-gray-50 border border-gray-100 rounded-xl p-3 text-xs"><p>Target: <b>{productionTaskPopup.qty} pcs</b></p>{productionTaskPopup.notes && <p className="mt-1 text-gray-500">{productionTaskPopup.notes}</p>}</div><p className="text-[11px] text-emerald-700">Buka Daftar Kerjaan untuk input hasil kerja atau reject jika ada.</p><div className="grid grid-cols-2 gap-2"><button onClick={() => { if (loggedEmployee) localStorage.setItem(productionTaskSeenKey(loggedEmployee.id, productionTaskPopup.id), '1'); setProductionTaskPopup(null); }} className="py-2.5 rounded-xl bg-gray-100 text-gray-700 text-xs font-bold cursor-pointer">Nanti</button><button onClick={() => { if (loggedEmployee) localStorage.setItem(productionTaskSeenKey(loggedEmployee.id, productionTaskPopup.id), '1'); setProductionTaskPopup(null); setActiveTab('produksi'); }} className="py-2.5 rounded-xl bg-[#1F4B36] text-white text-xs font-bold cursor-pointer">Lihat Kerjaan</button></div></div></div>}
-      {packingTaskPopup && !productionTaskPopup && <div className="fixed inset-0 z-[91] bg-black/55 p-4 flex items-center justify-center no-print"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-4"><div><span className="text-[10px] font-black uppercase tracking-wider text-sky-700 bg-sky-50 px-2 py-1 rounded">Ada Kerjaan Packing</span><h3 className="font-black text-gray-900 mt-3">{packingTaskPopup.order_number}</h3><p className="text-xs text-gray-500 mt-1">{packingTaskPopup.customer_name}</p></div><div className="bg-gray-50 border border-gray-100 rounded-xl p-3 text-xs"><p>Total barang: <b>{packingTaskPopup.items.reduce((sum, item) => sum + item.qty, 0)} pcs</b></p><p className="mt-1 text-gray-500">{packingTaskPopup.items.map(item => `${item.qty}x ${item.product_name}`).join(', ')}</p></div><p className="text-[11px] text-sky-700">Buka Daftar Kerjaan untuk menyelesaikan packing.</p><div className="grid grid-cols-2 gap-2"><button onClick={() => { if (loggedEmployee) localStorage.setItem(packingTaskSeenKey(loggedEmployee.id, packingTaskPopup.id), '1'); setPackingTaskPopup(null); }} className="py-2.5 rounded-xl bg-gray-100 text-gray-700 text-xs font-bold cursor-pointer">Nanti</button><button onClick={() => { if (loggedEmployee) localStorage.setItem(packingTaskSeenKey(loggedEmployee.id, packingTaskPopup.id), '1'); setPackingTaskPopup(null); setActiveTab('produksi'); }} className="py-2.5 rounded-xl bg-[#1F4B36] text-white text-xs font-bold cursor-pointer">Lihat Kerjaan</button></div></div></div>}
+      {handoffPopup && <div className="fixed inset-0 z-[90] bg-black/55 p-4 flex items-center justify-center no-print"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-4"><div><span className="text-[10px] font-black uppercase tracking-wider text-amber-700 bg-amber-50 px-2 py-1 rounded">Tugas Produksi Baru</span><h3 className="font-black text-gray-900 mt-3">{handoffPopup.product_name}</h3><p className="text-xs text-gray-500 mt-1">{handoffPopup.from_stage} → {handoffPopup.to_stage}</p></div><div className="bg-gray-50 border border-gray-100 rounded-xl p-3 text-xs"><p>Dari: <b>{handoffPopup.from_employee_name}</b></p><p>Jumlah diterima: <b>{handoffPopup.qty_sent} pcs</b></p>{handoffPopup.notes && <p className="mt-1 text-gray-500">{handoffPopup.notes}</p>}</div><p className="text-[11px] text-amber-700">Periksa barang fisik sebelum menekan Terima pada menu Produksi.</p><div className="grid grid-cols-2 gap-2"><button onClick={() => { localStorage.setItem(`nxty_handoff_seen_${handoffPopup.id}`, '1'); setHandoffPopup(null); }} className="py-2.5 rounded-xl bg-gray-100 text-gray-700 text-xs font-bold cursor-pointer">Nanti</button><button onClick={() => { localStorage.setItem(`nxty_handoff_seen_${handoffPopup.id}`, '1'); setHandoffPopup(null); setActiveTab('produksi'); }} className="py-2.5 rounded-xl bg-[var(--color-evergreen)] text-white text-xs font-bold cursor-pointer">Lihat & Konfirmasi</button></div></div></div>}
+      {productionTaskPopup && <div className="fixed inset-0 z-[91] bg-black/55 p-4 flex items-center justify-center no-print"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-4"><div><span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-1 rounded">Ada Kerjaan Baru</span><h3 className="font-black text-gray-900 mt-3">{productionTaskPopup.product_name}</h3><p className="text-xs text-gray-500 mt-1">{productionTaskPopup.order_number || productionTaskPopup.id} · tahap {productionTaskPopup.current_stage}</p></div><div className="bg-gray-50 border border-gray-100 rounded-xl p-3 text-xs"><p>Target: <b>{productionTaskPopup.qty} pcs</b></p>{productionTaskPopup.notes && <p className="mt-1 text-gray-500">{productionTaskPopup.notes}</p>}</div><p className="text-[11px] text-emerald-700">Buka Daftar Kerjaan untuk input hasil kerja atau reject jika ada.</p><div className="grid grid-cols-2 gap-2"><button onClick={() => { if (loggedEmployee) localStorage.setItem(productionTaskSeenKey(loggedEmployee.id, productionTaskPopup.id), '1'); setProductionTaskPopup(null); }} className="py-2.5 rounded-xl bg-gray-100 text-gray-700 text-xs font-bold cursor-pointer">Nanti</button><button onClick={() => { if (loggedEmployee) localStorage.setItem(productionTaskSeenKey(loggedEmployee.id, productionTaskPopup.id), '1'); setProductionTaskPopup(null); setActiveTab('produksi'); }} className="py-2.5 rounded-xl bg-[var(--color-evergreen)] text-white text-xs font-bold cursor-pointer">Lihat Kerjaan</button></div></div></div>}
+      {packingTaskPopup && !productionTaskPopup && <div className="fixed inset-0 z-[91] bg-black/55 p-4 flex items-center justify-center no-print"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-4"><div><span className="text-[10px] font-black uppercase tracking-wider text-sky-700 bg-sky-50 px-2 py-1 rounded">Ada Kerjaan Packing</span><h3 className="font-black text-gray-900 mt-3">{packingTaskPopup.order_number}</h3><p className="text-xs text-gray-500 mt-1">{packingTaskPopup.customer_name}</p></div><div className="bg-gray-50 border border-gray-100 rounded-xl p-3 text-xs"><p>Total barang: <b>{packingTaskPopup.items.reduce((sum, item) => sum + item.qty, 0)} pcs</b></p><p className="mt-1 text-gray-500">{packingTaskPopup.items.map(item => `${item.qty}x ${item.product_name}`).join(', ')}</p></div><p className="text-[11px] text-sky-700">Buka Daftar Kerjaan untuk menyelesaikan packing.</p><div className="grid grid-cols-2 gap-2"><button onClick={() => { if (loggedEmployee) localStorage.setItem(packingTaskSeenKey(loggedEmployee.id, packingTaskPopup.id), '1'); setPackingTaskPopup(null); }} className="py-2.5 rounded-xl bg-gray-100 text-gray-700 text-xs font-bold cursor-pointer">Nanti</button><button onClick={() => { if (loggedEmployee) localStorage.setItem(packingTaskSeenKey(loggedEmployee.id, packingTaskPopup.id), '1'); setPackingTaskPopup(null); setActiveTab('produksi'); }} className="py-2.5 rounded-xl bg-[var(--color-evergreen)] text-white text-xs font-bold cursor-pointer">Lihat Kerjaan</button></div></div></div>}
 
       {/* SIDEBAR DESKTOP — datar, tanpa grup */}
-      <aside className="no-print hidden md:flex w-60 bg-[#1F4B36] flex-col shrink-0 border-r border-[#163826] text-white">
-        <div className="h-16 border-b border-[#163826] shrink-0 flex items-center px-5">
-          <div>
-            <h1 className="text-white font-bold text-base tracking-tight">ARI SPORTINDO</h1>
-            <span className="text-emerald-200/70 text-[11px] block">Sistem Produksi</span>
+      <aside className="no-print hidden md:flex w-60 bg-[var(--color-evergreen)] flex-col shrink-0 border-r border-[var(--color-evergreen-dark)] text-white">
+        <div className="h-16 border-b border-[var(--color-evergreen-dark)] shrink-0 flex items-center gap-2.5 px-5">
+          {brand.logo_data_url && (
+            <img src={brand.logo_data_url} alt={brand.company_name} className="w-9 h-9 rounded-lg bg-white/90 object-contain p-0.5 shrink-0" />
+          )}
+          <div className="min-w-0">
+            <h1 className="text-white font-bold text-base tracking-tight truncate">{brand.company_name}</h1>
+            <span className="text-white/60 text-[11px] block truncate">{brand.tagline}</span>
           </div>
         </div>
 
@@ -654,8 +667,8 @@ export default function App() {
                 onClick={() => setActiveTab(menu.id)}
                 className={`w-full py-2.5 px-3 flex items-center gap-3 rounded-lg cursor-pointer transition-colors text-left ${
                   isSelected
-                    ? 'bg-[#163826] text-white font-semibold border-l-4 border-amber-400'
-                    : 'text-emerald-50/85 hover:bg-[#163826]/60'
+                    ? 'bg-[var(--color-evergreen-dark)] text-white font-semibold border-l-4 border-amber-400'
+                    : 'text-emerald-50/85 hover:bg-[var(--color-evergreen-dark)]/60'
                 }`}
               >
                 <Icon className={`w-4 h-4 shrink-0 ${isSelected ? 'text-amber-400' : 'opacity-70'}`} />
@@ -666,7 +679,7 @@ export default function App() {
         </nav>
 
         {/* Info akun & logout */}
-        <div className="p-4 border-t border-[#163826] space-y-3">
+        <div className="p-4 border-t border-[var(--color-evergreen-dark)] space-y-3">
           {/* Status sinkronisasi data */}
           <div className="flex items-center gap-2 text-[11px] font-semibold">
             <span className={`w-2 h-2 rounded-full shrink-0 ${
@@ -700,7 +713,7 @@ export default function App() {
           </div>
           <button
             onClick={handleLogout}
-            className="w-full bg-[#163826] hover:bg-rose-700 border border-[#2a5941] hover:border-rose-700 text-white font-semibold text-xs py-2 rounded-lg cursor-pointer transition-colors flex items-center justify-center gap-1.5"
+            className="w-full bg-[var(--color-evergreen-dark)] hover:bg-rose-700 border border-[var(--color-evergreen)] hover:border-rose-700 text-white font-semibold text-xs py-2 rounded-lg cursor-pointer transition-colors flex items-center justify-center gap-1.5"
           >
             <LogOut className="w-3.5 h-3.5" />
             Keluar
@@ -714,7 +727,11 @@ export default function App() {
         {/* HEADER */}
         <header className="no-print h-14 bg-white border-b border-gray-200 flex items-center justify-between px-4 md:px-6 shrink-0 gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="md:hidden bg-[#1F4B36] px-2 py-1 rounded text-white font-bold text-xs shrink-0">ARI</div>
+            {brand.logo_data_url ? (
+              <img src={brand.logo_data_url} alt={brand.company_name} className="md:hidden w-7 h-7 rounded object-contain shrink-0" />
+            ) : (
+              <div className="md:hidden bg-[var(--color-evergreen)] px-2 py-1 rounded text-white font-bold text-xs shrink-0">{brandInitials(brand.company_name)}</div>
+            )}
             <h2 className="text-base font-semibold text-gray-800 truncate">{activeMenu?.label || 'Dashboard'}</h2>
           </div>
           <p className="hidden md:block text-xs text-gray-500 shrink-0">{formattedTime}</p>
@@ -739,7 +756,7 @@ export default function App() {
                 onClick={() => setActiveTab(menu.id)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 ${
                   isSelected
-                    ? 'bg-[#1F4B36] text-white'
+                    ? 'bg-[var(--color-evergreen)] text-white'
                     : 'bg-gray-100 text-gray-600'
                 }`}
               >
@@ -784,7 +801,7 @@ export default function App() {
                   <button
                     onClick={() => setSalesSubTab('marketplace')}
                     className={`px-4 py-1.5 rounded-lg text-sm font-semibold cursor-pointer ${
-                      salesSubTab === 'marketplace' ? 'bg-[#1F4B36] text-white' : 'text-gray-600 hover:bg-gray-100'
+                      salesSubTab === 'marketplace' ? 'bg-[var(--color-evergreen)] text-white' : 'text-gray-600 hover:bg-gray-100'
                     }`}
                   >
                     Penjualan Marketplace
@@ -792,7 +809,7 @@ export default function App() {
                   <button
                     onClick={() => setSalesSubTab('order')}
                     className={`px-4 py-1.5 rounded-lg text-sm font-semibold cursor-pointer ${
-                      salesSubTab === 'order' ? 'bg-[#1F4B36] text-white' : 'text-gray-600 hover:bg-gray-100'
+                      salesSubTab === 'order' ? 'bg-[var(--color-evergreen)] text-white' : 'text-gray-600 hover:bg-gray-100'
                     }`}
                   >
                     Order Non-Marketplace
@@ -819,7 +836,7 @@ export default function App() {
                   <button
                     onClick={() => setKaryawanSubTab('data')}
                     className={`px-4 py-1.5 rounded-lg text-sm font-semibold cursor-pointer ${
-                      karyawanSubTab === 'data' ? 'bg-[#1F4B36] text-white' : 'text-gray-600 hover:bg-gray-100'
+                      karyawanSubTab === 'data' ? 'bg-[var(--color-evergreen)] text-white' : 'text-gray-600 hover:bg-gray-100'
                     }`}
                   >
                     Data Karyawan
@@ -827,7 +844,7 @@ export default function App() {
                   <button
                     onClick={() => setKaryawanSubTab('absensi')}
                     className={`px-4 py-1.5 rounded-lg text-sm font-semibold cursor-pointer ${
-                      karyawanSubTab === 'absensi' ? 'bg-[#1F4B36] text-white' : 'text-gray-600 hover:bg-gray-100'
+                      karyawanSubTab === 'absensi' ? 'bg-[var(--color-evergreen)] text-white' : 'text-gray-600 hover:bg-gray-100'
                     }`}
                   >
                     Absensi
@@ -835,7 +852,7 @@ export default function App() {
                   <button
                     onClick={() => setKaryawanSubTab('payroll')}
                     className={`px-4 py-1.5 rounded-lg text-sm font-semibold cursor-pointer ${
-                      karyawanSubTab === 'payroll' ? 'bg-[#1F4B36] text-white' : 'text-gray-600 hover:bg-gray-100'
+                      karyawanSubTab === 'payroll' ? 'bg-[var(--color-evergreen)] text-white' : 'text-gray-600 hover:bg-gray-100'
                     }`}
                   >
                     Payroll & Slip Gaji
@@ -843,7 +860,7 @@ export default function App() {
                   <button
                     onClick={() => setKaryawanSubTab('kasbon')}
                     className={`px-4 py-1.5 rounded-lg text-sm font-semibold cursor-pointer ${
-                      karyawanSubTab === 'kasbon' ? 'bg-[#1F4B36] text-white' : 'text-gray-600 hover:bg-gray-100'
+                      karyawanSubTab === 'kasbon' ? 'bg-[var(--color-evergreen)] text-white' : 'text-gray-600 hover:bg-gray-100'
                     }`}
                   >
                     Kasbon
@@ -891,13 +908,16 @@ export default function App() {
 
             {activeTab === 'audit' && <AuditRecycleModule />}
 
+            {/* PENGATURAN BRAND (owner): nama, logo, warna tema — white label */}
+            {activeTab === 'pengaturan' && <BrandSettingsModule />}
+
             {/* LAPORAN (owner): rekap periode + ekspor CSV */}
             {activeTab === 'laporan' && (
               <div className="space-y-5">
                 <div className="bg-white p-5 rounded-xl border border-gray-200 space-y-4">
                   <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
                     <div>
-                      <h2 className="text-base font-bold text-[#1F4B36]">Laporan ARI SPORTINDO</h2>
+                      <h2 className="text-base font-bold text-[var(--color-evergreen)]">Laporan {brand.company_name}</h2>
                       <p className="text-sm text-gray-500">Ringkasan bulanan untuk owner: absensi, gaji mingguan, kasbon, penjualan, produksi, dan pengeluaran.</p>
                     </div>
                     <div className="grid grid-cols-2 gap-2 w-full sm:w-auto no-print">
@@ -906,7 +926,7 @@ export default function App() {
                         <select
                           value={reportMonth}
                           onChange={(e) => setReportMonth(e.target.value)}
-                          className="w-full sm:w-40 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-[#1F4B36]"
+                          className="w-full sm:w-40 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-[var(--color-evergreen)]"
                         >
                           {MONTH_OPTIONS.map(month => (
                             <option key={month.value} value={month.value}>{month.label}</option>
@@ -918,7 +938,7 @@ export default function App() {
                         <select
                           value={reportYear}
                           onChange={(e) => setReportYear(e.target.value)}
-                          className="w-full sm:w-28 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-[#1F4B36]"
+                          className="w-full sm:w-28 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-[var(--color-evergreen)]"
                         >
                           {reportYears.map(year => (
                             <option key={year} value={year}>{year}</option>
@@ -981,13 +1001,13 @@ export default function App() {
                     <div key={r.type} className="bg-white p-4 rounded-xl border border-gray-200 space-y-3">
                       <div>
                         <p className="text-sm font-bold text-gray-700">{r.title}</p>
-                        <p className="text-xl font-black text-[#1F4B36] mt-1">{r.value}</p>
+                        <p className="text-xl font-black text-[var(--color-evergreen)] mt-1">{r.value}</p>
                         <p className="text-xs font-semibold text-gray-500 mt-1">{r.meta}</p>
                       </div>
                       <p className="text-xs text-gray-500 min-h-8">{r.desc}</p>
                       <button
                         onClick={() => handleExportPeriodCSV(r.type)}
-                        className="no-print bg-[#1F4B36] hover:bg-[#163826] text-white font-semibold text-sm px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 cursor-pointer"
+                        className="no-print bg-[var(--color-evergreen)] hover:bg-[var(--color-evergreen-dark)] text-white font-semibold text-sm px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 cursor-pointer"
                       >
                         <Download className="w-4 h-4" /> Unduh CSV Periode
                       </button>
@@ -1047,7 +1067,7 @@ export default function App() {
 
         {/* FOOTER */}
         <footer className="no-print py-2.5 text-center border-t border-gray-200 bg-white text-xs text-gray-400 shrink-0">
-          &copy; {new Date().getFullYear()} ARI SPORTINDO Production System
+          &copy; {new Date().getFullYear()} {brand.company_name}
         </footer>
       </main>
     </div>

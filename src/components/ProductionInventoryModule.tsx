@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Product, RawMaterial, StockMovement, ProductionLog, ProductionJob, Employee, RejectedGood, ProductionTaskLog, PackingTask } from '../types';
 import { ProductionHandoffPanel } from './ProductionHandoffPanel';
 import { dataStore, RECIPES, wibNowISO, wibTodayStr } from '../dataStore';
+import { brandName, brandLegalName } from '../brand';
 import { 
   Box, 
   Hammer, 
@@ -787,7 +788,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
     <div className="space-y-6">
       <div className="no-print flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-100 pb-4">
         <div>
-          <h1 className="text-xl font-bold text-[#1F4B36] font-sans">{isEmployee ? 'Daftar Kerjaan' : 'Manajemen Alur Kerja Produksi'}</h1>
+          <h1 className="text-xl font-bold text-[var(--color-evergreen)] font-sans">{isEmployee ? 'Daftar Kerjaan' : 'Manajemen Alur Kerja Produksi'}</h1>
           <p className="text-xs text-gray-400">{isEmployee ? 'Daftar tugas aktif dan input hasil kerja harian.' : 'Pencatatan real-time alur pengerjaan pesanan tiap divisi (Eva Foam & Konveksi) serta audit log bahan baku.'}</p>
         </div>
       </div>
@@ -798,7 +799,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
           onClick={() => { setSubTab('order'); triggerLoading(); }}
           className={`px-5 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
             subTab === 'order'
-              ? 'border-[#1F4B36] text-[#1F4B36]'
+              ? 'border-[var(--color-evergreen)] text-[var(--color-evergreen)]'
               : 'border-transparent text-gray-400 hover:text-gray-600'
           }`}
         >
@@ -808,7 +809,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
           onClick={() => { setSubTab('tracker'); triggerLoading(); }}
           className={`px-5 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
             subTab === 'tracker'
-              ? 'border-[#1F4B36] text-[#1F4B36]'
+              ? 'border-[var(--color-evergreen)] text-[var(--color-evergreen)]'
               : 'border-transparent text-gray-400 hover:text-gray-600'
           }`}
         >
@@ -818,7 +819,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
           onClick={() => { setSubTab('finalize'); triggerLoading(); }}
           className={`px-5 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
             subTab === 'finalize'
-              ? 'border-[#1F4B36] text-[#1F4B36]'
+              ? 'border-[var(--color-evergreen)] text-[var(--color-evergreen)]'
               : 'border-transparent text-gray-400 hover:text-gray-600'
           }`}
         >
@@ -828,7 +829,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
           onClick={() => { setSubTab('history'); triggerLoading(); }}
           className={`px-5 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
             subTab === 'history'
-              ? 'border-[#1F4B36] text-[#1F4B36]'
+              ? 'border-[var(--color-evergreen)] text-[var(--color-evergreen)]'
               : 'border-transparent text-gray-400 hover:text-gray-600'
           }`}
         >
@@ -891,7 +892,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                                   {job.notes && <p className="text-[10px] text-gray-500 mt-1 line-clamp-2">{job.notes}</p>}
                                 </div>
                                 <div className="text-right shrink-0">
-                                  <p className="font-mono text-xs font-black text-[#1F4B36]">{job.qty} pcs</p>
+                                  <p className="font-mono text-xs font-black text-[var(--color-evergreen)]">{job.qty} pcs</p>
                                   <p className="text-[10px] font-bold text-amber-700">{job.current_stage}</p>
                                   <span className={`mt-1 inline-block rounded px-1.5 py-0.5 text-[9px] font-bold ${hasInputToday ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-500'}`}>{hasInputToday ? 'Sudah input' : 'Belum input'}</span>
                                 </div>
@@ -942,7 +943,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                         </table>
                       </div>
                       <textarea value={taskNotes} onChange={event => setTaskNotes(event.target.value)} rows={3} placeholder="Catatan packing bila ada" className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-xs" />
-                      <button type="button" onClick={() => handleCompletePackingTask(selectedPackingTask.id)} className="w-full py-2.5 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 bg-[#1F4B36] text-white cursor-pointer hover:bg-[#163826]"><CheckCircle2 className="w-4 h-4" /> Selesai Packing</button>
+                      <button type="button" onClick={() => handleCompletePackingTask(selectedPackingTask.id)} className="w-full py-2.5 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 bg-[var(--color-evergreen)] text-white cursor-pointer hover:bg-[var(--color-evergreen-dark)]"><CheckCircle2 className="w-4 h-4" /> Selesai Packing</button>
                     </div>}
 
                     {selectedTaskJob && <div className="lg:col-span-7 bg-white rounded-xl border border-gray-200 p-4 space-y-4">
@@ -983,7 +984,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                           <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Catatan</label>
                           <textarea value={taskNotes} onChange={event => setTaskNotes(event.target.value)} rows={3} placeholder="Kendala, alasan reject, atau detail pekerjaan" className="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-xs" />
                         </div>
-                        <button type="submit" className="w-full py-2.5 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 bg-[#1F4B36] text-white cursor-pointer hover:bg-[#163826]">
+                        <button type="submit" className="w-full py-2.5 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 bg-[var(--color-evergreen)] text-white cursor-pointer hover:bg-[var(--color-evergreen-dark)]">
                           <CheckCircle2 className="w-4 h-4" />
                           Simpan Hasil Kerja
                         </button>
@@ -1032,7 +1033,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                   placeholder="Cari nomor order, produk..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-lg pl-9 pr-4 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[#1F4B36] text-gray-800 placeholder-gray-400 transition-all font-sans"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg pl-9 pr-4 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[var(--color-evergreen)] text-gray-800 placeholder-gray-400 transition-all font-sans"
                 />
                 {searchQuery && (
                   <button onClick={() => setSearchQuery('')} className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600">
@@ -1044,7 +1045,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
               {/* Status info banner */}
               <div className="flex items-center gap-2 text-[11px] text-gray-500 font-medium">
                 <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 block"></span> Selesai</span>
-                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-[#1F4B36] block"></span> Aktif/Utama</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-[var(--color-evergreen)] block"></span> Aktif/Utama</span>
                 <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-500 block"></span> Diproses</span>
                 <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-gray-300 block"></span> Antre</span>
                 <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-rose-500 block"></span> Kendala</span>
@@ -1057,7 +1058,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                 onClick={() => { setActiveFilter('all'); triggerLoading(); }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
                   activeFilter === 'all'
-                    ? 'bg-[#1F4B36] text-white'
+                    ? 'bg-[var(--color-evergreen)] text-white'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
@@ -1126,7 +1127,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                           {idx > 0 && <span className="text-gray-300 shrink-0">→</span>}
                           <span className={`shrink-0 px-2 py-1 rounded-lg text-xs font-semibold border ${
                             count > 0
-                              ? 'bg-[#1F4B36] text-white border-[#1F4B36]'
+                              ? 'bg-[var(--color-evergreen)] text-white border-[var(--color-evergreen)]'
                               : 'bg-gray-50 text-gray-400 border-gray-100'
                           }`}>
                             {stg}{count > 0 && <span className="ml-1 font-black">{count}</span>}
@@ -1149,7 +1150,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
           {/* LOADING STATE */}
           {!isEmployee && (isLoading ? (
             <div className="flex flex-col items-center justify-center py-20 space-y-3 bg-white rounded-xl border border-gray-100">
-              <Loader2 className="w-8 h-8 text-[#1F4B36] animate-spin" />
+              <Loader2 className="w-8 h-8 text-[var(--color-evergreen)] animate-spin" />
               <p className="text-xs text-gray-500 font-medium">Memuat data alur kerja...</p>
             </div>
           ) : (
@@ -1160,7 +1161,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                 <div className="flex items-center justify-between border-b border-gray-100 p-4 bg-gray-50/50">
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full bg-emerald-600"></div>
-                    <h3 className="font-bold text-sm text-[#1F4B36] uppercase tracking-wide">1. Departemen Eva Foam</h3>
+                    <h3 className="font-bold text-sm text-[var(--color-evergreen)] uppercase tracking-wide">1. Departemen Eva Foam</h3>
                   </div>
                   <span className="text-[11px] bg-emerald-100 text-emerald-900 px-2.5 py-0.5 rounded-full font-black font-mono">
                     {filteredJobs.filter(j => j.department_id === 'dept-eva-foam').length} Pekerjaan
@@ -1206,7 +1207,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                                   </span>
                                 )}
                               </div>
-                              <h4 className="font-extrabold text-gray-900 text-xs tracking-tight leading-snug group-hover:text-[#1F4B36] transition-colors">{job.product_name}</h4>
+                              <h4 className="font-extrabold text-gray-900 text-xs tracking-tight leading-snug group-hover:text-[var(--color-evergreen)] transition-colors">{job.product_name}</h4>
                               <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-gray-400">
                                 <span>Varian: <strong className="text-gray-600 font-semibold">{job.variant}</strong></span>
                                 <span>&bull;</span>
@@ -1220,7 +1221,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                             {/* 2. PROGRESS BAR & STAGE (4 columns on md+) */}
                             <div className="w-full md:col-span-4 space-y-1.5 text-left">
                               <div className="flex justify-between items-center text-[9px] text-gray-400 font-bold uppercase tracking-wider">
-                                <span>Tahap: <strong className="text-[#1F4B36] font-extrabold">{job.current_stage}</strong></span>
+                                <span>Tahap: <strong className="text-[var(--color-evergreen)] font-extrabold">{job.current_stage}</strong></span>
                                 <span>{job.stages.filter(s => s.status === 'completed').length} / {job.stages.length}</span>
                               </div>
                               
@@ -1229,7 +1230,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                                   let bgClass = 'bg-gray-200/50';
                                   if (stg.status === 'completed') bgClass = 'bg-emerald-500';
                                   else if (stg.status === 'ongoing') {
-                                    bgClass = hasKendala(job) ? 'bg-rose-500' : 'bg-[#1F4B36]';
+                                    bgClass = hasKendala(job) ? 'bg-rose-500' : 'bg-[var(--color-evergreen)]';
                                   }
                                   return (
                                     <div
@@ -1251,8 +1252,8 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                                     onClick={(e) => { e.stopPropagation(); handleUpdateJobStage(job.id, na.stage, na.action, ''); }}
                                     className={`mt-1.5 w-full text-xs font-bold py-1.5 px-2 rounded-lg cursor-pointer transition-colors ${
                                       na.action === 'start'
-                                        ? 'bg-white border border-[#1F4B36] text-[#1F4B36] hover:bg-emerald-50'
-                                        : 'bg-[#1F4B36] text-white hover:bg-[#163826]'
+                                        ? 'bg-white border border-[var(--color-evergreen)] text-[var(--color-evergreen)] hover:bg-emerald-50'
+                                        : 'bg-[var(--color-evergreen)] text-white hover:bg-[var(--color-evergreen-dark)]'
                                     }`}
                                   >
                                     {na.action === 'start' ? `▶ Mulai: ${na.stage}` : `✓ Selesaikan: ${na.stage}`}
@@ -1278,7 +1279,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                                   <Calendar className="w-3 h-3" />
                                   {getJobDeadlineStr(job)}
                                 </span>
-                                <span className="text-[9.5px] font-black text-[#1F4B36] hover:underline flex items-center gap-0.5 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                                <span className="text-[9.5px] font-black text-[var(--color-evergreen)] hover:underline flex items-center gap-0.5 md:opacity-0 group-hover:opacity-100 transition-opacity">
                                   Atur <ChevronRight className="w-3 h-3" />
                                 </span>
                               </div>
@@ -1436,7 +1437,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden border border-gray-100">
             
             {/* Modal Header */}
-            <div className="bg-[#1F4B36] text-white p-5 flex items-center justify-between">
+            <div className="bg-[var(--color-evergreen)] text-white p-5 flex items-center justify-between">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <span className="px-2 py-0.5 bg-white/20 text-white rounded text-[10px] font-mono font-bold uppercase tracking-wider border border-white/10">
@@ -1486,18 +1487,18 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                       } else if (isOngoing) {
                         statusBg = isIssue 
                           ? 'bg-rose-50 border-rose-300 text-rose-800' 
-                          : 'bg-[#1F4B36]/10 border-[#1F4B36]/20 text-[#1F4B36] font-bold';
+                          : 'bg-[var(--color-evergreen)]/10 border-[var(--color-evergreen)]/20 text-[var(--color-evergreen)] font-bold';
                         labelText = isIssue ? 'KENDALA' : 'Sedang Diproses';
                       }
 
                       return (
                         <div 
                           key={sIdx} 
-                          className={`flex items-start gap-3 p-3.5 rounded-xl border transition-all ${statusBg} ${isOngoing ? 'ring-2 ring-[#1F4B36]/10' : ''}`}
+                          className={`flex items-start gap-3 p-3.5 rounded-xl border transition-all ${statusBg} ${isOngoing ? 'ring-2 ring-[var(--color-evergreen)]/10' : ''}`}
                         >
                           <div className="flex flex-col items-center">
                             <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                              isCompleted ? 'bg-emerald-500 text-white' : isOngoing ? 'bg-[#1F4B36] text-white' : 'bg-gray-200 text-gray-500'
+                              isCompleted ? 'bg-emerald-500 text-white' : isOngoing ? 'bg-[var(--color-evergreen)] text-white' : 'bg-gray-200 text-gray-500'
                             }`}>
                               {sIdx + 1}
                             </div>
@@ -1621,7 +1622,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                               placeholder="Ketik detail operator pelaksana, kendala mesin, keterlambatan bahan, dll..."
                               value={modalNote}
                               onChange={(e) => setModalNote(e.target.value)}
-                              className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-[#1F4B36] font-mono placeholder-gray-400"
+                              className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-[var(--color-evergreen)] font-mono placeholder-gray-400"
                             />
                           </div>
 
@@ -1631,7 +1632,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                               <button
                                 type="button"
                                 onClick={() => handleUpdateJobStage(selectedJob.id, activeStageObj.stage, 'start')}
-                                className="w-full bg-[#1F4B36] hover:bg-[#122d20] text-white font-bold text-xs px-4 py-3 rounded-lg flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-all"
+                                className="w-full bg-[var(--color-evergreen)] hover:bg-[#122d20] text-white font-bold text-xs px-4 py-3 rounded-lg flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-all"
                               >
                                 <PlayButtonIcon className="w-4 h-4 text-emerald-200" />
                                 Mulai Kerjakan Tahap: {activeStageObj.stage}
@@ -1640,7 +1641,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                               <button
                                 type="button"
                                 onClick={() => handleUpdateJobStage(selectedJob.id, activeStageObj.stage, 'complete')}
-                                className="w-full bg-[#1F4B36] hover:bg-[#122d20] text-white font-black text-xs px-4 py-3 rounded-lg flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-all uppercase tracking-wider"
+                                className="w-full bg-[var(--color-evergreen)] hover:bg-[#122d20] text-white font-black text-xs px-4 py-3 rounded-lg flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-all uppercase tracking-wider"
                               >
                                 <CheckCircle2 className="w-4.5 h-4.5 text-emerald-300" />
                                 Selesaikan Tahap: {activeStageObj.stage}
@@ -1652,7 +1653,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                               <button
                                 type="button"
                                 onClick={() => handleSaveOnlyNotes(selectedJob.id)}
-                                className="bg-white hover:bg-gray-50 text-[#1F4B36] border border-gray-200 font-bold text-xs px-3 py-2 rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+                                className="bg-white hover:bg-gray-50 text-[var(--color-evergreen)] border border-gray-200 font-bold text-xs px-3 py-2 rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-all"
                               >
                                 <FileText className="w-3.5 h-3.5" />
                                 Simpan Catatan
@@ -1707,7 +1708,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
 
             {/* Modal Footer */}
             <div className="bg-gray-50 border-t border-gray-100 p-4 flex justify-between items-center text-[10px] text-gray-400">
-              <span>Sistem Manajemen Alur Kerja Produksi &middot; ARI SPORTINDO</span>
+              <span>Sistem Manajemen Alur Kerja Produksi &middot; {brandName()}</span>
               <button
                 type="button"
                 onClick={() => { setSelectedJob(null); setModalNote(''); }}
@@ -1730,7 +1731,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
               <>
               {subTab === 'order' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
                 <div className="border-b border-gray-100 pb-3 flex items-center gap-1.5">
-                  <Clipboard className="w-4.5 h-4.5 text-[#1F4B36]" />
+                  <Clipboard className="w-4.5 h-4.5 text-[var(--color-evergreen)]" />
                   <h3 className="font-bold text-sm text-gray-800">Buat Order Produksi Manual</h3>
                 </div>
 
@@ -1749,7 +1750,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                           if (item.step === 3 && (!manualBasicValid || !manualMaterialsValid)) return alert('Lengkapi departemen, output, dan bahan dulu.');
                           setManualStep(item.step as 1 | 2 | 3);
                         }}
-                        className={`rounded-lg border px-3 py-2 text-xs font-bold cursor-pointer ${manualStep === item.step ? 'bg-[#1F4B36] text-white border-[#1F4B36]' : 'bg-gray-50 text-gray-500 border-gray-200'}`}
+                        className={`rounded-lg border px-3 py-2 text-xs font-bold cursor-pointer ${manualStep === item.step ? 'bg-[var(--color-evergreen)] text-white border-[var(--color-evergreen)]' : 'bg-gray-50 text-gray-500 border-gray-200'}`}
                       >
                         {item.step}. {item.label}
                       </button>
@@ -1783,7 +1784,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                             <select
                               value={output.product_id}
                               onChange={event => setManualOutputs(items => items.map((item, itemIndex) => itemIndex === index ? { ...item, product_id: event.target.value } : item))}
-                              className="col-span-8 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[#1F4B36]"
+                              className="col-span-8 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[var(--color-evergreen)]"
                               disabled={!manualDepartmentId}
                               required={index === 0}
                             >
@@ -1800,7 +1801,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                             <button type="button" onClick={() => setManualOutputs(items => items.length === 1 ? items : items.filter((_, itemIndex) => itemIndex !== index))} className="col-span-1 rounded-lg bg-gray-100 text-gray-500 text-xs font-bold cursor-pointer">×</button>
                           </div>
                         ))}
-                        <button type="button" onClick={() => setManualOutputs(items => [...items, { product_id: '', target_qty: 1 }])} className="text-xs font-bold text-[#1F4B36] flex items-center gap-1 cursor-pointer"><Plus className="w-3.5 h-3.5" /> Tambah output</button>
+                        <button type="button" onClick={() => setManualOutputs(items => [...items, { product_id: '', target_qty: 1 }])} className="text-xs font-bold text-[var(--color-evergreen)] flex items-center gap-1 cursor-pointer"><Plus className="w-3.5 h-3.5" /> Tambah output</button>
                       </div>
 
                       <div>
@@ -1819,7 +1820,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
 
                       <div>
                         <label className="block text-xs font-semibold text-gray-500 mb-1">Catatan Instruksi</label>
-                        <textarea value={manualNotes} onChange={event => setManualNotes(event.target.value)} rows={2} placeholder="Instruksi warna, prioritas, atau detail custom..." className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[#1F4B36]" />
+                        <textarea value={manualNotes} onChange={event => setManualNotes(event.target.value)} rows={2} placeholder="Instruksi warna, prioritas, atau detail custom..." className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[var(--color-evergreen)]" />
                       </div>
                     </div>
                   )}
@@ -1836,7 +1837,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                           const selected = rawMaterials.find(item => item.id === material.material_id);
                           return (
                             <div key={index} className="grid grid-cols-12 gap-2">
-                              <select value={material.material_id} onChange={event => setManualMaterials(items => items.map((item, itemIndex) => itemIndex === index ? { ...item, material_id: event.target.value } : item))} className="col-span-8 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[#1F4B36]">
+                              <select value={material.material_id} onChange={event => setManualMaterials(items => items.map((item, itemIndex) => itemIndex === index ? { ...item, material_id: event.target.value } : item))} className="col-span-8 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[var(--color-evergreen)]">
                                 <option value="">Pilih bahan</option>
                                 {manualFilteredMaterials.map(item => <option key={item.id} value={item.id}>{item.name} - stok {item.current_stock} {item.unit}</option>)}
                               </select>
@@ -1845,7 +1846,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                             </div>
                           );
                         })}
-                        <button type="button" onClick={() => setManualMaterials(items => [...items, { material_id: '', qty: 1 }])} className="text-xs font-bold text-[#1F4B36] flex items-center gap-1 cursor-pointer"><Plus className="w-3.5 h-3.5" /> Tambah bahan</button>
+                        <button type="button" onClick={() => setManualMaterials(items => [...items, { material_id: '', qty: 1 }])} className="text-xs font-bold text-[var(--color-evergreen)] flex items-center gap-1 cursor-pointer"><Plus className="w-3.5 h-3.5" /> Tambah bahan</button>
                       </div>
                     </div>
                   )}
@@ -1854,7 +1855,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                     <div className="space-y-4">
                       <div>
                         <label className="block text-xs font-semibold text-gray-500 mb-1">Tahapan Produksi</label>
-                        <textarea value={manualStages} onChange={event => setManualStages(event.target.value)} rows={4} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-[#1F4B36]" />
+                        <textarea value={manualStages} onChange={event => setManualStages(event.target.value)} rows={4} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-[var(--color-evergreen)]" />
                         <p className="text-[10px] text-gray-400 mt-1">Satu baris = satu tahap. Bisa disesuaikan per order.</p>
                       </div>
                       <div className="bg-gray-50 border border-gray-100 rounded-lg p-3 text-xs space-y-1">
@@ -1877,12 +1878,12 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                           if (manualStep === 2 && !manualMaterialsValid) return alert('Pilih minimal satu bahan baku yang dipakai.');
                           setManualStep((manualStep + 1) as 1 | 2 | 3);
                         }}
-                        className="flex-1 bg-[#1F4B36] hover:bg-[#163826] text-white py-2.5 rounded-lg font-bold text-xs cursor-pointer"
+                        className="flex-1 bg-[var(--color-evergreen)] hover:bg-[var(--color-evergreen-dark)] text-white py-2.5 rounded-lg font-bold text-xs cursor-pointer"
                       >
                         Lanjut
                       </button>
                     ) : (
-                      <button type="submit" disabled={!manualStagesValid || !manualMaterialsValid} className={`flex-1 py-2.5 rounded-lg font-bold text-xs shadow-md flex items-center justify-center gap-1.5 ${manualStagesValid && manualMaterialsValid ? 'bg-[#1F4B36] hover:bg-[#163826] text-white cursor-pointer' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
+                      <button type="submit" disabled={!manualStagesValid || !manualMaterialsValid} className={`flex-1 py-2.5 rounded-lg font-bold text-xs shadow-md flex items-center justify-center gap-1.5 ${manualStagesValid && manualMaterialsValid ? 'bg-[var(--color-evergreen)] hover:bg-[var(--color-evergreen-dark)] text-white cursor-pointer' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
                         <Clipboard className="w-4 h-4" />
                         Buat Order &amp; Potong Bahan
                       </button>
@@ -1893,7 +1894,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
 
               {false && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
                 <div className="border-b border-gray-100 pb-3 flex items-center gap-1.5">
-                  <Hammer className="w-4.5 h-4.5 text-[#1F4B36]" />
+                  <Hammer className="w-4.5 h-4.5 text-[var(--color-evergreen)]" />
                   <h3 className="font-bold text-sm text-gray-800">Catat Hasil Produksi Baru</h3>
                 </div>
 
@@ -1915,7 +1916,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                           setCustomMaterials([]);
                         }
                       }}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[#1F4B36] font-sans text-gray-800"
+                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[var(--color-evergreen)] font-sans text-gray-800"
                       required
                     >
                       <option value="">-- Pilih Produk Jadi --</option>
@@ -1950,7 +1951,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                   {/* Formula display helper */}
                   {selectedProductId && (
                     <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 space-y-2">
-                      <span className="text-[10px] font-black text-[#1F4B36] block uppercase tracking-wide">Estimasi Bahan Baku yang Akan Dikonsumsi:</span>
+                      <span className="text-[10px] font-black text-[var(--color-evergreen)] block uppercase tracking-wide">Estimasi Bahan Baku yang Akan Dikonsumsi:</span>
                       <div className="space-y-2">
                         {customMaterials.map((mat, idx) => {
                           const m = rawMaterials.find(x => x.id === mat.material_id)!;
@@ -1970,7 +1971,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
 
                   <button
                     type="submit"
-                    className="w-full bg-[#1F4B36] hover:bg-[#163826] text-white py-2.5 rounded-lg font-bold text-xs shadow-md flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+                    className="w-full bg-[var(--color-evergreen)] hover:bg-[var(--color-evergreen-dark)] text-white py-2.5 rounded-lg font-bold text-xs shadow-md flex items-center justify-center gap-1.5 cursor-pointer transition-all"
                   >
                     <Hammer className="w-4 h-4" />
                     Selesaikan Produksi &amp; Potong Bahan
@@ -1979,8 +1980,8 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
               </div>}
               </>
             ) : (
-              <div className="bg-amber-50 text-[#1F4B36] border border-amber-200 rounded-xl p-6 text-center space-y-3">
-                <Hammer className="w-12 h-12 mx-auto text-[#1F4B36] opacity-75" />
+              <div className="bg-amber-50 text-[var(--color-evergreen)] border border-amber-200 rounded-xl p-6 text-center space-y-3">
+                <Hammer className="w-12 h-12 mx-auto text-[var(--color-evergreen)] opacity-75" />
                 <h3 className="font-bold text-base">Hanya Bisa Mengamati</h3>
                 <p className="text-xs text-gray-600">
                   Menu pencatatan konversi bahan baku ini dinonaktifkan untuk role akun marketing / keuangan Anda.
@@ -1992,7 +1993,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
             {subTab === 'history' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
               <div>
                 <h3 className="font-bold text-sm text-gray-800">Status Stok Bahan Baku</h3>
-                <p className="text-xs text-gray-400">Monitoring sisa bahan baku di pabrik ARI SPORTINDO</p>
+                <p className="text-xs text-gray-400">Monitoring sisa bahan baku di pabrik {brandName()}</p>
               </div>
 
               <div className="space-y-2 max-h-64 overflow-y-auto">
@@ -2011,7 +2012,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                       </div>
 
                       <div className="text-right">
-                        <span className={`font-mono font-bold text-xs ${isCritical ? 'text-amber-700' : 'text-[#1F4B36]'}`}>
+                        <span className={`font-mono font-bold text-xs ${isCritical ? 'text-amber-700' : 'text-[var(--color-evergreen)]'}`}>
                           {mat.current_stock} {mat.unit}
                         </span>
                         {isCritical && (
@@ -2045,7 +2046,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                           {job.assigned_employees && job.assigned_employees.length > 0 && <p className="text-[10px] text-gray-400 mt-1">{job.assigned_employees.map(item => item.employee_name).join(', ')}</p>}
                         </div>
                         <div className="text-right shrink-0">
-                          <p className="font-mono text-xs font-black text-[#1F4B36]">{job.qty} pcs</p>
+                          <p className="font-mono text-xs font-black text-[var(--color-evergreen)]">{job.qty} pcs</p>
                           <p className="text-[10px] text-amber-700 font-bold">{job.current_stage}</p>
                         </div>
                       </div>
@@ -2069,7 +2070,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                   <select
                     value={finalJobId}
                     onChange={event => syncFinalOutputsForJob(event.target.value)}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[#1F4B36]"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[var(--color-evergreen)]"
                   >
                     <option value="">Pilih order produksi berjalan</option>
                     {productionJobs.filter(job => job.status !== 'completed').map(job => (
@@ -2116,7 +2117,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
             {subTab === 'history' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
               <div>
                 <h3 className="font-bold text-sm text-gray-800 font-sans">Sisa Stok Barang Jadi</h3>
-                <p className="text-xs text-gray-400">Stok siap kirim hasil produksi gudang ARI SPORTINDO</p>
+                <p className="text-xs text-gray-400">Stok siap kirim hasil produksi gudang {brandName()}</p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-60 overflow-y-auto">

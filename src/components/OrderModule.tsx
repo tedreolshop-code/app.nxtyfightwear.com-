@@ -296,7 +296,7 @@ export const OrderModule: React.FC = () => {
       <div className="no-print flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-4">
         <div>
           <h1 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
-            <ShoppingBag className="w-5 h-5 text-[#1F4B36]" />
+            <ShoppingBag className="w-5 h-5 text-[var(--color-evergreen)]" />
             Manajemen Order & Pesanan
           </h1>
           <p className="text-xs text-gray-400">Kelola pesanan pelanggan dari kanal online (Shopee/Tokopedia) maupun pesanan langsung / offline</p>
@@ -304,7 +304,7 @@ export const OrderModule: React.FC = () => {
 
         <button
           onClick={() => setShowAddForm(!showAddForm)}
-          className="bg-[#1F4B36] hover:bg-[#163826] text-white px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all"
+          className="bg-[var(--color-evergreen)] hover:bg-[var(--color-evergreen-dark)] text-white px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all"
         >
           <Plus className="w-3.5 h-3.5" />
           Tambah Order Baru
@@ -314,7 +314,7 @@ export const OrderModule: React.FC = () => {
       {showAddForm && (
         <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-xs space-y-4">
           <h3 className="font-semibold text-sm text-gray-800 flex items-center gap-1">
-            <Plus className="w-4 h-4 text-[#1F4B36]" /> Catat Order Pelanggan Baru
+            <Plus className="w-4 h-4 text-[var(--color-evergreen)]" /> Catat Order Pelanggan Baru
           </h3>
 
           <form onSubmit={handleCreateOrder} className="grid grid-cols-1 md:grid-cols-12 gap-4">
@@ -424,7 +424,7 @@ export const OrderModule: React.FC = () => {
                     <button
                       type="button"
                       onClick={handleAddItem}
-                      className="w-full bg-[#1F4B36] hover:bg-[#163826] text-white text-xs font-semibold py-2 rounded flex items-center justify-center gap-1"
+                      className="w-full bg-[var(--color-evergreen)] hover:bg-[var(--color-evergreen-dark)] text-white text-xs font-semibold py-2 rounded flex items-center justify-center gap-1"
                     >
                       Tambahkan
                     </button>
@@ -459,7 +459,7 @@ export const OrderModule: React.FC = () => {
                             <td className="p-2">{item.variant}</td>
                             <td className="p-2 text-center font-mono font-bold">{item.qty} Pcs</td>
                             <td className="p-2 text-right font-mono">{formatIDR(item.price)}</td>
-                            <td className="p-2 text-right font-mono text-[#1F4B36] font-bold">{formatIDR(item.subtotal)}</td>
+                            <td className="p-2 text-right font-mono text-[var(--color-evergreen)] font-bold">{formatIDR(item.subtotal)}</td>
                             <td className="p-2 text-center">
                               <button
                                 type="button"
@@ -477,10 +477,10 @@ export const OrderModule: React.FC = () => {
                 </div>
                 {selectedItems.length > 0 && (
                   <div className="text-right text-xs font-bold text-gray-800 space-y-2 pt-2">
-                    <div>Total Belanja: <span className="text-lg font-black text-[#1F4B36] font-mono ml-1">{formatIDR(selectedItems.reduce((acc, curr) => acc + curr.subtotal, 0))}</span></div>
+                    <div>Total Belanja: <span className="text-lg font-black text-[var(--color-evergreen)] font-mono ml-1">{formatIDR(selectedItems.reduce((acc, curr) => acc + curr.subtotal, 0))}</span></div>
                     <button
                       type="submit"
-                      className="bg-[#1F4B36] hover:bg-[#163826] text-white text-xs font-bold px-4 py-2 rounded shadow-sm"
+                      className="bg-[var(--color-evergreen)] hover:bg-[var(--color-evergreen-dark)] text-white text-xs font-bold px-4 py-2 rounded shadow-sm"
                     >
                       Simpan Orderan
                     </button>
@@ -591,16 +591,16 @@ export const OrderModule: React.FC = () => {
                       <td colSpan={9} className="p-4">
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                           <div className="bg-white border border-gray-100 rounded-xl p-4 space-y-3">
-                            <div><h4 className="font-black text-xs text-gray-800 flex items-center gap-1"><PackageCheck className="w-4 h-4 text-[#1F4B36]" /> Tugas Packing</h4><p className="text-[10px] text-gray-400">Assign ke karyawan, nanti muncul di Daftar Kerjaan.</p></div>
+                            <div><h4 className="font-black text-xs text-gray-800 flex items-center gap-1"><PackageCheck className="w-4 h-4 text-[var(--color-evergreen)]" /> Tugas Packing</h4><p className="text-[10px] text-gray-400">Assign ke karyawan, nanti muncul di Daftar Kerjaan.</p></div>
                             <select value={packingEmployeeId} onChange={event => setPackingEmployeeId(event.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs">
                               <option value="">Pilih karyawan packing</option>
                               {employees.map(employee => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
                             </select>
                             {ord.packing_employee_name && <p className="text-xs text-gray-500">PIC sekarang: <b>{ord.packing_employee_name}</b></p>}
-                            <button onClick={() => handleAssignPacking(ord)} className="w-full bg-[#1F4B36] text-white rounded-lg py-2 text-xs font-bold cursor-pointer">Kirim Tugas Packing</button>
+                            <button onClick={() => handleAssignPacking(ord)} className="w-full bg-[var(--color-evergreen)] text-white rounded-lg py-2 text-xs font-bold cursor-pointer">Kirim Tugas Packing</button>
                           </div>
                           <div className="bg-white border border-gray-100 rounded-xl p-4 space-y-3">
-                            <div><h4 className="font-black text-xs text-gray-800 flex items-center gap-1"><Truck className="w-4 h-4 text-[#1F4B36]" /> Resi Pengiriman</h4><p className="text-[10px] text-gray-400">Isi setelah paket siap/kirim.</p></div>
+                            <div><h4 className="font-black text-xs text-gray-800 flex items-center gap-1"><Truck className="w-4 h-4 text-[var(--color-evergreen)]" /> Resi Pengiriman</h4><p className="text-[10px] text-gray-400">Isi setelah paket siap/kirim.</p></div>
                             <div className="grid grid-cols-2 gap-2">
                               <input value={shipExpedition} onChange={event => setShipExpedition(event.target.value)} placeholder="Ekspedisi" className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs" />
                               <input value={shipTracking} onChange={event => setShipTracking(event.target.value)} placeholder="Nomor resi" className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono" />

@@ -272,7 +272,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName }) 
   return (
     <div className="space-y-5">
       {/* Hero header — sapaan + penjualan hari ini (owner) */}
-      <div className="rounded-2xl bg-gradient-to-br from-[#1F4B36] via-[#256446] to-[#2E7D54] p-5 sm:p-6 text-white shadow-lg shadow-emerald-900/10">
+      <div className="rounded-2xl bg-gradient-to-br from-[var(--color-evergreen)] via-[#256446] to-[#2E7D54] p-5 sm:p-6 text-white shadow-lg shadow-emerald-900/10">
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
           <div>
             <h1 className="text-lg font-bold">Halo, {userName.split(' ')[0]} 👋</h1>
@@ -364,7 +364,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName }) 
             className="bg-white rounded-2xl border border-gray-200 p-5 text-left hover:shadow-md transition-shadow cursor-pointer"
           >
             <div className="flex items-center gap-2 mb-4">
-              <TrendingUp className="w-4 h-4 text-[#1F4B36]" />
+              <TrendingUp className="w-4 h-4 text-[var(--color-evergreen)]" />
               <h3 className="text-sm font-bold text-gray-700">Penjualan per Channel</h3>
               <ChevronRight className="w-4 h-4 text-gray-300 ml-auto" />
             </div>
@@ -395,7 +395,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName }) 
             </div>
             <div className="grid grid-cols-[1fr_auto_auto] gap-x-4 pt-2.5 border-t border-gray-200">
               <span className="text-sm font-bold text-gray-700">Total</span>
-              <span className="text-sm font-black text-[#1F4B36] text-right tabular-nums">{formatIDRShort(penjualanHariIni)}</span>
+              <span className="text-sm font-black text-[var(--color-evergreen)] text-right tabular-nums">{formatIDRShort(penjualanHariIni)}</span>
               <span className="text-sm font-bold text-gray-600 text-right tabular-nums">{formatIDRShort(total7Hari)}</span>
             </div>
           </button>
@@ -444,7 +444,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName }) 
         <div className="bg-white rounded-2xl border border-gray-200 p-5">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-4">
             <div className="flex items-center gap-2">
-              <BarChart3 className="w-4 h-4 text-[#1F4B36]" />
+              <BarChart3 className="w-4 h-4 text-[var(--color-evergreen)]" />
               <h3 className="text-sm font-bold text-gray-700">Tren Penjualan 7 Hari</h3>
             </div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 ml-auto">
@@ -500,7 +500,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName }) 
                       />
                     ))}
                   </div>
-                  <span className={`text-[11px] mt-1.5 ${isToday ? 'font-bold text-[#1F4B36]' : 'text-gray-400'}`}>
+                  <span className={`text-[11px] mt-1.5 ${isToday ? 'font-bold text-[var(--color-evergreen)]' : 'text-gray-400'}`}>
                     {t.label}
                   </span>
                 </div>
@@ -515,7 +515,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName }) 
           className="bg-white rounded-2xl border border-gray-200 p-5 text-left hover:shadow-md transition-shadow cursor-pointer"
         >
           <div className="flex items-center gap-2 mb-4">
-            <Archive className="w-4 h-4 text-[#1F4B36]" />
+            <Archive className="w-4 h-4 text-[var(--color-evergreen)]" />
             <h3 className="text-sm font-bold text-gray-700">Produk Terlaris 7 Hari</h3>
             <ChevronRight className="w-4 h-4 text-gray-300 ml-auto" />
           </div>

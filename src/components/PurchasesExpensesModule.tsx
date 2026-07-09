@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Purchase, PurchaseOrderItem, DailyExpense, RawMaterial } from '../types';
 import { dataStore } from '../dataStore';
+import { brandName, brandLegalName } from '../brand';
 import { 
   ShoppingCart, 
   Plus, 
@@ -583,7 +584,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
   const handleCopyPoSummary = (po: Purchase) => {
     if (!po) return;
     const itemsText = po.items.map((item, idx) => `${idx + 1}. ${item.description} - Qty: ${item.qty} Pcs @ ${formatIDR(item.price)} = ${formatIDR(item.subtotal)}`).join('\n');
-    const text = `PURCHASE ORDER ARI SPORTINDO\n---------------------------------\nNo PO: ${po.po_number}\nTanggal: ${formatDateExcel(po.date)}\nSupplier: ${po.supplier}\nStaf: ${po.admin_staff || 'Admin'}\nStatus: ${po.status.toUpperCase()}\n\nDetail Barang:\n${itemsText}\n---------------------------------\nTOTAL: ${formatIDR(po.total_price)}`;
+    const text = `PURCHASE ORDER ${brandName()}\n---------------------------------\nNo PO: ${po.po_number}\nTanggal: ${formatDateExcel(po.date)}\nSupplier: ${po.supplier}\nStaf: ${po.admin_staff || 'Admin'}\nStatus: ${po.status.toUpperCase()}\n\nDetail Barang:\n${itemsText}\n---------------------------------\nTOTAL: ${formatIDR(po.total_price)}`;
     navigator.clipboard.writeText(text);
     alert('Detail Purchase Order disalin ke papan klip!');
   };
@@ -1125,7 +1126,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                     <div className="flex items-center gap-2">
                       <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
                       <span className="text-[11px] font-black text-gray-500 uppercase tracking-wider font-mono">
-                        ARI SPORTINDO &bull; SPREADSHEET JUNI
+                        {brandName()} &bull; SPREADSHEET JUNI
                       </span>
                     </div>
                     <span className="text-[10px] text-gray-400 font-bold bg-gray-200/60 px-2 py-0.5 rounded">
@@ -1357,7 +1358,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                         <div className="flex justify-between items-start border-b border-emerald-800/15 pb-5">
                           <div className="space-y-1">
                             <span className="px-2.5 py-0.5 bg-emerald-950 text-emerald-200 text-[9px] tracking-widest font-black rounded-md block w-fit">
-                              ARI SPORTINDO
+                              {brandName()}
                             </span>
                             <h2 className="text-base font-black text-gray-900 tracking-tight">PURCHASE ORDER</h2>
                             <p className="text-[10px] text-gray-400">Garment, Konveksi & Sablon Olahraga Profesional</p>
@@ -1434,7 +1435,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                             <div>
                               <p className="text-emerald-800/60 uppercase tracking-wider mb-12">Disetujui Oleh,</p>
                               <div className="w-28 h-px bg-emerald-800/20 mx-auto mb-1"></div>
-                              <p className="font-bold text-emerald-950">ARI SPORTINDO</p>
+                              <p className="font-bold text-emerald-950">{brandName()}</p>
                               <p className="text-[8px] text-emerald-800/50">Direktur / Owner</p>
                             </div>
                           </div>

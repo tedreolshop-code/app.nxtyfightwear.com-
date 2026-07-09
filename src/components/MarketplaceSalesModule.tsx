@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { MarketplaceSale, MarketplaceItemSale, Product } from '../types';
 import { dataStore } from '../dataStore';
+import { brandName, brandLegalName } from '../brand';
 import { 
   ShoppingBag, 
   TrendingUp, 
@@ -414,7 +415,7 @@ export const MarketplaceSalesModule: React.FC = () => {
     // Creating identical column list as the Excel picture:
     // TGL | No | No pesenan | Ref | Deskripsi | QTY | Harga | Subtotal | Biaya | Total
     let csvContent = '\uFEFF'; // UTF-8 BOM for Excel compatibility with Indonesian character accents
-    csvContent += 'ARI SPORTINDO\n';
+    csvContent += brandName() + '\n';
     csvContent += 'Laporan Penjualan Barang - Marketplace\n';
     csvContent += `Periode Filter: ${startDate || 'Semua'} s/d ${endDate || 'Semua'}\n\n`;
     csvContent += 'TGL,No,No pesenan,Ref,Deskripsi,QTY,Harga,Subtotal,Biaya,Total,Input Oleh\n';

@@ -96,7 +96,7 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ employee, onUpdate
       {/* Kartu identitas */}
       <div className="bg-white rounded-2xl border border-gray-200 p-6 flex flex-col sm:flex-row items-center gap-5">
         <div className="relative shrink-0">
-          <div className="w-24 h-24 rounded-full overflow-hidden bg-[#1F4B36] flex items-center justify-center border-4 border-emerald-100">
+          <div className="w-24 h-24 rounded-full overflow-hidden bg-[var(--color-evergreen)] flex items-center justify-center border-4 border-emerald-100">
             {employee.photo_url ? (
               <img src={employee.photo_url} alt={employee.name} className="w-full h-full object-cover" />
             ) : (
@@ -106,7 +106,7 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ employee, onUpdate
           <button
             onClick={() => fileRef.current?.click()}
             title="Ganti foto profil"
-            className="absolute -bottom-1 -right-1 bg-[#1F4B36] hover:bg-[#163826] text-white p-2 rounded-full border-2 border-white cursor-pointer transition-colors"
+            className="absolute -bottom-1 -right-1 bg-[var(--color-evergreen)] hover:bg-[var(--color-evergreen-dark)] text-white p-2 rounded-full border-2 border-white cursor-pointer transition-colors"
           >
             <Camera className="w-4 h-4" />
           </button>
@@ -136,18 +136,18 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ employee, onUpdate
         {/* Nomor HP */}
         <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-3">
           <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2">
-            <Phone className="w-4 h-4 text-[#1F4B36]" /> Nomor HP / WhatsApp
+            <Phone className="w-4 h-4 text-[var(--color-evergreen)]" /> Nomor HP / WhatsApp
           </h3>
           <input
             type="text"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             placeholder="08xxxxxxxxxx"
-            className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#1F4B36]"
+            className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-[var(--color-evergreen)]"
           />
           <button
             onClick={handleSavePhone}
-            className="bg-[#1F4B36] hover:bg-[#163826] text-white text-sm font-semibold px-4 py-2 rounded-lg flex items-center gap-1.5 cursor-pointer"
+            className="bg-[var(--color-evergreen)] hover:bg-[var(--color-evergreen-dark)] text-white text-sm font-semibold px-4 py-2 rounded-lg flex items-center gap-1.5 cursor-pointer"
           >
             <Save className="w-4 h-4" /> Simpan
           </button>
@@ -156,22 +156,22 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ employee, onUpdate
         {/* Ganti PIN */}
         <form onSubmit={handleChangePin} className="bg-white rounded-2xl border border-gray-200 p-5 space-y-3">
           <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2">
-            <KeyRound className="w-4 h-4 text-[#1F4B36]" /> Ganti PIN Login
+            <KeyRound className="w-4 h-4 text-[var(--color-evergreen)]" /> Ganti PIN Login
           </h3>
           <input
             type="password" inputMode="numeric" maxLength={4} placeholder="PIN lama"
             value={oldPin} onChange={(e) => setOldPin(e.target.value.replace(/\D/g, ''))}
-            className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-[#1F4B36]"
+            className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-[var(--color-evergreen)]"
           />
           <input
             type="password" inputMode="numeric" maxLength={4} placeholder="PIN baru (4 digit)"
             value={newPin} onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
-            className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-[#1F4B36]"
+            className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-[var(--color-evergreen)]"
           />
           <input
             type="password" inputMode="numeric" maxLength={4} placeholder="Ulangi PIN baru"
             value={newPin2} onChange={(e) => setNewPin2(e.target.value.replace(/\D/g, ''))}
-            className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-[#1F4B36]"
+            className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-[var(--color-evergreen)]"
           />
           <button
             type="submit"
@@ -179,7 +179,7 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ employee, onUpdate
             className={`text-sm font-semibold px-4 py-2 rounded-lg flex items-center gap-1.5 ${
               !oldPin || !newPin || !newPin2
                 ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                : 'bg-[#1F4B36] hover:bg-[#163826] text-white cursor-pointer'
+                : 'bg-[var(--color-evergreen)] hover:bg-[var(--color-evergreen-dark)] text-white cursor-pointer'
             }`}
           >
             <User className="w-4 h-4" /> Ganti PIN
@@ -191,7 +191,7 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ employee, onUpdate
       <div className="qr-print-card bg-white rounded-2xl border border-gray-200 p-5 sm:p-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 no-print">
           <div>
-            <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2"><QrCode className="w-4 h-4 text-[#1F4B36]" /> QR Absensi Saya</h3>
+            <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2"><QrCode className="w-4 h-4 text-[var(--color-evergreen)]" /> QR Absensi Saya</h3>
             <p className="text-xs text-gray-500 mt-1">Tunjukkan kepada admin hanya saat absensi bantuan diperlukan.</p>
           </div>
           {employee.attendance_qr_token && <button type="button" onClick={() => setShowAttendanceQr(value => !value)} className="px-3 py-2 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-100 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer">{showAttendanceQr ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}{showAttendanceQr ? 'Sembunyikan QR' : 'Tampilkan QR'}</button>}
@@ -202,7 +202,7 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ employee, onUpdate
             <div className="bg-white p-3 border border-gray-200 rounded-xl shadow-sm"><QRCodeSVG value={`ARI-ATTENDANCE:${employee.attendance_qr_token}`} size={220} level="H" /></div>
             <div><p className="font-black text-gray-900">{employee.name}</p><p className="text-xs text-gray-500 font-mono">@{employee.username} · {deptName}</p></div>
             <p className="max-w-sm text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-2 no-print">QR ini bersifat pribadi. Jangan dikirim atau dipinjamkan kepada orang lain. Hubungi owner jika QR diduga bocor.</p>
-            <button type="button" onClick={handlePrintQr} className="no-print px-4 py-2 rounded-lg bg-[#1F4B36] text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"><Printer className="w-3.5 h-3.5" /> Cetak Kartu QR</button>
+            <button type="button" onClick={handlePrintQr} className="no-print px-4 py-2 rounded-lg bg-[var(--color-evergreen)] text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"><Printer className="w-3.5 h-3.5" /> Cetak Kartu QR</button>
           </div>
         ) : <div className="mt-4 p-5 rounded-xl bg-gray-50 border border-dashed border-gray-200 text-center no-print"><QrCode className="w-8 h-8 mx-auto text-gray-300" /><p className="text-xs text-gray-400 mt-2">QR disembunyikan untuk keamanan.</p></div>}
       </div>

@@ -623,7 +623,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
       <div className="no-print flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-4">
         <div>
           <h1 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
-            <Users className="w-5 h-5 text-[#1F4B36]" />
+            <Users className="w-5 h-5 text-[var(--color-evergreen)]" />
             Manajemen Karyawan & Akses Menu
           </h1>
           <p className="text-xs text-gray-400">Atur data karyawan, tarif harian, PIN login, dan menu yang bisa dibuka.</p>
@@ -631,7 +631,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
 
         <button
           onClick={openCreateEmployeeModal}
-          className="bg-[#1F4B36] hover:bg-[#163826] text-white px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 shadow-sm cursor-pointer"
+          className="bg-[var(--color-evergreen)] hover:bg-[var(--color-evergreen-dark)] text-white px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 shadow-sm cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5" /> Tambah Karyawan Baru
         </button>
@@ -642,7 +642,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
           <form onSubmit={handleCreateEmployee} className="bg-white rounded-2xl border border-gray-200 shadow-2xl w-full max-w-5xl max-h-[92vh] overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-12 gap-6">
           <div className="md:col-span-12 border-b border-gray-100 pb-3 flex items-center justify-between">
             <h3 className="font-bold text-sm text-gray-800 flex items-center gap-1.5 uppercase tracking-wide">
-              <Plus className="w-4 h-4 text-[#1F4B36]" /> {editEmpId ? `Edit Karyawan: ${name}` : 'Tambah Profil Karyawan Baru'}
+              <Plus className="w-4 h-4 text-[var(--color-evergreen)]" /> {editEmpId ? `Edit Karyawan: ${name}` : 'Tambah Profil Karyawan Baru'}
             </h3>
             <div className="flex items-center gap-2">
               {editEmpId && (
@@ -668,7 +668,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
           <div className="md:col-span-6 space-y-5">
             {/* Section 1: Data Diri */}
             <div className="bg-gray-50/50 p-4 rounded-xl border border-gray-100/80 space-y-3">
-              <h4 className="text-[11px] font-black text-[#1F4B36] uppercase tracking-wider border-b border-gray-200/60 pb-1.5 flex items-center gap-1">
+              <h4 className="text-[11px] font-black text-[var(--color-evergreen)] uppercase tracking-wider border-b border-gray-200/60 pb-1.5 flex items-center gap-1">
                 <Users className="w-3.5 h-3.5" /> 1. Data Diri Karyawan
               </h4>
               <div className="space-y-3">
@@ -752,7 +752,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
 
             {/* Section 2: Detail Tarif Gaji */}
             <div className="bg-gray-50/50 p-4 rounded-xl border border-gray-100/80 space-y-3">
-              <h4 className="text-[11px] font-black text-[#1F4B36] uppercase tracking-wider border-b border-gray-200/60 pb-1.5 flex items-center gap-1">
+              <h4 className="text-[11px] font-black text-[var(--color-evergreen)] uppercase tracking-wider border-b border-gray-200/60 pb-1.5 flex items-center gap-1">
                 <DollarSign className="w-3.5 h-3.5" /> 2. Detail Tarif Gaji & Honor
               </h4>
               <div className="grid grid-cols-2 gap-3">
@@ -828,7 +828,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
 
             {/* Section 3: Keamanan PIN */}
             <div className="bg-gray-50/50 p-4 rounded-xl border border-gray-100/80 space-y-3">
-              <h4 className="text-[11px] font-black text-[#1F4B36] uppercase tracking-wider border-b border-gray-200/60 pb-1.5 flex items-center gap-1">
+              <h4 className="text-[11px] font-black text-[var(--color-evergreen)] uppercase tracking-wider border-b border-gray-200/60 pb-1.5 flex items-center gap-1">
                 <Lock className="w-3.5 h-3.5" /> 3. Keamanan PIN Akses (Log-In)
               </h4>
               <div>
@@ -870,7 +870,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                       type="checkbox"
                       checked={allowedTabs.includes(menu.id)}
                       onChange={() => handleToggleTabPermission(menu.id, allowedTabs, setAllowedTabs)}
-                      className="accent-[#1F4B36]"
+                      className="accent-[var(--color-evergreen)]"
                     />
                     <span className="text-[11px] font-bold">{menu.label}</span>
                   </label>
@@ -889,7 +889,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
               </button>
               <button
                 type="submit"
-                className="bg-[#1F4B36] hover:bg-[#163826] text-white text-xs font-bold px-4 py-2 rounded shadow-sm cursor-pointer"
+                className="bg-[var(--color-evergreen)] hover:bg-[var(--color-evergreen-dark)] text-white text-xs font-bold px-4 py-2 rounded shadow-sm cursor-pointer"
               >
                 {editEmpId ? 'Simpan Perubahan' : 'Simpan Profil Karyawan'}
               </button>
@@ -928,7 +928,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                   <tr key={emp.id} className="border-b border-gray-100 hover:bg-gray-50/50">
                     <td className="p-3">
                       <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-full overflow-hidden bg-emerald-50 border border-emerald-100 flex items-center justify-center font-bold text-[#1F4B36] shrink-0">
+                        <div className="w-8 h-8 rounded-full overflow-hidden bg-emerald-50 border border-emerald-100 flex items-center justify-center font-bold text-[var(--color-evergreen)] shrink-0">
                           {emp.photo_url ? <img src={emp.photo_url} alt={emp.name} className="w-full h-full object-cover" /> : emp.name[0]}
                         </div>
                         <div className="min-w-0">
@@ -975,7 +975,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                         </button>
                         <button
                           onClick={() => handleOpenProfileModal(emp)}
-                          className="bg-[#1F4B36] hover:bg-[#122d20] text-white font-bold text-[10px] px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition-colors cursor-pointer shadow-xs"
+                          className="bg-[var(--color-evergreen)] hover:bg-[#122d20] text-white font-bold text-[10px] px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition-colors cursor-pointer shadow-xs"
                         >
                           <DollarSign className="w-3 h-3 text-emerald-200" /> Profil &amp; Gaji
                         </button>
@@ -1007,7 +1007,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
             <div><h3 className="font-black text-gray-900">QR Absensi Karyawan</h3><p className="text-sm text-gray-600">{qrEmployee.name}</p><p className="text-xs text-gray-400">@{qrEmployee.username}</p></div>
             <div className="inline-flex bg-white border-8 border-white shadow-md"><QRCodeSVG value={`ARI-ATTENDANCE:${qrEmployee.attendance_qr_token}`} size={220} level="H" /></div>
             <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-2">QR bersifat pribadi. Cetak dan berikan hanya kepada karyawan terkait. QR tidak menyimpan PIN.</p>
-            <div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => window.print()} className="py-2.5 bg-[#1F4B36] text-white rounded-xl text-xs font-bold cursor-pointer"><Printer className="w-3.5 h-3.5 inline mr-1" /> Cetak</button><button type="button" onClick={() => setQrEmployee(null)} className="py-2.5 bg-gray-100 text-gray-700 rounded-xl text-xs font-bold cursor-pointer">Tutup</button></div>
+            <div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => window.print()} className="py-2.5 bg-[var(--color-evergreen)] text-white rounded-xl text-xs font-bold cursor-pointer"><Printer className="w-3.5 h-3.5 inline mr-1" /> Cetak</button><button type="button" onClick={() => setQrEmployee(null)} className="py-2.5 bg-gray-100 text-gray-700 rounded-xl text-xs font-bold cursor-pointer">Tutup</button></div>
           </div>
         </div>
       )}
@@ -1020,7 +1020,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden border border-gray-100">
             
             {/* Modal Header */}
-            <div className="bg-[#1F4B36] text-white p-5 flex items-center justify-between">
+            <div className="bg-[var(--color-evergreen)] text-white p-5 flex items-center justify-between">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <h3 className="text-lg font-black tracking-wide uppercase">{profileModalEmp.name}</h3>
@@ -1047,7 +1047,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                 onClick={() => { setActiveModalTab('payroll'); setEditingPayroll(null); }}
                 className={`py-3.5 text-xs font-bold transition-all border-b-2 flex items-center gap-1.5 cursor-pointer ${
                   activeModalTab === 'payroll' 
-                    ? 'border-[#1F4B36] text-[#1F4B36]' 
+                    ? 'border-[var(--color-evergreen)] text-[var(--color-evergreen)]' 
                     : 'border-transparent text-gray-500 hover:text-gray-800'
                 }`}
               >
@@ -1058,7 +1058,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                 onClick={() => { setActiveModalTab('attendance'); setEditingPayroll(null); }}
                 className={`py-3.5 text-xs font-bold transition-all border-b-2 flex items-center gap-1.5 cursor-pointer ${
                   activeModalTab === 'attendance' 
-                    ? 'border-[#1F4B36] text-[#1F4B36]' 
+                    ? 'border-[var(--color-evergreen)] text-[var(--color-evergreen)]' 
                     : 'border-transparent text-gray-500 hover:text-gray-800'
                 }`}
               >
@@ -1069,7 +1069,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                 onClick={() => { setActiveModalTab('profile'); setEditingPayroll(null); }}
                 className={`py-3.5 text-xs font-bold transition-all border-b-2 flex items-center gap-1.5 cursor-pointer ${
                   activeModalTab === 'profile' 
-                    ? 'border-[#1F4B36] text-[#1F4B36]' 
+                    ? 'border-[var(--color-evergreen)] text-[var(--color-evergreen)]' 
                     : 'border-transparent text-gray-500 hover:text-gray-800'
                 }`}
               >
@@ -1085,7 +1085,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                 <div className="space-y-6 animate-fadeIn">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="bg-gray-50 p-5 rounded-xl border border-gray-100 space-y-4">
-                      <h4 className="text-xs font-black text-[#1F4B36] uppercase tracking-wider border-b pb-2">Data Kepegawaian</h4>
+                      <h4 className="text-xs font-black text-[var(--color-evergreen)] uppercase tracking-wider border-b pb-2">Data Kepegawaian</h4>
                       <div className="space-y-2.5 text-xs text-gray-600">
                         <div>
                           <span className="text-gray-400 block text-[10px] uppercase font-bold tracking-wider">Nama Lengkap</span>
@@ -1103,7 +1103,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                     </div>
 
                     <div className="bg-gray-50 p-5 rounded-xl border border-gray-100 space-y-4">
-                      <h4 className="text-xs font-black text-[#1F4B36] uppercase tracking-wider border-b pb-2">Komponen Tarif Honor</h4>
+                      <h4 className="text-xs font-black text-[var(--color-evergreen)] uppercase tracking-wider border-b pb-2">Komponen Tarif Honor</h4>
                       <div className="space-y-2.5 text-xs text-gray-600">
                         <div>
                           <span className="text-gray-400 block text-[10px] uppercase font-bold tracking-wider">Tarif Honor Harian</span>
@@ -1129,7 +1129,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                     </div>
 
                     <div className="bg-gray-50 p-5 rounded-xl border border-gray-100 space-y-4">
-                      <h4 className="text-xs font-black text-[#1F4B36] uppercase tracking-wider border-b pb-2">Akses Menu</h4>
+                      <h4 className="text-xs font-black text-[var(--color-evergreen)] uppercase tracking-wider border-b pb-2">Akses Menu</h4>
                       <div className="space-y-1 text-xs">
                         <span className="text-gray-400 block text-[10px] uppercase font-bold tracking-wider mb-1">{accessRoleLabel(profileModalEmp.access_role)} dapat membuka</span>
                         <div className="flex flex-wrap gap-1">
@@ -1153,7 +1153,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                       <h4 className="text-sm font-bold text-gray-800">Log Check-In &amp; Check-Out Absensi</h4>
                       <p className="text-[10px] text-gray-400">Menampilkan seluruh riwayat scan mesin absensi karyawan.</p>
                     </div>
-                    <span className="bg-[#1F4B36]/10 text-[#1F4B36] text-[10px] font-bold px-3 py-1 rounded-full font-mono">
+                    <span className="bg-[var(--color-evergreen)]/10 text-[var(--color-evergreen)] text-[10px] font-bold px-3 py-1 rounded-full font-mono">
                       Total Kehadiran: {employeeAttendance.length} Records
                     </span>
                   </div>
@@ -1214,7 +1214,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                   <div className="bg-gray-50 rounded-xl border border-gray-200 p-5 space-y-4">
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-gray-200 pb-3">
                       <div>
-                        <h4 className="text-sm font-bold text-[#1F4B36] flex items-center gap-1.5">
+                        <h4 className="text-sm font-bold text-[var(--color-evergreen)] flex items-center gap-1.5">
                           <Calculator className="w-4 h-4" /> Generator Gaji &amp; Slip Baru
                         </h4>
                         <p className="text-[10px] text-gray-400">Pilih rentang tanggal untuk menghitung honor harian &amp; lembur otomatis dari data absensi.</p>
@@ -1240,7 +1240,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                         <button
                           type="button"
                           onClick={handleAutoCalculateFromAttendance}
-                          className="bg-[#1F4B36] hover:bg-[#122d20] text-white font-bold text-xs px-3.5 py-2 rounded-lg flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
+                          className="bg-[var(--color-evergreen)] hover:bg-[#122d20] text-white font-bold text-xs px-3.5 py-2 rounded-lg flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
                         >
                           <Clock className="w-3.5 h-3.5" /> Ambil Data Absensi &amp; Hitung
                         </button>
@@ -1331,11 +1331,11 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                         <div className="flex items-center gap-4">
                           <div className="text-right">
                             <span className="text-[10px] text-gray-400 font-bold block uppercase tracking-wider">TOTAL GAJI BERSIH (TAKE HOME PAY)</span>
-                            <span className="text-lg font-black text-[#1F4B36] font-mono">{formatIDR(modalTotalPay)}</span>
+                            <span className="text-lg font-black text-[var(--color-evergreen)] font-mono">{formatIDR(modalTotalPay)}</span>
                           </div>
                           <button
                             type="submit"
-                            className="bg-[#1F4B36] hover:bg-[#122d20] text-white text-xs font-black px-5 py-3 rounded-xl shadow-md cursor-pointer flex items-center gap-1.5 transition-all"
+                            className="bg-[var(--color-evergreen)] hover:bg-[#122d20] text-white text-xs font-black px-5 py-3 rounded-xl shadow-md cursor-pointer flex items-center gap-1.5 transition-all"
                           >
                             <Save className="w-4 h-4 text-emerald-200" /> Simpan Slip Gaji
                           </button>
@@ -1425,7 +1425,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                               Uang Lembur Baru: <span className="font-bold font-mono">{formatIDR(editOvertimeHours * profileModalEmp.rate_lembur_per_jam)}</span>
                             </div>
                             <div>
-                              Total Take Home Pay Baru: <span className="font-black text-sm text-[#1F4B36] font-mono">{formatIDR(editTotalPay)}</span>
+                              Total Take Home Pay Baru: <span className="font-black text-sm text-[var(--color-evergreen)] font-mono">{formatIDR(editTotalPay)}</span>
                             </div>
                           </div>
 
@@ -1485,7 +1485,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                                 <td className="p-3 text-right font-mono text-rose-600 font-medium">
                                   -{formatIDR(pay.cash_advance_deduction)}
                                 </td>
-                                <td className="p-3 text-right font-mono text-[#1F4B36] font-black text-sm">
+                                <td className="p-3 text-right font-mono text-[var(--color-evergreen)] font-black text-sm">
                                   {formatIDR(pay.total_pay)}
                                 </td>
                                 <td className="p-3 text-center">
@@ -1500,7 +1500,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                                     <button
                                       type="button"
                                       onClick={() => handlePrintModalPayroll(pay)}
-                                      className="bg-emerald-50 hover:bg-emerald-100 text-[#1F4B36] font-bold text-[10px] px-2 py-1 rounded border border-emerald-200 flex items-center gap-0.5 cursor-pointer"
+                                      className="bg-emerald-50 hover:bg-emerald-100 text-[var(--color-evergreen)] font-bold text-[10px] px-2 py-1 rounded border border-emerald-200 flex items-center gap-0.5 cursor-pointer"
                                     >
                                       <Printer className="w-3 h-3" /> Cetak
                                     </button>
@@ -1547,7 +1547,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
           <div className="bg-white rounded-xl overflow-hidden shadow-2xl p-6 space-y-4 max-w-lg w-full print:shadow-none print:p-0">
             <div className="flex justify-between items-center border-b pb-2 print:hidden">
               <span className="text-xs font-bold text-gray-700 flex items-center gap-1">
-                <Printer className="w-4 h-4 text-[#1F4B36]" /> Pratinjau Slip Gaji Continuous Form
+                <Printer className="w-4 h-4 text-[var(--color-evergreen)]" /> Pratinjau Slip Gaji Continuous Form
               </span>
               <button 
                 type="button"
@@ -1648,7 +1648,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
               <button
                 type="button"
                 onClick={() => window.print()}
-                className="bg-[#1F4B36] hover:bg-[#122d20] text-white text-xs font-black px-4 py-2 rounded-lg flex items-center gap-1 cursor-pointer"
+                className="bg-[var(--color-evergreen)] hover:bg-[#122d20] text-white text-xs font-black px-4 py-2 rounded-lg flex items-center gap-1 cursor-pointer"
               >
                 <Printer className="w-4 h-4" /> Cetak Slip Gaji
               </button>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Customer, Invoice, DeliveryNote, Product, InvoiceItem } from '../types';
 import { dataStore } from '../dataStore';
+import { brandName, brandLegalName } from '../brand';
 import { FileText, Truck, UserPlus, ShoppingCart, Printer, Search, CheckCircle, Clock } from 'lucide-react';
 
 interface InvoiceModuleProps {
@@ -461,7 +462,7 @@ export const InvoiceModule: React.FC<InvoiceModuleProps> = ({ isAdmin, userRole 
           <div className="bg-white rounded-lg border border-gray-100 p-6 space-y-4">
             <div>
               <h3 className="font-semibold text-sm text-gray-800">Daftar Invoice</h3>
-              <p className="text-xs text-gray-400">Total invoice aktif dalam sistem penagihan ARI SPORTINDO</p>
+              <p className="text-xs text-gray-400">Total invoice aktif dalam sistem penagihan {brandName()}</p>
             </div>
 
             <div className="space-y-3 max-h-72 overflow-y-auto">
@@ -732,7 +733,7 @@ export const InvoiceModule: React.FC<InvoiceModuleProps> = ({ isAdmin, userRole 
                         </div>
 
                         <div className="text-right">
-                          <h2 className="text-base font-black tracking-wider" style={{ color: inkColor === 'blue' ? '#1E3A8A' : '#0F172A' }}>ARI SPORTINDO</h2>
+                          <h2 className="text-base font-black tracking-wider" style={{ color: inkColor === 'blue' ? '#1E3A8A' : '#0F172A' }}>{brandName()}</h2>
                           <div className="mt-2 text-[11px] leading-tight space-y-1">
                             <p className="font-mono">No Invoice : <span className="font-bold">{previewInvoice.invoice_number}</span></p>
                             <p className="font-mono">Tanggal    : {previewInvoice.date}</p>
@@ -815,7 +816,7 @@ export const InvoiceModule: React.FC<InvoiceModuleProps> = ({ isAdmin, userRole 
                       {/* Signatures Row */}
                       <div className="grid grid-cols-2 gap-4 text-center text-[10px] pt-4 mt-auto">
                         <div className="relative">
-                          <p className="font-bold">ARI SPORTINDO</p>
+                          <p className="font-bold">{brandName()}</p>
                           <div className="h-10 flex items-center justify-center">
                             {/* SVG Ballpoint Signature */}
                             <svg className="w-20 h-8 opacity-90" viewBox="0 0 100 50" fill="none" style={{ stroke: inkColor === 'blue' ? '#1E40AF' : '#1E293B' }}>
@@ -843,7 +844,7 @@ export const InvoiceModule: React.FC<InvoiceModuleProps> = ({ isAdmin, userRole 
                       {/* SURAT JALAN DESIGN */}
                       <div className="flex justify-between items-start">
                         <div>
-                          <h1 className="text-lg font-black tracking-widest" style={{ color: inkColor === 'blue' ? '#1E3A8A' : '#0F172A' }}>ARI SPORTINDO</h1>
+                          <h1 className="text-lg font-black tracking-widest" style={{ color: inkColor === 'blue' ? '#1E3A8A' : '#0F172A' }}>{brandName()}</h1>
                           <div className="mt-2 text-[11px] leading-tight space-y-0.5">
                             <p className="font-semibold text-[10px] opacity-75">Kepada Yth.</p>
                             <p className="font-bold text-sm">{previewSJ.customer_name}</p>
@@ -897,7 +898,7 @@ export const InvoiceModule: React.FC<InvoiceModuleProps> = ({ isAdmin, userRole 
 
                       {/* Note bottom */}
                       <div className="text-[9px] leading-relaxed opacity-75 border-t border-dashed pt-2" style={{ borderColor: 'currentColor' }}>
-                        * Catatan: Barang telah diperiksa di bagian Logistik ARI SPORTINDO dan dipastikan dalam kondisi prima (QC Passed). Mohon kembalikan lembar kedua bertandatangan kepada pihak kurir/expedisi.
+                        * Catatan: Barang telah diperiksa di bagian Logistik {brandName()} dan dipastikan dalam kondisi prima (QC Passed). Mohon kembalikan lembar kedua bertandatangan kepada pihak kurir/expedisi.
                       </div>
 
                       {/* Signatures Row */}
@@ -929,7 +930,7 @@ export const InvoiceModule: React.FC<InvoiceModuleProps> = ({ isAdmin, userRole 
                               <path d="M10 20 C 30 0, 40 40, 60 20 C 70 10, 80 30, 90 15" strokeWidth="1"/>
                             </svg>
                           </div>
-                          <p className="font-mono opacity-80">ARI SPORTINDO</p>
+                          <p className="font-mono opacity-80">{brandName()}</p>
                         </div>
                       </div>
                     </div>
@@ -991,7 +992,7 @@ export const InvoiceModule: React.FC<InvoiceModuleProps> = ({ isAdmin, userRole 
               </div>
 
               <div className="text-right">
-                <h2 className="text-base font-bold tracking-wider">ARI SPORTINDO</h2>
+                <h2 className="text-base font-bold tracking-wider">{brandName()}</h2>
                 <div className="mt-2 text-[11px] leading-tight space-y-1">
                   <p>No Invoice : <span className="font-bold">{printInvoice.invoice_number}</span></p>
                   <p>Tanggal    : {printInvoice.date}</p>
@@ -1060,7 +1061,7 @@ export const InvoiceModule: React.FC<InvoiceModuleProps> = ({ isAdmin, userRole 
             {/* Signatures Row */}
             <div className="grid grid-cols-2 gap-4 text-center text-[10px] pt-2">
               <div>
-                <p className="font-bold">ARI SPORTINDO</p>
+                <p className="font-bold">{brandName()}</p>
                 <div className="h-10 flex items-center justify-center">
                   <svg className="w-16 h-8" viewBox="0 0 100 50" fill="none" stroke="black">
                     <path d="M10 25 C 20 5, 30 35, 45 15 C 60 -5, 55 45, 75 25 C 85 15, 90 30, 95 20 M12 28 L88 20" strokeWidth="1.5" strokeLinecap="round"/>
@@ -1094,7 +1095,7 @@ export const InvoiceModule: React.FC<InvoiceModuleProps> = ({ isAdmin, userRole 
             {/* SURAT JALAN DESIGN */}
             <div className="flex justify-between items-start">
               <div>
-                <h1 className="text-lg font-bold tracking-widest">ARI SPORTINDO</h1>
+                <h1 className="text-lg font-bold tracking-widest">{brandName()}</h1>
                 <div className="mt-2 text-[11px] leading-tight space-y-0.5">
                   <p className="font-bold">Kepada Yth.</p>
                   <p className="font-bold text-sm">{printSJ.customer_name}</p>
@@ -1140,7 +1141,7 @@ export const InvoiceModule: React.FC<InvoiceModuleProps> = ({ isAdmin, userRole 
 
             {/* Note bottom */}
             <div className="text-[9px] leading-tight opacity-75 border-t border-dashed border-black pt-1">
-              * Catatan: Barang telah diperiksa di bagian Logistik ARI SPORTINDO dan dipastikan dalam kondisi prima (QC Passed). Mohon kembalikan lembar kedua bertandatangan kepada pihak kurir/expedisi.
+              * Catatan: Barang telah diperiksa di bagian Logistik {brandName()} dan dipastikan dalam kondisi prima (QC Passed). Mohon kembalikan lembar kedua bertandatangan kepada pihak kurir/expedisi.
             </div>
 
             {/* Signatures Row */}
@@ -1168,7 +1169,7 @@ export const InvoiceModule: React.FC<InvoiceModuleProps> = ({ isAdmin, userRole 
                     <path d="M10 20 C 30 0, 40 40, 60 20 C 70 10, 80 30, 90 15" strokeWidth="1"/>
                   </svg>
                 </div>
-                <p>ARI SPORTINDO</p>
+                <p>{brandName()}</p>
               </div>
             </div>
 

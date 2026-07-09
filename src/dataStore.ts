@@ -25,6 +25,7 @@ import {
   RecycleEntry,
   UserRole
   ,WorkSettings
+  ,BrandSettings
   ,ProductionHandoff
   ,RejectedGood
   ,ProductionTaskLog
@@ -212,6 +213,16 @@ const INITIAL_EXPENSE_CATEGORIES = [
   'Perbaikan & Maintenance',
   'Lain-lain / Overhead'
 ];
+// Default brand mengikuti instalasi awal (ARI SPORTINDO) — klien lain tinggal
+// mengubahnya sendiri di menu Pengaturan tanpa menyentuh code (white label).
+const INITIAL_BRAND_SETTINGS: BrandSettings = {
+  company_name: 'ARI SPORTINDO',
+  legal_name: 'PT ARI SPORTINDO',
+  tagline: 'Sistem Produksi & Manajemen',
+  logo_data_url: '',
+  primary_color: '#1F4B36',
+};
+
 const INITIAL_WORK_SETTINGS: WorkSettings = {
   start_time: '08:00',
   end_time: '16:00',
@@ -473,6 +484,10 @@ class DataStore {
     return settings;
   };
   setWorkSettings = (data: WorkSettings) => this.set('work_settings', data);
+
+  getBrandSettings = (): BrandSettings =>
+    ({ ...INITIAL_BRAND_SETTINGS, ...this.get<Partial<BrandSettings>>('brand_settings', INITIAL_BRAND_SETTINGS) });
+  setBrandSettings = (data: BrandSettings) => this.set('brand_settings', data);
 
   getCalibration = (): PrinterCalibration => this.get('calibration', INITIAL_CALIBRATION);
   setCalibration = (data: PrinterCalibration) => this.set('calibration', data);
