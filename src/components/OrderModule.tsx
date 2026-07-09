@@ -9,7 +9,13 @@ export const OrderModule: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
+  // Mode edit: id order pending yang sedang diedit (null = form tambah baru)
+  const [editOrderId, setEditOrderId] = useState<string | null>(null);
   const [expandedOrderId, setExpandedOrderId] = useState('');
+
+  // Filter & pencarian daftar pesanan ('active' = semua kecuali dibatalkan)
+  const [filterStatus, setFilterStatus] = useState<'active' | 'all' | Order['status']>('active');
+  const [orderSearch, setOrderSearch] = useState('');
   const [packingEmployeeId, setPackingEmployeeId] = useState('');
   const [shipExpedition, setShipExpedition] = useState('');
   const [shipTracking, setShipTracking] = useState('');
@@ -80,6 +86,50 @@ export const OrderModule: React.FC = () => {
     setSelectedItems(selectedItems.filter(item => item.id !== id));
   };
 
+  const resetOrderForm = () => {
+    setCustomerName('');
+    setCustomerPhone('');
+    setSource('offline');
+    setMarketplaceName('Shopee');
+    setNotes('');
+    setSelectedItems([]);
+    setCurrentProductId('');
+    setCurrentQty(1);
+    setShippingFee(0);
+    setEditOrderId(null);
+    setShowAddForm(false);
+  };
+
+  // Edit hanya untuk order pending — setelah masuk produksi, item sudah memotong bahan baku
+  const startEditOrder = (order: Order) => {
+    if (order.status !== 'pending') {
+      alert('Hanya order berstatus Pending yang bisa diedit.');
+      return;
+    }
+    setEditOrderId(order.id);
+    setCustomerName(order.customer_name);
+    setCustomerPhone(order.customer_phone);
+    setSource(order.source);
+    setMarketplaceName(order.marketplace_name || 'Shopee');
+    setNotes(order.notes || '');
+    setSelectedItems(order.items.map(item => ({ ...item })));
+    setShippingFee(order.shipping_fee || 0);
+    setShowAddForm(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Nomor order: lanjutkan urutan tertinggi bulan berjalan agar tidak duplikat saat ada order yang dihapus
+  const generateOrderNumber = () => {
+    const now = new Date();
+    const prefix = `ORD/${now.getFullYear()}/${(now.getMonth() + 1).toString().padStart(2, '0')}/`;
+    const maxSeq = orders.reduce((max, o) => {
+      if (!o.order_number.startsWith(prefix)) return max;
+      const seq = parseInt(o.order_number.slice(prefix.length), 10);
+      return Number.isFinite(seq) && seq > max ? seq : max;
+    }, 0);
+    return `${prefix}${(maxSeq + 1).toString().padStart(3, '0')}`;
+  };
+
   const handleCreateOrder = (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedItems.length === 0) {
@@ -87,39 +137,51 @@ export const OrderModule: React.FC = () => {
       return;
     }
 
-    const orderNumber = `ORD/${new Date().getFullYear()}/${(new Date().getMonth() + 1).toString().padStart(2, '0')}/${(orders.length + 1).toString().padStart(3, '0')}`;
     const cleanShippingFee = Math.max(0, shippingFee || 0);
     const total = selectedItems.reduce((acc, curr) => acc + curr.subtotal, 0) + cleanShippingFee;
 
-    const newOrder: Order = {
-      id: `ord-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
-      order_number: orderNumber,
-      customer_name: customerName,
-      customer_phone: customerPhone,
-      source,
-      marketplace_name: source === 'online' ? marketplaceName : undefined,
-      date: new Date().toISOString().split('T')[0],
-      items: selectedItems,
-      shipping_fee: cleanShippingFee,
-      total,
-      status: 'pending',
-      notes
-    };
+    if (editOrderId) {
+      const existing = orders.find(o => o.id === editOrderId);
+      if (!existing || existing.status !== 'pending') {
+        alert('Order ini sudah tidak bisa diedit (status berubah).');
+        resetOrderForm();
+        loadData();
+        return;
+      }
+      const updatedOrders = orders.map(o => o.id === editOrderId ? {
+        ...o,
+        customer_name: customerName,
+        customer_phone: customerPhone,
+        source,
+        marketplace_name: source === 'online' ? marketplaceName : undefined,
+        items: selectedItems,
+        shipping_fee: cleanShippingFee,
+        total,
+        notes
+      } : o);
+      dataStore.setOrders(updatedOrders);
+      alert(`Perubahan order ${existing.order_number} berhasil disimpan.`);
+    } else {
+      const orderNumber = generateOrderNumber();
+      const newOrder: Order = {
+        id: `ord-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+        order_number: orderNumber,
+        customer_name: customerName,
+        customer_phone: customerPhone,
+        source,
+        marketplace_name: source === 'online' ? marketplaceName : undefined,
+        date: new Date().toISOString().split('T')[0],
+        items: selectedItems,
+        shipping_fee: cleanShippingFee,
+        total,
+        status: 'pending',
+        notes
+      };
+      dataStore.setOrders([newOrder, ...orders]);
+      alert(`Order ${orderNumber} berhasil dicatat! Anda dapat meneruskannya ke proses produksi sekarang.`);
+    }
 
-    // Update orders list
-    const updatedOrders = [newOrder, ...orders];
-    dataStore.setOrders(updatedOrders);
-
-    // Reset Form
-    setCustomerName('');
-    setCustomerPhone('');
-    setSource('offline');
-    setNotes('');
-    setSelectedItems([]);
-    setShippingFee(0);
-    setShowAddForm(false);
-    
-    alert(`Order ${orderNumber} berhasil dicatat! Anda dapat meneruskannya ke proses produksi sekarang.`);
+    resetOrderForm();
     loadData();
   };
 
@@ -222,9 +284,27 @@ export const OrderModule: React.FC = () => {
     loadData();
   };
 
+  // Hapus permanen hanya untuk order yang belum menyentuh stok (pending) atau sudah dibatalkan
+  const handleDeleteOrder = (order: Order) => {
+    if (order.status !== 'pending' && order.status !== 'cancelled') {
+      alert('Hanya order Pending atau Dibatalkan yang boleh dihapus, agar jejak stok & produksi tetap utuh.');
+      return;
+    }
+    if (!window.confirm(`Hapus PERMANEN order ${order.order_number} (${order.customer_name})?\n\nTindakan ini tidak bisa dibatalkan.`)) return;
+    dataStore.setOrders(orders.filter(o => o.id !== order.id));
+    alert(`Order ${order.order_number} telah dihapus.`);
+    loadData();
+  };
+
   const handleCompleteOrder = (orderId: string) => {
     const order = orders.find(o => o.id === orderId);
     if (!order) return;
+
+    const unfinishedJobs = dataStore.getProductionJobs().filter(job => job.order_id === order.id && job.status !== 'completed');
+    const warning = unfinishedJobs.length > 0
+      ? `PERHATIAN: ${unfinishedJobs.length} pekerjaan produksi order ini BELUM selesai (${unfinishedJobs.map(job => job.product_name).join(', ')}).\n\n`
+      : '';
+    if (!window.confirm(`${warning}Tandai order ${order.order_number} selesai?\n\nStok produk jadi di gudang akan langsung dipotong dan tidak bisa di-undo.`)) return;
 
     // Barang terkirim ke pembeli: potong stok produk jadi dari gudang
     order.items.forEach(item => {
@@ -312,6 +392,17 @@ export const OrderModule: React.FC = () => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(val);
   };
 
+  const visibleOrders = orders.filter(ord => {
+    if (filterStatus === 'active') {
+      if (ord.status === 'cancelled') return false;
+    } else if (filterStatus !== 'all' && ord.status !== filterStatus) {
+      return false;
+    }
+    const q = orderSearch.trim().toLowerCase();
+    if (q && !`${ord.order_number} ${ord.customer_name} ${ord.customer_phone}`.toLowerCase().includes(q)) return false;
+    return true;
+  });
+
   return (
     <div className="space-y-6">
       <div className="no-print flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-4">
@@ -324,18 +415,19 @@ export const OrderModule: React.FC = () => {
         </div>
 
         <button
-          onClick={() => setShowAddForm(!showAddForm)}
+          onClick={() => { if (showAddForm) { resetOrderForm(); } else { setShowAddForm(true); } }}
           className="bg-[var(--color-evergreen)] hover:bg-[var(--color-evergreen-dark)] text-white px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all"
         >
-          <Plus className="w-3.5 h-3.5" />
-          Tambah Order Baru
+          {showAddForm ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+          {showAddForm ? 'Tutup Form' : 'Tambah Order Baru'}
         </button>
       </div>
 
       {showAddForm && (
         <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-xs space-y-4">
           <h3 className="font-semibold text-sm text-gray-800 flex items-center gap-1">
-            <Plus className="w-4 h-4 text-[var(--color-evergreen)]" /> Catat Order Pelanggan Baru
+            <Plus className="w-4 h-4 text-[var(--color-evergreen)]" />
+            {editOrderId ? `Edit Order ${orders.find(o => o.id === editOrderId)?.order_number || ''}` : 'Catat Order Pelanggan Baru'}
           </h3>
 
           <form onSubmit={handleCreateOrder} className="grid grid-cols-1 md:grid-cols-12 gap-4">
@@ -526,7 +618,7 @@ export const OrderModule: React.FC = () => {
                         type="submit"
                         className="bg-[var(--color-evergreen)] hover:bg-[var(--color-evergreen-dark)] text-white text-xs font-bold px-4 py-2 rounded shadow-sm mt-1"
                       >
-                        Simpan Orderan
+                        {editOrderId ? 'Simpan Perubahan Order' : 'Simpan Orderan'}
                       </button>
                     </div>
                   </div>
@@ -539,9 +631,32 @@ export const OrderModule: React.FC = () => {
 
       {/* Orders List */}
       <div className="bg-white rounded-lg border border-gray-100 overflow-hidden shadow-xs">
-        <div className="p-4 bg-gray-50/50 border-b border-gray-100 flex items-center justify-between">
-          <span className="text-xs font-bold text-gray-700">Daftar Semua Pesanan Aktif</span>
-          <span className="text-[10px] text-gray-400 font-mono">Total: {orders.length} Orderan</span>
+        <div className="p-4 bg-gray-50/50 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div>
+            <span className="text-xs font-bold text-gray-700 block">Daftar Pesanan</span>
+            <span className="text-[10px] text-gray-400 font-mono">Menampilkan {visibleOrders.length} dari {orders.length} orderan</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              value={orderSearch}
+              onChange={(e) => setOrderSearch(e.target.value)}
+              placeholder="Cari no. order / pelanggan..."
+              className="bg-white border border-gray-200 rounded px-3 py-1.5 text-xs text-gray-800 focus:outline-none focus:border-emerald-600 w-48"
+            />
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value as typeof filterStatus)}
+              className="bg-white border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-800 focus:outline-none focus:border-emerald-600 cursor-pointer"
+            >
+              <option value="active">Aktif (tanpa dibatalkan)</option>
+              <option value="pending">Pending</option>
+              <option value="production">Di Produksi</option>
+              <option value="completed">Selesai</option>
+              <option value="cancelled">Dibatalkan</option>
+              <option value="all">Semua Status</option>
+            </select>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -560,12 +675,14 @@ export const OrderModule: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {orders.length === 0 ? (
+              {visibleOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="p-6 text-center text-gray-400 italic">Belum ada data pesanan tercatat.</td>
+                  <td colSpan={9} className="p-6 text-center text-gray-400 italic">
+                    {orders.length === 0 ? 'Belum ada data pesanan tercatat.' : 'Tidak ada pesanan yang cocok dengan pencarian / filter.'}
+                  </td>
                 </tr>
               ) : (
-                orders.map((ord) => (
+                visibleOrders.map((ord) => (
                   <React.Fragment key={ord.id}>
                   <tr className="border-b border-gray-100 hover:bg-gray-50/55 align-top">
                     <td className="p-3 font-mono font-bold text-gray-800">{ord.order_number}</td>
@@ -627,11 +744,27 @@ export const OrderModule: React.FC = () => {
                       )}
 
                       {ord.status === 'pending' && (
+                        <>
+                          <button
+                            onClick={() => startEditOrder(ord)}
+                            className="bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[10px] font-bold px-2 py-1 rounded block w-full"
+                          >
+                            Edit Order
+                          </button>
+                          <button
+                            onClick={() => handleCancelOrder(ord.id)}
+                            className="text-rose-600 hover:text-rose-800 text-[10px] font-semibold underline block w-full"
+                          >
+                            Batalkan Order
+                          </button>
+                        </>
+                      )}
+                      {(ord.status === 'pending' || ord.status === 'cancelled') && (
                         <button
-                          onClick={() => handleCancelOrder(ord.id)}
-                          className="text-rose-600 hover:text-rose-800 text-[10px] font-semibold underline block w-full"
+                          onClick={() => handleDeleteOrder(ord)}
+                          className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[10px] font-bold px-2 py-1 rounded flex items-center justify-center gap-1 w-full"
                         >
-                          Batalkan Order
+                          <Trash2 className="w-3 h-3" /> Hapus
                         </button>
                       )}
                     </td>
