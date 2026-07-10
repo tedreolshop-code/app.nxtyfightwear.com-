@@ -211,7 +211,7 @@ function LoginPage({ onLogin }: { onLogin: (s: Session, emp?: Employee) => void 
         {/* Brand */}
         <div className="text-center space-y-2">
           {brand.logo_data_url && (
-            <img src={brand.logo_data_url} alt={brand.company_name} className="w-16 h-16 mx-auto rounded-xl bg-white/90 object-contain p-1" />
+            <img src={brand.logo_data_url} alt={brand.company_name} className="w-16 h-16 mx-auto rounded-xl object-cover" />
           )}
           <h1 className="text-2xl font-black text-white tracking-tight">{brand.company_name}</h1>
           <p className="text-white/70 text-sm">{brand.tagline}</p>
@@ -653,7 +653,7 @@ export default function App() {
       <aside className="no-print hidden md:flex w-60 bg-[var(--color-evergreen)] flex-col shrink-0 border-r border-[var(--color-evergreen-dark)] text-white">
         <div className="h-16 border-b border-[var(--color-evergreen-dark)] shrink-0 flex items-center gap-2.5 px-5">
           {brand.logo_data_url && (
-            <img src={brand.logo_data_url} alt={brand.company_name} className="w-9 h-9 rounded-lg bg-white/90 object-contain p-0.5 shrink-0" />
+            <img src={brand.logo_data_url} alt={brand.company_name} className="w-9 h-9 rounded-lg object-cover shrink-0" />
           )}
           <div className="min-w-0">
             <h1 className="text-white font-bold text-base tracking-tight truncate">{brand.company_name}</h1>
@@ -733,7 +733,7 @@ export default function App() {
         <header className="no-print h-14 bg-white border-b border-gray-200 flex items-center justify-between px-4 md:px-6 shrink-0 gap-3">
           <div className="flex items-center gap-3 min-w-0">
             {brand.logo_data_url ? (
-              <img src={brand.logo_data_url} alt={brand.company_name} className="md:hidden w-7 h-7 rounded object-contain shrink-0" />
+              <img src={brand.logo_data_url} alt={brand.company_name} className="md:hidden w-7 h-7 rounded object-cover shrink-0" />
             ) : (
               <div className="md:hidden bg-[var(--color-evergreen)] px-2 py-1 rounded text-white font-bold text-xs shrink-0">{brandInitials(brand.company_name)}</div>
             )}

@@ -233,7 +233,7 @@ export const BrandSettingsModule: React.FC = () => {
             <div className="rounded-xl overflow-hidden border border-gray-200">
               <div className="p-4 flex items-center gap-3" style={{ backgroundColor: draft.primary_color }}>
                 {draft.logo_data_url ? (
-                  <img src={draft.logo_data_url} alt="Logo" className="w-9 h-9 rounded bg-white/90 object-contain p-0.5 shrink-0" />
+                  <img src={draft.logo_data_url} alt="Logo" className="w-9 h-9 rounded object-cover shrink-0" />
                 ) : (
                   <div className="w-9 h-9 rounded bg-white/15 text-white flex items-center justify-center text-[10px] font-black shrink-0">
                     {brandInitials(draft.company_name)}
