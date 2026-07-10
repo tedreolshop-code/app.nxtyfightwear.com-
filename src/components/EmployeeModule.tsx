@@ -832,7 +832,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Bonus Kehadiran Mingguan</label>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Bonus Kehadiran Bulanan</label>
                   <div className="relative">
                     <span className="absolute left-2.5 top-2 text-[10px] text-gray-400 font-bold">Rp</span>
                     <input
@@ -1190,7 +1190,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                           <span className="font-mono font-bold text-gray-800 text-sm">{formatIDR(profileModalEmp.default_live_tiktok_bonus ?? 20000)}</span>
                         </div>
                         <div>
-                          <span className="text-gray-400 block text-[10px] uppercase font-bold tracking-wider">Bonus Kehadiran Mingguan</span>
+                          <span className="text-gray-400 block text-[10px] uppercase font-bold tracking-wider">Bonus Kehadiran Bulanan</span>
                           <span className="font-mono font-bold text-gray-800 text-sm">{formatIDR(profileModalEmp.default_attendance_bonus ?? 0)}</span>
                         </div>
                         <div>
