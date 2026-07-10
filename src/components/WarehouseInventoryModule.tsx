@@ -20,6 +20,8 @@ import {
   ,PackagePlus
   ,ListOrdered
   ,X
+  ,Pencil
+  ,Trash2
 } from 'lucide-react';
 
 interface WarehouseInventoryModuleProps {
@@ -65,6 +67,16 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
   // Modal edit alur produksi produk yang sudah ada
   const [stageEditProduct, setStageEditProduct] = useState<Product | null>(null);
   const [stageEditList, setStageEditList] = useState<string[]>([]);
+
+  // Modal edit data master bahan/produk yang sudah ada
+  const [editTarget, setEditTarget] = useState<{ type: 'material'; item: RawMaterial } | { type: 'product'; item: Product } | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editDepartmentId, setEditDepartmentId] = useState('dept-eva-foam');
+  const [editUnit, setEditUnit] = useState('');
+  const [editMinimumStock, setEditMinimumStock] = useState(0);
+  const [editCategory, setEditCategory] = useState('');
+  const [editVariant, setEditVariant] = useState('');
+  const [editPrice, setEditPrice] = useState(0);
 
   // Load data helper
   const loadData = () => {
@@ -178,6 +190,86 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
     setShowCreateModal(false);
     loadData();
     alert(`${newItemType === 'material' ? 'Bahan baku' : 'Barang jadi'} baru berhasil ditambahkan.`);
+  };
+
+  const openEditMaterial = (mat: RawMaterial) => {
+    setEditTarget({ type: 'material', item: mat });
+    setEditName(mat.name);
+    setEditDepartmentId(mat.department_id);
+    setEditUnit(mat.unit);
+    setEditMinimumStock(mat.stock_minimum);
+  };
+
+  const openEditProduct = (prod: Product) => {
+    setEditTarget({ type: 'product', item: prod });
+    setEditName(prod.name);
+    setEditDepartmentId(prod.department_id);
+    setEditCategory(prod.category);
+    setEditVariant(prod.variant);
+    setEditPrice(prod.harga_jual);
+  };
+
+  const handleSaveEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editTarget) return;
+    if (!editName.trim()) return alert('Nama barang wajib diisi.');
+    if (editTarget.type === 'material') {
+      if (editMinimumStock < 0) return alert('Batas minimum tidak boleh negatif.');
+      dataStore.setRawMaterials(dataStore.getRawMaterials().map(m => m.id === editTarget.item.id
+        ? { ...m, name: editName.trim(), department_id: editDepartmentId, unit: editUnit.trim() || 'Unit', stock_minimum: editMinimumStock }
+        : m));
+    } else {
+      if (editPrice < 0) return alert('Harga jual tidak boleh negatif.');
+      dataStore.setProducts(dataStore.getProducts().map(p => p.id === editTarget.item.id
+        ? { ...p, name: editName.trim(), department_id: editDepartmentId, category: editCategory.trim() || 'Umum', variant: editVariant.trim() || 'Standar', harga_jual: editPrice }
+        : p));
+    }
+    setEditTarget(null);
+    loadData();
+  };
+
+  // Rujukan aktif yang membuat item tidak aman dihapus
+  const activeReferencesForProduct = (productId: string): string[] => {
+    const refs: string[] = [];
+    dataStore.getOrders()
+      .filter(order => ['pending', 'production'].includes(order.status) && order.items.some(item => item.product_id === productId))
+      .forEach(order => refs.push(`Order ${order.order_number} (${order.status})`));
+    dataStore.getProductionJobs()
+      .filter(job => ['pending', 'ongoing'].includes(job.status) && job.product_id === productId)
+      .forEach(job => refs.push(`Produksi ${job.order_number || job.id} (${job.status})`));
+    return refs;
+  };
+
+  const activeReferencesForMaterial = (materialId: string): string[] => {
+    const refs: string[] = [];
+    dataStore.getProductionJobs()
+      .filter(job => ['pending', 'ongoing'].includes(job.status) && (job.materials_planned || []).some(m => m.material_id === materialId))
+      .forEach(job => refs.push(`Produksi ${job.order_number || job.id} (${job.status})`));
+    return refs;
+  };
+
+  const handleDeleteMaterial = (mat: RawMaterial) => {
+    const refs = activeReferencesForMaterial(mat.id);
+    if (refs.length > 0) {
+      alert(`Bahan "${mat.name}" tidak dapat dihapus karena masih dipakai:\n- ${refs.slice(0, 5).join('\n- ')}${refs.length > 5 ? `\n(dan ${refs.length - 5} lainnya)` : ''}\n\nSelesaikan atau batalkan pekerjaan tersebut terlebih dahulu.`);
+      return;
+    }
+    const note = mat.current_stock > 0 ? `\n\nPerhatian: stok berjalan masih ${mat.current_stock} ${mat.unit}.` : '';
+    if (!window.confirm(`Hapus bahan baku "${mat.name}"?${note}\n\nData masuk ke Recycle Bin dan dapat dipulihkan selama 30 hari.`)) return;
+    dataStore.setRawMaterials(dataStore.getRawMaterials().filter(m => m.id !== mat.id));
+    loadData();
+  };
+
+  const handleDeleteProduct = (prod: Product) => {
+    const refs = activeReferencesForProduct(prod.id);
+    if (refs.length > 0) {
+      alert(`Produk "${prod.name} (${prod.variant})" tidak dapat dihapus karena masih dipakai:\n- ${refs.slice(0, 5).join('\n- ')}${refs.length > 5 ? `\n(dan ${refs.length - 5} lainnya)` : ''}\n\nSelesaikan atau batalkan order/produksi tersebut terlebih dahulu.`);
+      return;
+    }
+    const note = prod.stock > 0 ? `\n\nPerhatian: stok berjalan masih ${prod.stock} unit.` : '';
+    if (!window.confirm(`Hapus produk "${prod.name} (${prod.variant})"?${note}\n\nData masuk ke Recycle Bin dan dapat dipulihkan selama 30 hari.`)) return;
+    dataStore.setProducts(dataStore.getProducts().filter(p => p.id !== prod.id));
+    loadData();
   };
 
   // Filter Materials
@@ -474,13 +566,14 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
                   <th className="p-3 border-r border-white/10 text-center w-28">Satuan</th>
                   <th className="p-3 border-r border-white/10 text-right w-36">Batas Minimum</th>
                   <th className="p-3 border-r border-white/10 text-right w-40">Stok Berjalan</th>
-                  <th className="p-3 text-center w-40">Status Keamanan</th>
+                  <th className={`p-3 text-center w-40 ${!isRestricted ? 'border-r border-white/10' : ''}`}>Status Keamanan</th>
+                  {!isRestricted && <th className="p-3 text-center w-28">Aksi</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-150 font-mono bg-white">
                 {filteredMaterials.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="p-8 text-center text-xs text-gray-400 italic font-sans">
+                    <td colSpan={isRestricted ? 8 : 9} className="p-8 text-center text-xs text-gray-400 italic font-sans">
                       Tidak ditemukan kecocokan data bahan baku pabrik.
                     </td>
                   </tr>
@@ -505,7 +598,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
                         <td className="p-3 text-right font-black border-r border-emerald-100/30 bg-emerald-50/10 text-emerald-950">
                           {mat.current_stock}
                         </td>
-                        <td className="p-3 text-center whitespace-nowrap">
+                        <td className={`p-3 text-center whitespace-nowrap ${!isRestricted ? 'border-r border-emerald-100/30' : ''}`}>
                           {isCritical ? (
                             <span className="inline-flex items-center gap-1 bg-red-100 text-red-800 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase font-sans animate-pulse">
                               <AlertTriangle className="w-3 h-3" />
@@ -518,6 +611,26 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
                             </span>
                           )}
                         </td>
+                        {!isRestricted && (
+                          <td className="p-3 text-center whitespace-nowrap">
+                            <div className="inline-flex gap-1.5 font-sans">
+                              <button
+                                onClick={() => openEditMaterial(mat)}
+                                className="inline-flex items-center gap-1 px-2 py-1 bg-white border border-gray-200 hover:bg-emerald-50 text-gray-600 rounded text-[9px] font-bold cursor-pointer"
+                                title="Edit data bahan"
+                              >
+                                <Pencil className="w-3 h-3" /> Edit
+                              </button>
+                              <button
+                                onClick={() => handleDeleteMaterial(mat)}
+                                className="inline-flex items-center gap-1 px-2 py-1 bg-rose-50 border border-rose-100 hover:bg-rose-100 text-rose-700 rounded text-[9px] font-bold cursor-pointer"
+                                title="Hapus bahan (masuk Recycle Bin)"
+                              >
+                                <Trash2 className="w-3 h-3" /> Hapus
+                              </button>
+                            </div>
+                          </td>
+                        )}
                       </tr>
                     );
                   })
@@ -553,7 +666,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
                   <th className="p-3 border-r border-white/10 text-right w-40">Harga Jual</th>
                   <th className="p-3 border-r border-white/10 text-right w-40">Stok Berjalan</th>
                   <th className="p-3 border-r border-white/10 text-center w-40">Status Keamanan</th>
-                  <th className="p-3 text-center w-24">Alur</th>
+                  <th className="p-3 text-center w-40">{isRestricted ? 'Alur' : 'Aksi'}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-150 font-mono bg-white">
@@ -596,15 +709,35 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
                             </span>
                           )}
                         </td>
-                        <td className="p-3 text-center">
-                          <button
-                            onClick={() => { setStageEditProduct(prod); setStageEditList([...stagesForProduct(prod)]); }}
-                            className="inline-flex items-center gap-1 px-2 py-1 bg-white border border-gray-200 hover:bg-emerald-50 text-gray-600 rounded text-[9px] font-bold font-sans"
-                            title={`Alur sekarang: ${stagesForProduct(prod).join(' \u2192 ')}`}
-                          >
-                            <ListOrdered className="w-3 h-3" />
-                            {prod.production_stages?.length ? `${prod.production_stages.length} Tahap` : 'Bawaan'}
-                          </button>
+                        <td className="p-3 text-center whitespace-nowrap">
+                          <div className="inline-flex gap-1.5 font-sans">
+                            <button
+                              onClick={() => { setStageEditProduct(prod); setStageEditList([...stagesForProduct(prod)]); }}
+                              className="inline-flex items-center gap-1 px-2 py-1 bg-white border border-gray-200 hover:bg-emerald-50 text-gray-600 rounded text-[9px] font-bold cursor-pointer"
+                              title={`Alur sekarang: ${stagesForProduct(prod).join(' \u2192 ')}`}
+                            >
+                              <ListOrdered className="w-3 h-3" />
+                              {prod.production_stages?.length ? `${prod.production_stages.length} Tahap` : 'Bawaan'}
+                            </button>
+                            {!isRestricted && (
+                              <>
+                                <button
+                                  onClick={() => openEditProduct(prod)}
+                                  className="inline-flex items-center gap-1 px-2 py-1 bg-white border border-gray-200 hover:bg-emerald-50 text-gray-600 rounded text-[9px] font-bold cursor-pointer"
+                                  title="Edit data produk"
+                                >
+                                  <Pencil className="w-3 h-3" /> Edit
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteProduct(prod)}
+                                  className="inline-flex items-center gap-1 px-2 py-1 bg-rose-50 border border-rose-100 hover:bg-rose-100 text-rose-700 rounded text-[9px] font-bold cursor-pointer"
+                                  title="Hapus produk (masuk Recycle Bin)"
+                                >
+                                  <Trash2 className="w-3 h-3" /> Hapus
+                                </button>
+                              </>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -713,6 +846,46 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
               {newItemType === 'material' ? <div className="grid grid-cols-2 gap-3"><div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Satuan</label><input value={newUnit} onChange={e => setNewUnit(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" placeholder="Kg, Meter, Lembar" required /></div><div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Batas Minimum</label><input type="number" min="0" value={newMinimumStock || ''} onChange={e => setNewMinimumStock(Number(e.target.value))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" /></div></div> : <><div className="grid grid-cols-2 gap-3"><div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Kategori</label><input value={newCategory} onChange={e => setNewCategory(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" /></div><div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Varian</label><input value={newVariant} onChange={e => setNewVariant(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" /></div></div><div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Harga Jual</label><input type="number" min="0" value={newPrice || ''} onChange={e => setNewPrice(Number(e.target.value))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" /></div><div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Tahapan Produksi <span className="normal-case font-normal text-gray-400">(urutan cara produk ini dibuat)</span></label><StageListEditor stages={newStages} onChange={setNewStages} compact /></div></>}
               <div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Stok Awal</label><input type="number" min="0" value={newInitialStock || ''} onChange={e => setNewInitialStock(Number(e.target.value))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" /><p className="text-[10px] text-gray-400 mt-1">Jika lebih dari nol, sistem otomatis membuat mutasi stok masuk.</p></div>
               <div className="flex gap-3 pt-2"><button type="button" onClick={() => setShowCreateModal(false)} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-xs font-bold text-gray-600 cursor-pointer">Batal</button><button type="submit" className="flex-1 py-2.5 bg-[var(--color-evergreen)] text-white rounded-xl text-xs font-bold cursor-pointer">Simpan Barang Baru</button></div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal edit data master bahan/produk */}
+      {editTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setEditTarget(null)}>
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[92vh] overflow-y-auto p-6 shadow-2xl border border-gray-100" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-start border-b border-gray-100 pb-3 mb-4">
+              <div>
+                <h3 className="text-sm font-bold text-emerald-950 flex items-center gap-2">
+                  <Pencil className="w-4 h-4" /> Edit {editTarget.type === 'material' ? 'Bahan Baku' : 'Barang Jadi'}
+                </h3>
+                <p className="text-[10px] text-gray-400 mt-1 font-mono">{editTarget.item.id}</p>
+              </div>
+              <button type="button" onClick={() => setEditTarget(null)} className="text-gray-400 hover:text-gray-600 cursor-pointer"><X className="w-4 h-4" /></button>
+            </div>
+            <form onSubmit={handleSaveEdit} className="space-y-4">
+              <div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Nama Barang</label><input value={editName} onChange={e => setEditName(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-emerald-600" required /></div>
+              <div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Divisi</label><select value={editDepartmentId} onChange={e => setEditDepartmentId(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs bg-white"><option value="dept-eva-foam">Eva Foam</option><option value="dept-konveksi">Konveksi</option></select></div>
+              {editTarget.type === 'material' ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Satuan</label><input value={editUnit} onChange={e => setEditUnit(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" placeholder="Kg, Meter, Lembar" required /></div>
+                  <div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Batas Minimum</label><input type="number" min="0" value={editMinimumStock || ''} onChange={e => setEditMinimumStock(Number(e.target.value))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" /></div>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Kategori</label><input value={editCategory} onChange={e => setEditCategory(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" /></div>
+                    <div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Varian</label><input value={editVariant} onChange={e => setEditVariant(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" /></div>
+                  </div>
+                  <div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Harga Jual</label><input type="number" min="0" value={editPrice || ''} onChange={e => setEditPrice(Number(e.target.value))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" /></div>
+                </>
+              )}
+              <p className="text-[10px] text-gray-400">Stok berjalan tidak diubah dari sini — gunakan Stock Opname untuk koreksi stok. Perubahan tercatat pada audit log.</p>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setEditTarget(null)} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-xs font-bold text-gray-600 cursor-pointer">Batal</button>
+                <button type="submit" className="flex-1 py-2.5 bg-[var(--color-evergreen)] text-white rounded-xl text-xs font-bold cursor-pointer">Simpan Perubahan</button>
+              </div>
             </form>
           </div>
         </div>
