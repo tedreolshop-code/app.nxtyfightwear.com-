@@ -22,6 +22,7 @@ import { ProfileModule } from './components/ProfileModule';
 import { CashAdvanceModule } from './components/CashAdvanceModule';
 import { BrandSettingsModule } from './components/BrandSettingsModule';
 import { useBrand, brandInitials } from './brand';
+import { exportExcel } from './exportExcel';
 import {
   Users,
   FileText,
@@ -86,28 +87,8 @@ const formatCurrency = (amount: number) => `Rp ${Math.round(amount || 0).toLocal
 const formatNumber = (value: number) => Math.round(value || 0).toLocaleString('id-ID');
 const sumBy = <T,>(items: T[], selector: (item: T) => number) => items.reduce((sum, item) => sum + (selector(item) || 0), 0);
 
-const downloadCsv = (filename: string, rows: Record<string, string | number | boolean | undefined | null>[]) => {
-  if (!rows.length) {
-    alert('Tidak ada data untuk diekspor pada periode ini.');
-    return;
-  }
-  const headers = Object.keys(rows[0]);
-  const csvRows = rows.map(row =>
-    headers.map(header => {
-      const text = String(row[header] ?? '');
-      const escaped = text.replace(/"/g, '""');
-      return /[",\n]/.test(escaped) ? `"${escaped}"` : escaped;
-    }).join(',')
-  );
-  const csvContent = '\uFEFF' + [headers.join(','), ...csvRows].join('\n');
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = `${filename}_${new Date().toISOString().split('T')[0]}.csv`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(link.href);
+const downloadExcel = (filename: string, sheetName: string, rows: Record<string, string | number | boolean | undefined | null>[], currencyColumns?: string[]) => {
+  void exportExcel(filename, [{ name: sheetName, rows, currencyColumns }]);
 };
 
 // Kartu login: username + PIN (satu pintu untuk semua akses)
@@ -400,15 +381,11 @@ export default function App() {
   }, [permittedMenus, karyawanSubTab]);
 
   // Ekspor CSV (dipakai halaman Laporan)
-  const handleExportCSV = (type: 'attendance' | 'invoices' | 'payroll' | 'expenses') => {
-    let dataToExport: any[] = [];
-    let filename = '';
-
+  const handleExportAll = (type: 'attendance' | 'invoices' | 'payroll' | 'expenses') => {
     if (type === 'attendance') {
-      dataToExport = dataStore.getAttendance();
-      filename = 'Laporan_Kehadiran_ARI_SPORTINDO';
+      downloadExcel('Laporan_Kehadiran_Lengkap', 'Absensi', dataStore.getAttendance() as any[]);
     } else if (type === 'invoices') {
-      dataToExport = dataStore.getInvoices().map(inv => ({
+      downloadExcel('Laporan_Penjualan_Lengkap', 'Faktur', dataStore.getInvoices().map(inv => ({
         invoice_number: inv.invoice_number,
         customer: inv.customer_name,
         date: inv.date,
@@ -418,37 +395,13 @@ export default function App() {
         tax: inv.tax,
         total: inv.total,
         status: inv.payment_status
-      }));
-      filename = 'Laporan_Penjualan_ARI_SPORTINDO';
+      })), ['subtotal', 'dp', 'tax', 'total']);
     } else if (type === 'payroll') {
-      dataToExport = dataStore.getPayrollWeekly();
-      filename = 'Laporan_Payroll_ARI_SPORTINDO';
+      downloadExcel('Laporan_Payroll_Lengkap', 'Payroll', dataStore.getPayrollWeekly() as any[],
+        ['base_pay', 'bonus', 'cash_advance_deduction', 'total_pay']);
     } else if (type === 'expenses') {
-      dataToExport = dataStore.getDailyExpenses();
-      filename = 'Laporan_Pengeluaran_ARI_SPORTINDO';
+      downloadExcel('Laporan_Pengeluaran_Lengkap', 'Pengeluaran', dataStore.getDailyExpenses() as any[], ['amount']);
     }
-
-    if (dataToExport.length === 0) {
-      alert('Tidak ada data untuk diekspor!');
-      return;
-    }
-
-    const headers = Object.keys(dataToExport[0]).join(',');
-    const rows = dataToExport.map(row =>
-      Object.values(row).map(val => {
-        const text = String(val);
-        return text.includes(',') ? `"${text.replace(/"/g, '""')}"` : text;
-      }).join(',')
-    );
-
-    const csvContent = 'data:text/csv;charset=utf-8,﻿' + [headers, ...rows].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `${filename}_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   };
 
   const reportPrefix = `${reportYear}-${reportMonth}`;
@@ -514,10 +467,10 @@ export default function App() {
     ].map(date => date?.slice(0, 4)).filter(Boolean),
   ])).sort((a, b) => Number(b) - Number(a));
 
-  const handleExportPeriodCSV = (type: 'sales' | 'expenses' | 'payroll' | 'attendance' | 'cash_advance' | 'production') => {
-    const baseName = `${type}_${reportYear}_${reportMonth}_ARI_SPORTINDO`;
+  const handleExportPeriod = (type: 'sales' | 'expenses' | 'payroll' | 'attendance' | 'cash_advance' | 'production') => {
+    const baseName = `${reportYear}_${reportMonth}`;
     if (type === 'attendance') {
-      downloadCsv(`Laporan_Absensi_${baseName}`, reportAttendance.map(item => ({
+      downloadExcel(`Laporan_Absensi_${baseName}`, 'Absensi', reportAttendance.map(item => ({
         tanggal: item.timestamp.split('T')[0],
         jam: item.timestamp.split('T')[1]?.slice(0, 5) || '',
         karyawan: item.employee_name,
@@ -530,7 +483,7 @@ export default function App() {
         catatan: item.note || item.assistance_reason || '',
       })));
     } else if (type === 'payroll') {
-      downloadCsv(`Laporan_Payroll_${baseName}`, reportPayroll.map(item => ({
+      downloadExcel(`Laporan_Payroll_${baseName}`, 'Payroll', reportPayroll.map(item => ({
         karyawan: item.employee_name,
         periode_mulai: item.period_start,
         periode_selesai: item.period_end,
@@ -541,9 +494,9 @@ export default function App() {
         potongan_kasbon: item.cash_advance_deduction,
         total_dibayar: item.total_pay,
         status_cetak: item.is_printed ? 'sudah' : 'belum',
-      })));
+      })), ['gaji_pokok', 'bonus', 'potongan_kasbon', 'total_dibayar']);
     } else if (type === 'cash_advance') {
-      downloadCsv(`Laporan_Kasbon_${baseName}`, reportCashAdvanceTransactions.map(item => ({
+      downloadExcel(`Laporan_Kasbon_${baseName}`, 'Kasbon', reportCashAdvanceTransactions.map(item => ({
         tanggal: item.date,
         karyawan: item.employee_name,
         tipe: item.type,
@@ -551,9 +504,9 @@ export default function App() {
         payroll_id: item.payroll_id || '',
         catatan: item.note || '',
         dibuat_oleh: item.created_by_name || '',
-      })));
+      })), ['nominal']);
     } else if (type === 'sales') {
-      downloadCsv(`Laporan_Penjualan_${baseName}`, [
+      downloadExcel(`Laporan_Penjualan_${baseName}`, 'Penjualan', [
         ...reportInvoices.map(item => ({
           sumber: 'faktur',
           tanggal: item.date,
@@ -581,9 +534,9 @@ export default function App() {
           total: item.total,
           status: item.status ?? 'terkirim',
         })),
-      ]);
+      ], ['total']);
     } else if (type === 'expenses') {
-      downloadCsv(`Laporan_Pengeluaran_${baseName}`, [
+      downloadExcel(`Laporan_Pengeluaran_${baseName}`, 'Pengeluaran', [
         ...reportDailyExpenses.map(item => ({
           sumber: 'pengeluaran_harian',
           tanggal: item.date,
@@ -602,9 +555,9 @@ export default function App() {
           total: item.total_price,
           status: item.status,
         })),
-      ]);
+      ], ['total']);
     } else if (type === 'production') {
-      downloadCsv(`Laporan_Produksi_${baseName}`, reportProductionJobs.map(item => ({
+      downloadExcel(`Laporan_Produksi_${baseName}`, 'Produksi', reportProductionJobs.map(item => ({
         tanggal: item.created_at.split('T')[0],
         nomor: item.order_number || item.id,
         departemen: item.department_id === 'dept-eva-foam' ? 'Eva Foam' : 'Konveksi',
@@ -1011,10 +964,10 @@ export default function App() {
                       </div>
                       <p className="text-xs text-gray-500 min-h-8">{r.desc}</p>
                       <button
-                        onClick={() => handleExportPeriodCSV(r.type)}
+                        onClick={() => handleExportPeriod(r.type)}
                         className="no-print bg-[var(--color-evergreen)] hover:bg-[var(--color-evergreen-dark)] text-white font-semibold text-sm px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 cursor-pointer"
                       >
-                        <Download className="w-4 h-4" /> Unduh CSV Periode
+                        <Download className="w-4 h-4" /> Unduh Excel Periode
                       </button>
                     </div>
                   ))}
@@ -1034,7 +987,7 @@ export default function App() {
                     ] as const).map((r) => (
                       <button
                         key={r.type}
-                        onClick={() => handleExportCSV(r.type)}
+                        onClick={() => handleExportAll(r.type)}
                         className="bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold text-xs px-3 py-2 rounded-lg flex items-center gap-1.5 cursor-pointer"
                       >
                         <Download className="w-3.5 h-3.5" /> {r.title}
