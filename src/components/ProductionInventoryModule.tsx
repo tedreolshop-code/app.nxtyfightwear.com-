@@ -531,7 +531,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
           ...stg,
           status: (action === 'start' ? 'ongoing' : 'completed') as 'pending' | 'ongoing' | 'completed',
           updated_at: new Date().toISOString(),
-          updated_by: userRole === 'owner' ? 'Owner' : 'Operator Produksi',
+          updated_by: currentEmployee?.name || (userRole === 'owner' ? 'Owner' : 'Operator Produksi'),
           notes: note || stg.notes
         };
       }
@@ -960,6 +960,50 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                           <button type="button" onClick={() => { setOpenedEmployeeJobId(''); setTaskJobId(''); }} className="text-xs font-bold text-gray-500 bg-gray-100 rounded-lg px-3 py-1.5 cursor-pointer">Tutup</button>
                         </div>
                       </div>
+
+                      {/* Proses / Finish tahap saat ini */}
+                      {(() => {
+                        const ongoingStage = selectedTaskJob.stages.find(stg => stg.status === 'ongoing');
+                        const pendingStage = selectedTaskJob.stages.find(stg => stg.status === 'pending');
+                        const activeStage = ongoingStage || pendingStage;
+                        if (!activeStage) return null;
+                        const isLastStage = selectedTaskJob.stages.filter(stg => stg.status !== 'completed').length === 1 && !!ongoingStage;
+                        const doneStages = selectedTaskJob.stages.filter(stg => stg.status === 'completed').length;
+                        return (
+                          <div className={`rounded-xl border p-3 space-y-2 ${ongoingStage ? 'border-amber-200 bg-amber-50/60' : 'border-gray-200 bg-gray-50'}`}>
+                            <div className="flex items-center justify-between gap-2 text-xs">
+                              <div>
+                                <p className="text-[10px] font-bold text-gray-500 uppercase">Tahap Sekarang</p>
+                                <p className="font-black text-gray-800">{activeStage.stage} <span className={`ml-1 rounded px-1.5 py-0.5 text-[9px] font-bold ${ongoingStage ? 'bg-amber-100 text-amber-800' : 'bg-gray-200 text-gray-500'}`}>{ongoingStage ? 'Sedang Diproses' : 'Belum Dimulai'}</span></p>
+                              </div>
+                              <p className="text-[10px] text-gray-400 font-mono shrink-0">{doneStages}/{selectedTaskJob.stages.length} tahap</p>
+                            </div>
+                            {ongoingStage ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const warn = isLastStage
+                                    ? `Finish tahap terakhir "${activeStage.stage}"?\n\nSeluruh produksi ${selectedTaskJob.product_name} (${selectedTaskJob.qty} pcs) akan ditandai SELESAI dan stok otomatis masuk gudang.`
+                                    : `Tandai tahap "${activeStage.stage}" selesai?`;
+                                  if (!window.confirm(warn)) return;
+                                  handleUpdateJobStage(selectedTaskJob.id, activeStage.stage, 'complete', '');
+                                }}
+                                className="w-full py-2.5 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 bg-emerald-600 text-white cursor-pointer hover:bg-emerald-700"
+                              >
+                                <CheckCircle2 className="w-4 h-4" /> Finish — {isLastStage ? 'Barang Selesai' : `Tahap ${activeStage.stage} Selesai`}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateJobStage(selectedTaskJob.id, activeStage.stage, 'start', '')}
+                                className="w-full py-2.5 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 bg-amber-500 text-white cursor-pointer hover:bg-amber-600"
+                              >
+                                ▶ Proses — Mulai Kerjakan {activeStage.stage}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()}
 
                       <form onSubmit={handleSubmitEmployeeTaskLog} className="space-y-3 border border-gray-100 rounded-xl p-3 bg-gray-50/60">
                         <div className="grid grid-cols-2 gap-2">
