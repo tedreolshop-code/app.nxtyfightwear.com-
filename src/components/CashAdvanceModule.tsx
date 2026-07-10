@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CashAdvance, CashAdvanceTransaction, Employee } from '../types';
 import { dataStore, wibTodayStr } from '../dataStore';
-import { Check, CreditCard, Plus, RefreshCw, Search, WalletCards, X } from 'lucide-react';
+import { Check, CreditCard, History, Plus, RefreshCw, Search, Users, WalletCards, X } from 'lucide-react';
 
 interface CashAdvanceModuleProps {
   actor?: Employee | null;
@@ -38,6 +38,7 @@ export const CashAdvanceModule: React.FC<CashAdvanceModuleProps> = ({ actor }) =
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
   const [search, setSearch] = useState('');
   const [transactionFilter, setTransactionFilter] = useState<'all' | CashAdvanceTransaction['type']>('all');
+  const [viewTab, setViewTab] = useState<'saldo' | 'riwayat'>('saldo');
 
   // Form popup
   const [showFormModal, setShowFormModal] = useState(false);
@@ -183,17 +184,17 @@ export const CashAdvanceModule: React.FC<CashAdvanceModuleProps> = ({ actor }) =
   return (
     <div className="space-y-5">
       {/* HEADER */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-gray-100 pb-4">
+      <div className="bg-[var(--color-evergreen)] rounded-2xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-black text-gray-900 flex items-center gap-2">
-            <WalletCards className="w-5 h-5 text-[var(--color-evergreen)]" /> Kasbon Karyawan
+          <h2 className="text-xl font-black text-white flex items-center gap-2">
+            <span className="bg-white/15 p-2 rounded-xl"><WalletCards className="w-5 h-5 text-amber-300" /></span> Kasbon Karyawan
           </h2>
-          <p className="text-xs text-gray-500 mt-1">Catat kasbon baru, tambah saldo, dan pembayaran manual. Potongan gaji otomatis tercatat dari generate slip.</p>
+          <p className="text-xs text-emerald-50/80 mt-1.5">Catat kasbon baru, tambah saldo, dan pembayaran manual. Potongan gaji otomatis tercatat dari generate slip.</p>
         </div>
         <button
           type="button"
           onClick={() => openForm(selectedEmployeeId, 'create')}
-          className="bg-[var(--color-evergreen)] hover:bg-[var(--color-evergreen-dark)] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 cursor-pointer w-fit"
+          className="bg-white hover:bg-emerald-50 text-[var(--color-evergreen)] px-4 py-2 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 cursor-pointer w-fit"
         >
           <Plus className="w-4 h-4" /> Catat Transaksi
         </button>
@@ -201,17 +202,32 @@ export const CashAdvanceModule: React.FC<CashAdvanceModuleProps> = ({ actor }) =
 
       {/* KARTU STATISTIK */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <p className="text-[10px] font-black uppercase tracking-wide text-gray-400">Total Sisa Kasbon</p>
-          <p className="mt-1 text-xl font-black text-rose-700 font-mono">{formatIDR(totalOutstanding)}</p>
+        <div className="bg-rose-50/60 border border-rose-100 rounded-2xl p-4 flex items-center gap-4">
+          <div className="bg-rose-600 text-white p-3 rounded-xl shadow-2xs">
+            <WalletCards className="w-5 h-5" />
+          </div>
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-wide text-rose-800">Total Sisa Kasbon</p>
+            <p className="mt-1 text-xl font-black text-rose-700 font-mono">{formatIDR(totalOutstanding)}</p>
+          </div>
         </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <p className="text-[10px] font-black uppercase tracking-wide text-gray-400">Karyawan Punya Sisa</p>
-          <p className="mt-1 text-xl font-black text-gray-900 font-mono">{employeesWithOutstanding} <span className="text-xs font-sans font-medium text-gray-500">dari {employees.length} karyawan</span></p>
+        <div className="bg-amber-50/50 border border-amber-100 rounded-2xl p-4 flex items-center gap-4">
+          <div className="bg-amber-600 text-white p-3 rounded-xl shadow-2xs">
+            <Users className="w-5 h-5" />
+          </div>
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-wide text-amber-800">Karyawan Punya Sisa</p>
+            <p className="mt-1 text-xl font-black text-amber-950 font-mono">{employeesWithOutstanding} <span className="text-xs font-sans font-medium text-gray-500">dari {employees.length} karyawan</span></p>
+          </div>
         </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <p className="text-[10px] font-black uppercase tracking-wide text-gray-400">Pembayaran Tercatat</p>
-          <p className="mt-1 text-xl font-black text-[var(--color-evergreen)] font-mono">{formatIDR(paymentTotal)}</p>
+        <div className="bg-emerald-50/50 border border-emerald-100 rounded-2xl p-4 flex items-center gap-4">
+          <div className="bg-[var(--color-evergreen)] text-white p-3 rounded-xl shadow-2xs">
+            <CreditCard className="w-5 h-5" />
+          </div>
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-wide text-emerald-800">Pembayaran Tercatat</p>
+            <p className="mt-1 text-xl font-black text-[var(--color-evergreen)] font-mono">{formatIDR(paymentTotal)}</p>
+          </div>
         </div>
       </div>
 
@@ -221,12 +237,33 @@ export const CashAdvanceModule: React.FC<CashAdvanceModuleProps> = ({ actor }) =
         </p>
       )}
 
+      {/* TAB NAVIGASI */}
+      <div className="flex bg-gray-50 p-1.5 rounded-xl border-2 border-[var(--color-evergreen)]/30 w-fit gap-1">
+        <button
+          type="button"
+          onClick={() => setViewTab('saldo')}
+          className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${viewTab === 'saldo' ? 'bg-[var(--color-evergreen)] text-white border-[var(--color-evergreen)] shadow-2xs' : 'bg-white text-gray-500 border-gray-200 hover:text-gray-800 hover:border-[var(--color-evergreen)]/40'}`}
+        >
+          <Users className="w-3.5 h-3.5" />
+          1. Saldo Karyawan
+        </button>
+        <button
+          type="button"
+          onClick={() => setViewTab('riwayat')}
+          className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${viewTab === 'riwayat' ? 'bg-[var(--color-evergreen)] text-white border-[var(--color-evergreen)] shadow-2xs' : 'bg-white text-gray-500 border-gray-200 hover:text-gray-800 hover:border-[var(--color-evergreen)]/40'}`}
+        >
+          <History className="w-3.5 h-3.5" />
+          2. Riwayat Transaksi
+        </button>
+      </div>
+
       {/* TABEL SALDO KARYAWAN */}
+      {viewTab === 'saldo' && (
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100 flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
           <div>
             <h3 className="font-black text-gray-900 text-sm">Saldo Kasbon Karyawan</h3>
-            <p className="text-xs text-gray-500">Klik baris untuk menyaring riwayat transaksi karyawan tersebut.</p>
+            <p className="text-xs text-gray-500">Klik baris untuk membuka riwayat transaksi karyawan tersebut.</p>
           </div>
           <div className="relative">
             <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-gray-400" />
@@ -235,13 +272,13 @@ export const CashAdvanceModule: React.FC<CashAdvanceModuleProps> = ({ actor }) =
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
-            <thead className="bg-gray-50 text-gray-500 uppercase text-[10px]">
+            <thead className="bg-[var(--color-evergreen)] text-white uppercase text-[10px] font-bold tracking-wider">
               <tr>
-                <th className="p-3 text-center w-10">No</th>
-                <th className="p-3 text-left">Karyawan</th>
-                <th className="p-3 text-center w-28">Kasbon Aktif</th>
-                <th className="p-3 text-right w-40">Sisa Kasbon</th>
-                <th className="p-3 text-center w-28">Status</th>
+                <th className="p-3 text-center w-10 border-r border-white/10">No</th>
+                <th className="p-3 text-left border-r border-white/10">Karyawan</th>
+                <th className="p-3 text-center w-28 border-r border-white/10">Kasbon Aktif</th>
+                <th className="p-3 text-right w-40 border-r border-white/10">Sisa Kasbon</th>
+                <th className="p-3 text-center w-28 border-r border-white/10">Status</th>
                 <th className="p-3 text-center w-56">Aksi</th>
               </tr>
             </thead>
@@ -251,7 +288,7 @@ export const CashAdvanceModule: React.FC<CashAdvanceModuleProps> = ({ actor }) =
               ) : employeesWithBalance.map(({ employee, balance, activeCount }, index) => (
                 <tr
                   key={employee.id}
-                  onClick={() => setSelectedEmployeeId(selectedEmployeeId === employee.id ? '' : employee.id)}
+                  onClick={() => { setSelectedEmployeeId(employee.id); setViewTab('riwayat'); }}
                   className={`border-t border-gray-100 cursor-pointer transition-colors ${selectedEmployeeId === employee.id ? 'bg-emerald-50/70' : 'hover:bg-gray-50'}`}
                 >
                   <td className="p-3 text-center text-gray-400">{index + 1}</td>
@@ -286,8 +323,10 @@ export const CashAdvanceModule: React.FC<CashAdvanceModuleProps> = ({ actor }) =
           </table>
         </div>
       </div>
+      )}
 
       {/* RIWAYAT TRANSAKSI */}
+      {viewTab === 'riwayat' && (
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
@@ -314,7 +353,7 @@ export const CashAdvanceModule: React.FC<CashAdvanceModuleProps> = ({ actor }) =
         </div>
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-xs">
-            <thead className="bg-gray-50 text-gray-500"><tr><th className="p-2 text-left">Tanggal</th><th className="p-2 text-left">Karyawan</th><th className="p-2 text-left">Jenis</th><th className="p-2 text-right">Nominal</th><th className="p-2 text-left">Catatan</th></tr></thead>
+            <thead className="bg-[var(--color-evergreen)] text-white uppercase text-[10px] font-bold tracking-wider"><tr><th className="p-3 text-left border-r border-white/10">Tanggal</th><th className="p-3 text-left border-r border-white/10">Karyawan</th><th className="p-3 text-left border-r border-white/10">Jenis</th><th className="p-3 text-right border-r border-white/10">Nominal</th><th className="p-3 text-left">Catatan</th></tr></thead>
             <tbody>
               {selectedTransactions.length === 0 ? <tr><td colSpan={5} className="p-6 text-center text-gray-400">Belum ada transaksi kasbon.</td></tr> : selectedTransactions.map(transaction => (
                 <tr key={transaction.id} className="border-t border-gray-100">
@@ -332,6 +371,7 @@ export const CashAdvanceModule: React.FC<CashAdvanceModuleProps> = ({ actor }) =
           <p className="mt-2 text-[10px] text-gray-400 text-center">Menampilkan {TRANSACTION_LIMIT} transaksi terbaru dari {filteredTransactions.length}. Gunakan filter untuk mempersempit.</p>
         )}
       </div>
+      )}
 
       {/* POPUP FORM TRANSAKSI */}
       {showFormModal && (
