@@ -3,28 +3,31 @@ import { Product, RawMaterial, StockMovement, ProductionLog, ProductionJob, Empl
 import { ProductionHandoffPanel } from './ProductionHandoffPanel';
 import { dataStore, RECIPES, wibNowISO, wibTodayStr, stagesForProduct, DEFAULT_PRODUCTION_STAGES } from '../dataStore';
 import { brandName, brandLegalName } from '../brand';
-import { 
-  Box, 
-  Hammer, 
-  History, 
-  Plus, 
-  ArrowUpRight, 
-  ArrowDownLeft, 
-  Clock, 
-  CheckCircle2, 
-  Clipboard, 
-  ArrowRight, 
-  Search, 
-  Filter, 
-  AlertTriangle, 
-  User, 
-  Calendar, 
-  ChevronRight, 
-  X, 
-  FileText, 
-  Check, 
-  Loader2, 
-  AlertCircle 
+import { StageListEditor } from './StageListEditor';
+import {
+  Box,
+  Hammer,
+  History,
+  Plus,
+  ArrowUpRight,
+  ArrowDownLeft,
+  Clock,
+  CheckCircle2,
+  Clipboard,
+  ArrowRight,
+  Search,
+  Filter,
+  AlertTriangle,
+  User,
+  Calendar,
+  ChevronRight,
+  X,
+  FileText,
+  Check,
+  Loader2,
+  AlertCircle,
+  ListOrdered,
+  Settings
 } from 'lucide-react';
 
 interface ProductionInventoryModuleProps {
@@ -56,8 +59,13 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
   const [packingTasks, setPackingTasks] = useState<PackingTask[]>([]);
   
   // Navigation dibuat mengikuti urutan kerja admin produksi.
-  const [subTab, setSubTab] = useState<'order' | 'tracker' | 'finalize' | 'history'>('order');
+  const [subTab, setSubTab] = useState<'order' | 'tracker' | 'finalize' | 'history' | 'settings'>('order');
   const [manualStep, setManualStep] = useState<1 | 2 | 3>(1);
+
+  // Pengaturan Alur Produksi — pindahan dari menu Gudang, atur tahapan kerja per produk barang jadi
+  const [stageEditProduct, setStageEditProduct] = useState<Product | null>(null);
+  const [stageEditList, setStageEditList] = useState<string[]>([]);
+  const [settingsSearchQuery, setSettingsSearchQuery] = useState('');
 
   // Interactive Helper States
   const [searchQuery, setSearchQuery] = useState('');
@@ -839,7 +847,126 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
         >
           <History className="w-4 h-4" /> Riwayat &amp; Stok
         </button>}
+        {!isRestrictedProduction && <button
+          onClick={() => { setSubTab('settings'); triggerLoading(); }}
+          className={`px-5 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
+            subTab === 'settings'
+              ? 'border-[var(--color-evergreen)] text-[var(--color-evergreen)]'
+              : 'border-transparent text-gray-400 hover:text-gray-600'
+          }`}
+        >
+          <Settings className="w-4 h-4" /> Pengaturan Alur
+        </button>}
       </div>
+
+      {/* PENGATURAN ALUR PRODUKSI — pindahan dari menu Gudang */}
+      {subTab === 'settings' && !isRestrictedProduction && (
+        <div className="space-y-4 animate-fadeIn">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-2xs">
+            <h2 className="text-sm font-bold text-gray-800 mb-1">Tahapan Produksi per Produk</h2>
+            <p className="text-xs text-gray-400 mb-4">Atur urutan tahapan kerja untuk tiap barang jadi. Produk tanpa alur khusus otomatis memakai alur bawaan divisinya.</p>
+            <div className="relative mb-3 max-w-xs">
+              <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-gray-400" />
+              <input
+                type="text"
+                value={settingsSearchQuery}
+                onChange={(e) => setSettingsSearchQuery(e.target.value)}
+                placeholder="Cari produk..."
+                className="w-full bg-gray-50 border border-gray-200 rounded pl-9 pr-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-evergreen"
+              />
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-gray-400 uppercase text-[10px] border-b border-gray-100">
+                    <th className="p-2">Produk</th>
+                    <th className="p-2">Divisi</th>
+                    <th className="p-2">Alur Saat Ini</th>
+                    <th className="p-2 text-right">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {products
+                    .filter(prod =>
+                      prod.name.toLowerCase().includes(settingsSearchQuery.toLowerCase()) ||
+                      prod.variant.toLowerCase().includes(settingsSearchQuery.toLowerCase())
+                    )
+                    .map(prod => (
+                      <tr key={prod.id} className="border-b border-gray-50 hover:bg-emerald-50/20">
+                        <td className="p-2 font-semibold text-gray-700">{prod.name} <span className="text-gray-400 font-normal">({prod.variant})</span></td>
+                        <td className="p-2">
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${prod.department_id === 'dept-eva-foam' ? 'bg-emerald-100 text-emerald-800' : 'bg-sky-100 text-sky-800'}`}>
+                            {PRODUCTION_DEPARTMENTS.find(d => d.id === prod.department_id)?.label || prod.department_id}
+                          </span>
+                        </td>
+                        <td className="p-2 text-gray-500" title={stagesForProduct(prod).join(' → ')}>
+                          {prod.production_stages?.length ? `${prod.production_stages.length} Tahap` : 'Bawaan'}
+                        </td>
+                        <td className="p-2 text-right">
+                          <button
+                            onClick={() => { setStageEditProduct(prod); setStageEditList([...stagesForProduct(prod)]); }}
+                            className="inline-flex items-center gap-1 px-2 py-1 bg-white border border-gray-200 hover:bg-emerald-50 text-gray-600 rounded text-[9px] font-bold cursor-pointer"
+                          >
+                            <ListOrdered className="w-3 h-3" /> Atur Alur
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+              {products.length === 0 && <p className="text-center text-gray-400 text-xs py-6">Belum ada produk. Tambahkan produk lewat menu Gudang terlebih dahulu.</p>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal edit alur produksi produk */}
+      {stageEditProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setStageEditProduct(null)}>
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[92vh] overflow-y-auto p-6 shadow-2xl border border-gray-100" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-start border-b border-gray-100 pb-3 mb-4">
+              <div>
+                <h3 className="text-sm font-bold text-emerald-950 flex items-center gap-2">
+                  <ListOrdered className="w-4 h-4" /> Tahapan Produksi
+                </h3>
+                <p className="text-[10px] text-gray-400 mt-1">
+                  {stageEditProduct.name} ({stageEditProduct.variant}) · {stageEditProduct.department_id === 'dept-eva-foam' ? 'Eva Foam' : 'Konveksi'}
+                </p>
+              </div>
+              <button type="button" onClick={() => setStageEditProduct(null)} className="text-gray-400 hover:text-gray-600 cursor-pointer"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="space-y-4">
+              <StageListEditor stages={stageEditList} onChange={setStageEditList} />
+              <p className="text-[10px] text-gray-400">
+                Perubahan alur hanya berlaku untuk order baru — pekerjaan produksi yang sedang berjalan tetap memakai alur lamanya.
+              </p>
+              <div className="flex gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => { setStageEditList([...(DEFAULT_PRODUCTION_STAGES[stageEditProduct.department_id] || [])]); }}
+                  className="flex-1 py-2.5 border border-gray-200 rounded-xl text-xs font-bold text-gray-600 cursor-pointer"
+                >
+                  Reset ke Bawaan Divisi
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (stageEditList.length === 0) { alert('Tahapan produksi wajib diisi minimal satu tahap.'); return; }
+                    const updated = dataStore.getProducts().map(p => p.id === stageEditProduct.id ? { ...p, production_stages: stageEditList } : p);
+                    dataStore.setProducts(updated);
+                    dataStore.logAudit('update', 'product', `Mengubah alur produksi ${stageEditProduct.name}: ${stageEditList.join(' → ')}`, stageEditProduct.id);
+                    setStageEditProduct(null);
+                    loadData();
+                  }}
+                  className="flex-1 py-2.5 bg-[var(--color-evergreen)] text-white rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  Simpan Alur
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* TRACKER VIEW */}
       {subTab === 'tracker' && (

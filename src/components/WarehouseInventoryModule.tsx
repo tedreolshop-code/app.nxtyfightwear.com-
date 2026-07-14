@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Product, RawMaterial, StockMovement } from '../types';
-import { dataStore, DEFAULT_PRODUCTION_STAGES, stagesForProduct } from '../dataStore';
-import { StageListEditor } from './StageListEditor';
-import { 
+import { dataStore, stagesForProduct } from '../dataStore';
+import {
   Box, 
   History, 
   Plus, 
@@ -62,11 +61,6 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
   const [newCategory, setNewCategory] = useState('Umum');
   const [newVariant, setNewVariant] = useState('Standar');
   const [newPrice, setNewPrice] = useState(0);
-  const [newStages, setNewStages] = useState<string[]>([]);
-
-  // Modal edit alur produksi produk yang sudah ada
-  const [stageEditProduct, setStageEditProduct] = useState<Product | null>(null);
-  const [stageEditList, setStageEditList] = useState<string[]>([]);
 
   // Modal edit data master bahan/produk yang sudah ada
   const [editTarget, setEditTarget] = useState<{ type: 'material'; item: RawMaterial } | { type: 'product'; item: Product } | null>(null);
@@ -142,9 +136,6 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
     setNewCategory('Umum');
     setNewVariant('Standar');
     setNewPrice(0);
-    // Prefill alur produksi bawaan sesuai departemen terpilih
-    const deptId = selectedDept === 'konveksi' ? 'dept-konveksi' : 'dept-eva-foam';
-    setNewStages([...(DEFAULT_PRODUCTION_STAGES[deptId] || [])]);
     setShowCreateModal(true);
   };
 
@@ -172,7 +163,8 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
     } else {
       const current = dataStore.getProducts();
       if (current.some(item => item.id === id)) return alert(`ID produk "${id}" sudah digunakan.`);
-      if (newStages.length === 0) return alert('Tahapan produksi wajib diisi minimal satu tahap.');
+      // Alur produksi memakai bawaan divisi secara otomatis (lihat stagesForProduct di dataStore);
+      // atur alur khusus lewat menu Produksi > Pengaturan Alur setelah produk dibuat.
       const product: Product = {
         id,
         department_id: newDepartmentId,
@@ -180,8 +172,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
         category: newCategory.trim() || 'Umum',
         variant: newVariant.trim() || 'Standar',
         harga_jual: newPrice,
-        stock: newInitialStock,
-        production_stages: newStages
+        stock: newInitialStock
       };
       dataStore.setProducts([...current, product]);
       if (newInitialStock > 0) currentMovements.unshift({ id: `mov-${Math.random().toString(36).slice(2, 9)}`, type: 'barang_jadi_masuk', item_id: id, item_name: `${product.name} (${product.variant})`, amount: newInitialStock, reference: 'Stok awal master produk baru', created_at: new Date().toISOString() });
@@ -711,14 +702,13 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
                         </td>
                         <td className="p-3 text-center whitespace-nowrap">
                           <div className="inline-flex gap-1.5 font-sans">
-                            <button
-                              onClick={() => { setStageEditProduct(prod); setStageEditList([...stagesForProduct(prod)]); }}
-                              className="inline-flex items-center gap-1 px-2 py-1 bg-white border border-gray-200 hover:bg-emerald-50 text-gray-600 rounded text-[9px] font-bold cursor-pointer"
-                              title={`Alur sekarang: ${stagesForProduct(prod).join(' \u2192 ')}`}
+                            <span
+                              className="inline-flex items-center gap-1 px-2 py-1 bg-gray-50 border border-gray-200 text-gray-500 rounded text-[9px] font-bold"
+                              title={`Alur sekarang: ${stagesForProduct(prod).join(' \u2192 ')}. Atur di menu Produksi > Pengaturan Alur.`}
                             >
                               <ListOrdered className="w-3 h-3" />
                               {prod.production_stages?.length ? `${prod.production_stages.length} Tahap` : 'Bawaan'}
-                            </button>
+                            </span>
                             {!isRestricted && (
                               <>
                                 <button
@@ -842,8 +832,8 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
               <div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => { setNewItemType('material'); setNewItemId(''); }} className={`py-2.5 rounded-xl border text-xs font-bold cursor-pointer ${newItemType === 'material' ? 'bg-[var(--color-evergreen)] text-white border-[var(--color-evergreen)]' : 'border-gray-200 text-gray-600'}`}>Bahan Baku</button><button type="button" onClick={() => { setNewItemType('product'); setNewItemId(''); }} className={`py-2.5 rounded-xl border text-xs font-bold cursor-pointer ${newItemType === 'product' ? 'bg-[var(--color-evergreen)] text-white border-[var(--color-evergreen)]' : 'border-gray-200 text-gray-600'}`}>Barang Jadi</button></div>
               <div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Nama Barang</label><input value={newItemName} onChange={e => setNewItemName(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-emerald-600" placeholder={newItemType === 'material' ? 'Contoh: Kain Parasut' : 'Contoh: Body Protector'} required /></div>
               <div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">ID Barang <span className="normal-case font-normal text-gray-400">(opsional, otomatis jika kosong)</span></label><input value={newItemId} onChange={e => setNewItemId(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:border-emerald-600" placeholder={makeItemId(newItemType, newItemName || 'nama-barang')} /></div>
-              <div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Divisi</label><select value={newDepartmentId} onChange={e => { setNewDepartmentId(e.target.value); if (newItemType === 'product') setNewStages([...(DEFAULT_PRODUCTION_STAGES[e.target.value] || [])]); }} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs bg-white"><option value="dept-eva-foam">Eva Foam</option><option value="dept-konveksi">Konveksi</option></select></div>
-              {newItemType === 'material' ? <div className="grid grid-cols-2 gap-3"><div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Satuan</label><input value={newUnit} onChange={e => setNewUnit(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" placeholder="Kg, Meter, Lembar" required /></div><div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Batas Minimum</label><input type="number" min="0" value={newMinimumStock || ''} onChange={e => setNewMinimumStock(Number(e.target.value))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" /></div></div> : <><div className="grid grid-cols-2 gap-3"><div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Kategori</label><input value={newCategory} onChange={e => setNewCategory(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" /></div><div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Varian</label><input value={newVariant} onChange={e => setNewVariant(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" /></div></div><div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Harga Jual</label><input type="number" min="0" value={newPrice || ''} onChange={e => setNewPrice(Number(e.target.value))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" /></div><div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Tahapan Produksi <span className="normal-case font-normal text-gray-400">(urutan cara produk ini dibuat)</span></label><StageListEditor stages={newStages} onChange={setNewStages} compact /></div></>}
+              <div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Divisi</label><select value={newDepartmentId} onChange={e => setNewDepartmentId(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs bg-white"><option value="dept-eva-foam">Eva Foam</option><option value="dept-konveksi">Konveksi</option></select></div>
+              {newItemType === 'material' ? <div className="grid grid-cols-2 gap-3"><div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Satuan</label><input value={newUnit} onChange={e => setNewUnit(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" placeholder="Kg, Meter, Lembar" required /></div><div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Batas Minimum</label><input type="number" min="0" value={newMinimumStock || ''} onChange={e => setNewMinimumStock(Number(e.target.value))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" /></div></div> : <><div className="grid grid-cols-2 gap-3"><div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Kategori</label><input value={newCategory} onChange={e => setNewCategory(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" /></div><div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Varian</label><input value={newVariant} onChange={e => setNewVariant(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" /></div></div><div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Harga Jual</label><input type="number" min="0" value={newPrice || ''} onChange={e => setNewPrice(Number(e.target.value))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" /></div><p className="text-[10px] text-gray-400">Alur tahapan produksi memakai bawaan divisi. Atur alur khusus lewat menu <b>Produksi &gt; Pengaturan Alur</b> setelah barang ini dibuat.</p></>}
               <div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Stok Awal</label><input type="number" min="0" value={newInitialStock || ''} onChange={e => setNewInitialStock(Number(e.target.value))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" /><p className="text-[10px] text-gray-400 mt-1">Jika lebih dari nol, sistem otomatis membuat mutasi stok masuk.</p></div>
               <div className="flex gap-3 pt-2"><button type="button" onClick={() => setShowCreateModal(false)} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-xs font-bold text-gray-600 cursor-pointer">Batal</button><button type="submit" className="flex-1 py-2.5 bg-[var(--color-evergreen)] text-white rounded-xl text-xs font-bold cursor-pointer">Simpan Barang Baru</button></div>
             </form>
@@ -887,54 +877,6 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
                 <button type="submit" className="flex-1 py-2.5 bg-[var(--color-evergreen)] text-white rounded-xl text-xs font-bold cursor-pointer">Simpan Perubahan</button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal edit alur produksi produk existing */}
-      {stageEditProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setStageEditProduct(null)}>
-          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[92vh] overflow-y-auto p-6 shadow-2xl border border-gray-100" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-start border-b border-gray-100 pb-3 mb-4">
-              <div>
-                <h3 className="text-sm font-bold text-emerald-950 flex items-center gap-2">
-                  <ListOrdered className="w-4 h-4" /> Tahapan Produksi
-                </h3>
-                <p className="text-[10px] text-gray-400 mt-1">
-                  {stageEditProduct.name} ({stageEditProduct.variant}) · {stageEditProduct.department_id === 'dept-eva-foam' ? 'Eva Foam' : 'Konveksi'}
-                </p>
-              </div>
-              <button type="button" onClick={() => setStageEditProduct(null)} className="text-gray-400 hover:text-gray-600 cursor-pointer"><X className="w-4 h-4" /></button>
-            </div>
-            <div className="space-y-4">
-              <StageListEditor stages={stageEditList} onChange={setStageEditList} />
-              <p className="text-[10px] text-gray-400">
-                Perubahan alur hanya berlaku untuk order baru — pekerjaan produksi yang sedang berjalan tetap memakai alur lamanya.
-              </p>
-              <div className="flex gap-3 pt-1">
-                <button
-                  type="button"
-                  onClick={() => { setStageEditList([...(DEFAULT_PRODUCTION_STAGES[stageEditProduct.department_id] || [])]); }}
-                  className="flex-1 py-2.5 border border-gray-200 rounded-xl text-xs font-bold text-gray-600 cursor-pointer"
-                >
-                  Reset ke Bawaan Divisi
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (stageEditList.length === 0) { alert('Tahapan produksi wajib diisi minimal satu tahap.'); return; }
-                    const updated = dataStore.getProducts().map(p => p.id === stageEditProduct.id ? { ...p, production_stages: stageEditList } : p);
-                    dataStore.setProducts(updated);
-                    dataStore.logAudit('update', 'product', `Mengubah alur produksi ${stageEditProduct.name}: ${stageEditList.join(' → ')}`, stageEditProduct.id);
-                    setStageEditProduct(null);
-                    loadData();
-                  }}
-                  className="flex-1 py-2.5 bg-[var(--color-evergreen)] text-white rounded-xl text-xs font-bold cursor-pointer"
-                >
-                  Simpan Alur
-                </button>
-              </div>
-            </div>
           </div>
         </div>
       )}
