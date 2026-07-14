@@ -27,8 +27,12 @@ import {
   Loader2,
   AlertCircle,
   ListOrdered,
-  Settings
+  Settings,
+  Camera,
+  Trash2
 } from 'lucide-react';
+import { uploadPackingPhoto, deletePackingPhoto, canDeletePhoto } from '../packingPhoto';
+import { isCloudEnabled } from '../cloudSync';
 
 interface ProductionInventoryModuleProps {
   userRole: string;
@@ -91,6 +95,8 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
   const [taskJobId, setTaskJobId] = useState('');
   const [openedEmployeeJobId, setOpenedEmployeeJobId] = useState('');
   const [openedPackingTaskId, setOpenedPackingTaskId] = useState('');
+  const [packingPhoto, setPackingPhoto] = useState<File | null>(null);
+  const [uploadingPackingPhoto, setUploadingPackingPhoto] = useState(false);
   const [taskStage, setTaskStage] = useState('');
   const [taskName, setTaskName] = useState('');
   const [taskQtyDone, setTaskQtyDone] = useState(0);
@@ -441,11 +447,25 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
     loadData();
   };
 
-  const handleCompletePackingTask = (taskId: string) => {
+  const handleCompletePackingTask = async (taskId: string) => {
     if (!window.confirm('Tandai packing ini sudah selesai?')) return;
-    if (!dataStore.completePackingTask(taskId, taskNotes.trim() || undefined)) return alert('Tugas packing tidak ditemukan.');
+    let photo: { url: string; uploaded_by: string } | undefined;
+    if (packingPhoto) {
+      const task = packingTasks.find(item => item.id === taskId);
+      setUploadingPackingPhoto(true);
+      try {
+        const url = await uploadPackingPhoto(task?.order_number || taskId, packingPhoto);
+        if (url) photo = { url, uploaded_by: currentEmployee?.name || dataStore.getCurrentActor().name };
+      } catch {
+        alert('Packing tercatat, tapi upload foto gagal. Bisa diabaikan atau dicoba lagi nanti.');
+      } finally {
+        setUploadingPackingPhoto(false);
+      }
+    }
+    if (!dataStore.completePackingTask(taskId, taskNotes.trim() || undefined, photo)) return alert('Tugas packing tidak ditemukan.');
     setTaskNotes('');
     setOpenedPackingTaskId('');
+    setPackingPhoto(null);
     loadData();
     alert('Packing selesai. Order sekarang siap dikirim.');
   };
@@ -1074,7 +1094,13 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                         </table>
                       </div>
                       <textarea value={taskNotes} onChange={event => setTaskNotes(event.target.value)} rows={3} placeholder="Catatan packing bila ada" className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-xs" />
-                      <button type="button" onClick={() => handleCompletePackingTask(selectedPackingTask.id)} className="w-full py-2.5 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 bg-[var(--color-evergreen)] text-white cursor-pointer hover:bg-[var(--color-evergreen-dark)]"><CheckCircle2 className="w-4 h-4" /> Selesai Packing</button>
+                      {isCloudEnabled && (
+                        <div>
+                          <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1"><Camera className="w-3.5 h-3.5" /> Foto Dokumentasi Barang (opsional)</label>
+                          <input type="file" accept="image/*" onChange={event => setPackingPhoto(event.target.files?.[0] || null)} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs" />
+                        </div>
+                      )}
+                      <button type="button" disabled={uploadingPackingPhoto} onClick={() => handleCompletePackingTask(selectedPackingTask.id)} className="w-full py-2.5 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 bg-[var(--color-evergreen)] text-white cursor-pointer hover:bg-[var(--color-evergreen-dark)] disabled:opacity-60"><CheckCircle2 className="w-4 h-4" /> {uploadingPackingPhoto ? 'Mengunggah foto...' : 'Selesai Packing'}</button>
                     </div>}
 
                     {selectedTaskJob && <div className="lg:col-span-7 bg-white rounded-xl border border-gray-200 p-4 space-y-4">
@@ -2350,6 +2376,48 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                     </div>
                   );
                 })}
+              </div>
+            </div>}
+
+            {subTab === 'history' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
+              <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+                <div>
+                  <h3 className="font-bold text-sm text-gray-800 font-sans">Dokumentasi Foto Packing</h3>
+                  <p className="text-xs text-gray-400">Foto barang saat selesai packing, sebagai bukti sebelum dikirim</p>
+                </div>
+                <Camera className="w-4.5 h-4.5 text-gray-400" />
+              </div>
+
+              <div className="space-y-2.5 max-h-[300px] overflow-y-auto">
+                {packingTasks.filter(task => task.status === 'completed' && task.photo_url).length === 0 ? (
+                  <p className="text-xs text-gray-400 italic text-center py-6">Belum ada foto dokumentasi packing.</p>
+                ) : packingTasks.filter(task => task.status === 'completed' && task.photo_url).map(task => (
+                  <div key={task.id} className="flex justify-between items-center text-xs p-3 bg-gray-50 rounded-lg border border-gray-100">
+                    <div className="flex items-center gap-3">
+                      <a href={task.photo_url} target="_blank" rel="noreferrer">
+                        <img src={task.photo_url} alt={`Dokumentasi packing ${task.order_number}`} className="w-10 h-10 object-cover rounded border border-gray-200" />
+                      </a>
+                      <div className="space-y-0.5">
+                        <p className="font-bold text-gray-800">{task.order_number} · {task.customer_name}</p>
+                        <p className="text-[10px] text-gray-400">Oleh {task.photo_uploaded_by || task.employee_name} · {task.photo_uploaded_at ? new Date(task.photo_uploaded_at).toLocaleDateString('id-ID', { hour: '2-digit', minute: '2-digit' }) : ''}</p>
+                      </div>
+                    </div>
+                    {userRole === 'owner' && canDeletePhoto(task.photo_uploaded_at) && (
+                      <button
+                        onClick={async () => {
+                          if (!confirm(`Hapus foto dokumentasi packing ${task.order_number}?`)) return;
+                          if (task.photo_url) { try { await deletePackingPhoto(task.photo_url); } catch { /* file mungkin sudah terhapus, lanjut bersihkan record */ } }
+                          dataStore.deletePackingTaskPhoto(task.id);
+                          loadData();
+                        }}
+                        title="Hapus foto (hanya bisa dalam 14 hari sejak diunggah)"
+                        className="bg-white hover:bg-red-50 text-red-600 border border-red-200 rounded px-2 py-1 text-[10px] font-semibold flex items-center gap-1 cursor-pointer"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>}
 

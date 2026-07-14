@@ -482,6 +482,9 @@ export interface PackingTask {
   completed_note?: string;
   created_at: string;
   completed_at?: string;
+  photo_url?: string;
+  photo_uploaded_at?: string;
+  photo_uploaded_by?: string;
 }
 
 export interface ProductionHandoff {

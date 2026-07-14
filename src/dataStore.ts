@@ -280,6 +280,8 @@ class DataStore {
   private auditKey = 'audit_logs';
   private recycleKey = 'recycle_bin';
 
+  getCurrentActor = (): { id?: string; name: string; role: UserRole | 'system' } => this.currentActor();
+
   private currentActor = (): { id?: string; name: string; role: UserRole | 'system' } => {
     try {
       const session = JSON.parse(localStorage.getItem('nxty_session') || 'null');
@@ -665,13 +667,28 @@ class DataStore {
     return task;
   };
 
-  completePackingTask = (taskId: string, note?: string): boolean => {
+  completePackingTask = (taskId: string, note?: string, photo?: { url: string; uploaded_by: string }): boolean => {
     const tasks = this.getPackingTasks();
     const task = tasks.find(item => item.id === taskId);
     if (!task) return false;
-    this.setPackingTasks(tasks.map(item => item.id === taskId ? { ...item, status: 'completed', completed_note: note, completed_at: wibNowISO() } : item));
+    this.setPackingTasks(tasks.map(item => item.id === taskId ? {
+      ...item,
+      status: 'completed',
+      completed_note: note,
+      completed_at: wibNowISO(),
+      ...(photo ? { photo_url: photo.url, photo_uploaded_at: wibNowISO(), photo_uploaded_by: photo.uploaded_by } : {})
+    } : item));
     this.setOrders(this.getOrders().map(order => order.id === task.order_id ? { ...order, shipping_status: 'siap_dikirim' } : order));
     this.logAudit('update', 'packing_task', `${task.employee_name} menyelesaikan packing ${task.order_number}`, task.id);
+    return true;
+  };
+
+  deletePackingTaskPhoto = (taskId: string): boolean => {
+    const tasks = this.getPackingTasks();
+    const task = tasks.find(item => item.id === taskId);
+    if (!task) return false;
+    this.setPackingTasks(tasks.map(item => item.id === taskId ? { ...item, photo_url: undefined, photo_uploaded_at: undefined, photo_uploaded_by: undefined } : item));
+    this.logAudit('update', 'packing_task', `Menghapus foto dokumentasi packing ${task.order_number}`, task.id);
     return true;
   };
 

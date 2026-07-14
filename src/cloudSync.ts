@@ -90,6 +90,7 @@ let client: SupabaseClient | null = null;
 if (isCloudEnabled) {
   client = createClient(SUPABASE_URL!, SUPABASE_ANON_KEY!);
 }
+export const getSupabaseClient = () => client;
 
 // Penanda agar penulisan yang berasal dari cloud tidak di-push balik ke cloud (loop)
 let applyingRemote = false;

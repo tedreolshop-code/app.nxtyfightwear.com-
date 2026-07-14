@@ -170,3 +170,25 @@ begin
   -- Dibiarkan sebagai cadangan + sumber isian awal (seed) saat migrasi ke tabel
   -- per-baris. Aplikasi sudah mengabaikannya saat membaca, jadi tidak mengganggu.
 end $$;
+
+-- ============================================================
+-- Storage bucket untuk foto dokumentasi barang keluar, diambil karyawan
+-- packing saat menyelesaikan tugas packing (PackingTask.photo_url).
+-- Master admin (owner) bisa menghapus foto lewat aplikasi, dibatasi 14 hari
+-- sejak upload (dicek di kode aplikasi, bukan di sini).
+-- ============================================================
+insert into storage.buckets (id, name, public)
+values ('delivery-photos', 'delivery-photos', true)
+on conflict (id) do nothing;
+
+drop policy if exists "delivery_photos_read" on storage.objects;
+create policy "delivery_photos_read" on storage.objects
+  for select using (bucket_id = 'delivery-photos');
+
+drop policy if exists "delivery_photos_write" on storage.objects;
+create policy "delivery_photos_write" on storage.objects
+  for insert with check (bucket_id = 'delivery-photos');
+
+drop policy if exists "delivery_photos_delete" on storage.objects;
+create policy "delivery_photos_delete" on storage.objects
+  for delete using (bucket_id = 'delivery-photos');

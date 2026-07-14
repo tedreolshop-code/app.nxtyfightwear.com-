@@ -28,7 +28,7 @@ export const InvoiceModule: React.FC<InvoiceModuleProps> = ({ isAdmin, userRole 
   const [invoiceTax, setInvoiceTax] = useState(11); // Default 11% PPN
   const [invoiceDueDate, setInvoiceDueDate] = useState('');
   const [expedition, setExpedition] = useState('Kurir internal');
-  
+
   // Temporary current item selected state
   const [selectedProdId, setSelectedProdId] = useState('');
   const [itemQty, setItemQty] = useState(1);
