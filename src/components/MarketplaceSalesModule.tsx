@@ -74,11 +74,21 @@ export const MarketplaceSalesModule: React.FC = () => {
   const [orderNumber, setOrderNumber] = useState<string>('');
   const [marketplaceRef, setMarketplaceRef] = useState<string>('Tokopedia');
   const [customMarketplaceRef, setCustomMarketplaceRef] = useState<string>('');
-  const [selectedProductId, setSelectedProductId] = useState<string>('');
-  const [customDescription, setCustomDescription] = useState<string>('');
-  const [qty, setQty] = useState<number>(1);
-  const [price, setPrice] = useState<number>(0);
-  const [adminFee, setAdminFee] = useState<number>(0);
+  // Satu order bisa berisi lebih dari 1 produk -> array baris item
+  const newEmptyItemRow = () => ({
+    key: Math.random().toString(36).substring(2, 11),
+    selectedProductId: '',
+    customDescription: '',
+    qty: 1,
+    price: 0,
+    adminFee: 0,
+  });
+  const [saleItemRows, setSaleItemRows] = useState<Array<{ key: string; selectedProductId: string; customDescription: string; qty: number; price: number; adminFee: number }>>([newEmptyItemRow()]);
+  const updateItemRow = (index: number, patch: Partial<{ selectedProductId: string; customDescription: string; qty: number; price: number; adminFee: number }>) => {
+    setSaleItemRows(prev => prev.map((row, i) => i === index ? { ...row, ...patch } : row));
+  };
+  const addItemRow = () => setSaleItemRows(prev => [...prev, newEmptyItemRow()]);
+  const removeItemRow = (index: number) => setSaleItemRows(prev => prev.filter((_, i) => i !== index));
   // Nama penginput diambil dari akun yang sedang login (bukan hardcode)
   const [staffName, setStaffName] = useState<string>(() => {
     try { return JSON.parse(localStorage.getItem('nxty_session') || 'null')?.name || 'Admin'; } catch { return 'Admin'; }
@@ -120,66 +130,50 @@ export const MarketplaceSalesModule: React.FC = () => {
     setProducts(dataStore.getProducts());
   };
 
-  // When selected product changes, auto fill price and customDescription
-  useEffect(() => {
-    if (selectedProductId) {
-      if (selectedProductId === 'custom') {
-        // user selected custom, don't change price automatically
-      } else {
-        const prod = products.find(p => p.id === selectedProductId);
-        if (prod) {
-          setCustomDescription(prod.name + (prod.variant ? ` - ${prod.variant}` : ''));
-          setPrice(prod.harga_jual);
-        }
-      }
-    }
-  }, [selectedProductId, products]);
-
-  // When Qty, Price, or fee settings change, auto-calculate fee
-  useEffect(() => {
-    if (autoCalculateFee && price > 0 && qty > 0) {
-      const subtotal = qty * price;
-      const calculatedFee = Math.round(subtotal * (feePercentage / 100));
-      setAdminFee(calculatedFee);
-    }
-  }, [qty, price, autoCalculateFee, feePercentage]);
+  // Fee admin per baris item: dihitung otomatis dari % bila auto-calc aktif, atau dari input manual
+  const feeForRow = (row: { qty: number; price: number; adminFee: number }): number =>
+    autoCalculateFee ? Math.round(row.qty * row.price * (feePercentage / 100)) : row.adminFee;
 
   // Handler for Detailed Item Sale Submission
   const handleAddDetailedSale = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    const finalDescription = selectedProductId === 'custom' || !selectedProductId
-      ? customDescription.trim()
-      : (products.find(p => p.id === selectedProductId)?.name || customDescription.trim());
 
-    if (!finalDescription) {
-      alert('Mohon masukkan deskripsi produk/barang!');
-      return;
+    const resolveDescription = (row: { selectedProductId: string; customDescription: string }) =>
+      row.selectedProductId === 'custom' || !row.selectedProductId
+        ? row.customDescription.trim()
+        : (products.find(p => p.id === row.selectedProductId)?.name || row.customDescription.trim());
+
+    for (const row of saleItemRows) {
+      if (!resolveDescription(row)) {
+        alert('Mohon masukkan deskripsi produk/barang di setiap item!');
+        return;
+      }
+      if (row.qty <= 0) {
+        alert('QTY setiap item harus lebih dari 0!');
+        return;
+      }
     }
 
-    if (qty <= 0) {
-      alert('QTY harus lebih dari 0!');
-      return;
-    }
-
-    const calculatedSubtotal = qty * price;
-    const finalTotal = calculatedSubtotal - adminFee;
-
-    // Produk gudang yang terhubung (kosong bila deskripsi manual/custom)
-    const linkedProductId = selectedProductId && selectedProductId !== 'custom' ? selectedProductId : undefined;
-
+    const finalMarketplaceRef = marketplaceRef === 'Custom' ? customMarketplaceRef.trim() || 'Other' : marketplaceRef;
     const updatedItemSales = dataStore.getMarketplaceItemSales();
 
     if (editingItemId) {
-      // Edit Mode — kembalikan stok lama dulu, lalu potong sesuai input baru.
+      // Edit Mode — hanya 1 baris (item lama), kembalikan stok lama dulu lalu potong sesuai input baru.
       // Baris cancel/retur-ke-stok dilewati: stoknya memang sudah kembali ke gudang.
+      const row = saleItemRows[0];
+      const finalDescription = resolveDescription(row);
+      const linkedProductId = row.selectedProductId && row.selectedProductId !== 'custom' ? row.selectedProductId : undefined;
+      const calculatedSubtotal = row.qty * row.price;
+      const rowFee = feeForRow(row);
+      const finalTotal = calculatedSubtotal - rowFee;
+
       const oldItem = updatedItemSales.find(item => item.id === editingItemId);
       const oldStockOut = oldItem ? !stockWasReturned(oldItem) : true;
       if (oldItem?.product_id && oldStockOut) {
         dataStore.adjustProductStock(oldItem.product_id, oldItem.qty, `Koreksi edit penjualan ${oldItem.order_number}`);
       }
       if (linkedProductId && oldItem && !stockWasReturned(oldItem)) {
-        dataStore.adjustProductStock(linkedProductId, -qty, `Terjual - ${marketplaceRef} ${orderNumber.trim() || editingItemId}`);
+        dataStore.adjustProductStock(linkedProductId, -row.qty, `Terjual - ${marketplaceRef} ${orderNumber.trim() || editingItemId}`);
       }
 
       const updated = updatedItemSales.map(item => {
@@ -189,12 +183,12 @@ export const MarketplaceSalesModule: React.FC = () => {
             product_id: linkedProductId,
             date: inputDate,
             order_number: orderNumber.trim() || item.order_number,
-            marketplace_ref: marketplaceRef === 'Custom' ? customMarketplaceRef.trim() || 'Other' : marketplaceRef,
+            marketplace_ref: finalMarketplaceRef,
             description: finalDescription,
-            qty,
-            price,
+            qty: row.qty,
+            price: row.price,
             subtotal: calculatedSubtotal,
-            admin_fee: adminFee,
+            admin_fee: rowFee,
             total: finalTotal,
             admin_staff: staffName
           };
@@ -206,38 +200,44 @@ export const MarketplaceSalesModule: React.FC = () => {
       setEditingItemId(null);
       alert('Detail penjualan produk berhasil diperbarui!');
     } else {
-      // Create Mode — potong stok produk jadi bila produk gudang dipilih
-      if (linkedProductId) {
-        dataStore.adjustProductStock(linkedProductId, -qty, `Terjual - ${marketplaceRef} ${orderNumber.trim() || 'baru'}`);
+      // Create Mode — 1 order bisa terdiri dari beberapa baris item, semuanya berbagi No Pesanan yang sama
+      const sharedOrderNumber = orderNumber.trim() || 'NP-' + Math.floor(100000 + Math.random() * 900000);
+      for (const row of saleItemRows) {
+        const finalDescription = resolveDescription(row);
+        const linkedProductId = row.selectedProductId && row.selectedProductId !== 'custom' ? row.selectedProductId : undefined;
+        const calculatedSubtotal = row.qty * row.price;
+        const rowFee = feeForRow(row);
+        const finalTotal = calculatedSubtotal - rowFee;
+
+        if (linkedProductId) {
+          dataStore.adjustProductStock(linkedProductId, -row.qty, `Terjual - ${marketplaceRef} ${sharedOrderNumber}`);
+        }
+
+        const newDetailedSale: MarketplaceItemSale = {
+          id: Math.random().toString(36).substring(2, 11),
+          product_id: linkedProductId,
+          status: inputStatus,
+          date: inputDate,
+          order_number: sharedOrderNumber,
+          marketplace_ref: finalMarketplaceRef,
+          description: finalDescription,
+          qty: row.qty,
+          price: row.price,
+          subtotal: calculatedSubtotal,
+          admin_fee: rowFee,
+          total: finalTotal,
+          admin_staff: staffName
+        };
+        updatedItemSales.unshift(newDetailedSale);
       }
-      const newDetailedSale: MarketplaceItemSale = {
-        id: Math.random().toString(36).substring(2, 11),
-        product_id: linkedProductId,
-        status: inputStatus,
-        date: inputDate,
-        order_number: orderNumber.trim() || 'NP-' + Math.floor(100000 + Math.random() * 900000),
-        marketplace_ref: marketplaceRef === 'Custom' ? customMarketplaceRef.trim() || 'Other' : marketplaceRef,
-        description: finalDescription,
-        qty,
-        price,
-        subtotal: calculatedSubtotal,
-        admin_fee: adminFee,
-        total: finalTotal,
-        admin_staff: staffName
-      };
-      updatedItemSales.unshift(newDetailedSale);
       dataStore.setMarketplaceItemSales(updatedItemSales);
       setItemSales(updatedItemSales);
-      alert('Detail penjualan produk berhasil dicatatkan!');
+      alert(saleItemRows.length > 1 ? `${saleItemRows.length} item dalam order berhasil dicatatkan!` : 'Detail penjualan produk berhasil dicatatkan!');
     }
 
     // Reset inputs but preserve date & admin name for speed typing!
     setOrderNumber('');
-    setSelectedProductId('');
-    setCustomDescription('');
-    setQty(1);
-    setPrice(0);
-    setAdminFee(0);
+    setSaleItemRows([newEmptyItemRow()]);
   };
 
   const handleStartEditItem = (item: MarketplaceItemSale) => {
@@ -258,29 +258,22 @@ export const MarketplaceSalesModule: React.FC = () => {
     // Find matching product (utamakan tautan product_id yang tersimpan)
     const matchingProduct = (item.product_id && products.find(p => p.id === item.product_id))
       || products.find(p => p.name === item.description || (p.name + (p.variant ? ` - ${p.variant}` : '')) === item.description);
-    if (matchingProduct) {
-      setSelectedProductId(matchingProduct.id);
-      setCustomDescription('');
-    } else {
-      setSelectedProductId('custom');
-      setCustomDescription(item.description);
-    }
-
-    setQty(item.qty);
-    setPrice(item.price);
     setAutoCalculateFee(false); // keep historical fee values
-    setAdminFee(item.admin_fee);
+    setSaleItemRows([{
+      key: item.id,
+      selectedProductId: matchingProduct ? matchingProduct.id : 'custom',
+      customDescription: matchingProduct ? '' : item.description,
+      qty: item.qty,
+      price: item.price,
+      adminFee: item.admin_fee,
+    }]);
     setStaffName(item.admin_staff);
   };
 
   const handleCancelEditItem = () => {
     setEditingItemId(null);
     setOrderNumber('');
-    setSelectedProductId('');
-    setCustomDescription('');
-    setQty(1);
-    setPrice(0);
-    setAdminFee(0);
+    setSaleItemRows([newEmptyItemRow()]);
   };
 
   // Handler for Original Daily Summary Submission
@@ -784,105 +777,143 @@ export const MarketplaceSalesModule: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Product Selector with Autocomplete */}
-                    <div>
-                      <label className="block text-gray-500 font-semibold mb-1">Pilih Produk (Autofill)</label>
-                      <select
-                        value={selectedProductId}
-                        onChange={(e) => setSelectedProductId(e.target.value)}
-                        className="w-full bg-gray-50 border border-gray-200 rounded px-3 py-2 text-xs text-gray-700 font-semibold mb-1.5 focus:outline-none focus:ring-1 focus:ring-evergreen"
-                      >
-                        <option value="">-- Ketik Deskripsi Custom / Pilih Produk --</option>
-                        {products.map(p => (
-                          <option key={p.id} value={p.id}>
-                            {p.name} {p.variant ? `(${p.variant})` : ''} - {formatIDR(p.harga_jual)}
-                          </option>
-                        ))}
-                        <option value="custom">Tulis Custom / Tidak di List</option>
-                      </select>
+                    {/* Item rows — 1 order bisa punya lebih dari 1 produk */}
+                    <div className="space-y-3">
+                      {saleItemRows.map((row, idx) => (
+                        <div key={row.key} className="bg-gray-50 rounded-lg p-3 border border-gray-100 space-y-2">
+                          {saleItemRows.length > 1 && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] text-gray-400 font-bold uppercase">Item #{idx + 1}</span>
+                              {!editingItemId && (
+                                <button
+                                  type="button"
+                                  onClick={() => removeItemRow(idx)}
+                                  className="text-rose-400 hover:text-rose-600 p-0.5"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          )}
 
-                      {/* Deskripsi custom input */}
-                      {(!selectedProductId || selectedProductId === 'custom') && (
-                        <div className="space-y-1">
-                          <label className="block text-[10px] text-gray-400 font-bold uppercase">Deskripsi Item</label>
-                          <input
-                            type="text"
-                            value={customDescription}
-                            onChange={(e) => setCustomDescription(e.target.value)}
-                            placeholder="Ketik deskripsi produk di sini..."
-                            className="w-full bg-gray-50 border border-gray-200 rounded px-3 py-2 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-evergreen"
-                            required
-                          />
+                          {/* Product Selector with Autocomplete */}
+                          <div>
+                            <label className="block text-gray-500 font-semibold mb-1">Pilih Produk (Autofill)</label>
+                            <select
+                              value={row.selectedProductId}
+                              onChange={(e) => {
+                                const pid = e.target.value;
+                                const prod = products.find(p => p.id === pid);
+                                updateItemRow(idx, {
+                                  selectedProductId: pid,
+                                  ...(prod ? { price: prod.harga_jual, customDescription: prod.name + (prod.variant ? ` - ${prod.variant}` : '') } : {}),
+                                });
+                              }}
+                              className="w-full bg-white border border-gray-200 rounded px-3 py-2 text-xs text-gray-700 font-semibold mb-1.5 focus:outline-none focus:ring-1 focus:ring-evergreen"
+                            >
+                              <option value="">-- Ketik Deskripsi Custom / Pilih Produk --</option>
+                              {products.map(p => (
+                                <option key={p.id} value={p.id}>
+                                  {p.name} {p.variant ? `(${p.variant})` : ''} - {formatIDR(p.harga_jual)}
+                                </option>
+                              ))}
+                              <option value="custom">Tulis Custom / Tidak di List</option>
+                            </select>
+
+                            {/* Deskripsi custom input */}
+                            {(!row.selectedProductId || row.selectedProductId === 'custom') && (
+                              <div className="space-y-1">
+                                <label className="block text-[10px] text-gray-400 font-bold uppercase">Deskripsi Item</label>
+                                <input
+                                  type="text"
+                                  value={row.customDescription}
+                                  onChange={(e) => updateItemRow(idx, { customDescription: e.target.value })}
+                                  placeholder="Ketik deskripsi produk di sini..."
+                                  className="w-full bg-white border border-gray-200 rounded px-3 py-2 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-evergreen"
+                                  required
+                                />
+                              </div>
+                            )}
+                          </div>
+
+                          {/* QTY & Price per Item */}
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-gray-500 font-semibold mb-1">QTY Terjual</label>
+                              <input
+                                type="number"
+                                min={1}
+                                value={row.qty || ''}
+                                onChange={(e) => updateItemRow(idx, { qty: Number(e.target.value) })}
+                                className="w-full bg-white border border-gray-200 rounded px-3 py-2 text-xs font-bold font-mono focus:outline-none focus:ring-1 focus:ring-evergreen"
+                                required
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-gray-500 font-semibold mb-1">Harga Satuan (IDR)</label>
+                              <input
+                                type="number"
+                                min={0}
+                                value={row.price || ''}
+                                onChange={(e) => updateItemRow(idx, { price: Number(e.target.value) })}
+                                className="w-full bg-white border border-gray-200 rounded px-3 py-2 text-xs font-bold font-mono focus:outline-none focus:ring-1 focus:ring-evergreen"
+                                required
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] text-gray-400 font-bold uppercase mb-0.5">Biaya Potongan Admin (IDR)</label>
+                            <input
+                              type="number"
+                              min={0}
+                              value={(autoCalculateFee ? feeForRow(row) : row.adminFee) || ''}
+                              onChange={(e) => updateItemRow(idx, { adminFee: Number(e.target.value) })}
+                              readOnly={autoCalculateFee}
+                              className={`w-full border border-gray-200 rounded px-3 py-1.5 text-xs font-bold font-mono text-amber-600 focus:outline-none focus:ring-1 focus:ring-evergreen ${autoCalculateFee ? 'bg-gray-100' : 'bg-white'}`}
+                              placeholder="Contoh: 25000"
+                            />
+                          </div>
                         </div>
+                      ))}
+
+                      {!editingItemId && (
+                        <button
+                          type="button"
+                          onClick={addItemRow}
+                          className="w-full flex items-center justify-center gap-1.5 text-xs font-bold text-evergreen border border-dashed border-evergreen/40 rounded-lg py-2 hover:bg-evergreen/5"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Tambah Item Lain (1 Pesanan)
+                        </button>
                       )}
                     </div>
 
-                    {/* QTY & Price per Item */}
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-gray-500 font-semibold mb-1">QTY Terjual</label>
-                        <input
-                          type="number"
-                          min={1}
-                          value={qty || ''}
-                          onChange={(e) => setQty(Number(e.target.value))}
-                          className="w-full bg-gray-50 border border-gray-200 rounded px-3 py-2 text-xs font-bold font-mono focus:outline-none focus:ring-1 focus:ring-evergreen"
-                          required
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-gray-500 font-semibold mb-1">Harga Satuan (IDR)</label>
-                        <input
-                          type="number"
-                          min={0}
-                          value={price || ''}
-                          onChange={(e) => setPrice(Number(e.target.value))}
-                          className="w-full bg-gray-50 border border-gray-200 rounded px-3 py-2 text-xs font-bold font-mono focus:outline-none focus:ring-1 focus:ring-evergreen"
-                          required
-                        />
-                      </div>
-                    </div>
-
-                    {/* Admin Fee helper and input */}
-                    <div className="bg-gray-50 rounded-lg p-3 border border-gray-100 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider flex items-center gap-1">
-                          <Percent className="w-3 h-3 text-amber-500" /> Auto Hitung Potongan Admin
-                        </span>
+                    {/* Auto Hitung Potongan Admin toggle (berlaku untuk semua item di atas) */}
+                    <div className="flex items-center justify-between bg-gray-50 rounded-lg p-3 border border-gray-100">
+                      <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider flex items-center gap-1">
+                        <Percent className="w-3 h-3 text-amber-500" /> Auto Hitung Potongan Admin
+                      </span>
+                      <div className="flex items-center gap-2">
+                        {autoCalculateFee && (
+                          <>
+                            <input
+                              type="number"
+                              min={0}
+                              max={100}
+                              step={0.5}
+                              value={feePercentage}
+                              onChange={(e) => setFeePercentage(Number(e.target.value))}
+                              className="w-16 bg-white border border-gray-200 rounded px-1.5 py-0.5 text-xs text-center font-mono font-bold text-gray-700"
+                            />
+                            <span className="text-[11px] text-gray-400">%</span>
+                          </>
+                        )}
                         <input
                           type="checkbox"
                           checked={autoCalculateFee}
                           onChange={(e) => setAutoCalculateFee(e.target.checked)}
                           className="rounded text-evergreen focus:ring-evergreen"
-                        />
-                      </div>
-
-                      {autoCalculateFee ? (
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] text-gray-400">Tarif Fee:</span>
-                          <input
-                            type="number"
-                            min={0}
-                            max={100}
-                            step={0.5}
-                            value={feePercentage}
-                            onChange={(e) => setFeePercentage(Number(e.target.value))}
-                            className="w-16 bg-white border border-gray-200 rounded px-1.5 py-0.5 text-xs text-center font-mono font-bold text-gray-700"
-                          />
-                          <span className="text-[11px] text-gray-400">% dari subtotal</span>
-                        </div>
-                      ) : null}
-
-                      <div>
-                        <label className="block text-[10px] text-gray-400 font-bold uppercase mb-0.5">Biaya Potongan Admin (IDR)</label>
-                        <input
-                          type="number"
-                          min={0}
-                          value={adminFee || ''}
-                          onChange={(e) => setAdminFee(Number(e.target.value))}
-                          className="w-full bg-white border border-gray-200 rounded px-3 py-1.5 text-xs font-bold font-mono text-amber-600 focus:outline-none focus:ring-1 focus:ring-evergreen"
-                          placeholder="Contoh: 25000"
                         />
                       </div>
                     </div>
