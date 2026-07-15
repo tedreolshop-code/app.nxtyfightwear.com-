@@ -175,7 +175,7 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
       issued_at: wibNowISO(),
       issued_by: issuedBy,
     }));
-    dataStore.setAttendanceBonusPayouts([...newPayouts, ...payouts]);
+    dataStore.setAttendanceBonusPayouts([...newPayouts, ...dataStore.getAttendanceBonusPayouts()]);
     dataStore.logAudit('create', 'attendance_bonus', `Menerbitkan slip bonus kehadiran ${monthLabel(month)}: ${newPayouts.filter(p => p.status === 'cair').length} cair (${formatIDR(totalCair)}), ${newPayouts.filter(p => p.status === 'gugur').length} gugur`);
     load();
     alert(`Slip bonus kehadiran ${monthLabel(month)} berhasil diterbitkan.`);

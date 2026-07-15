@@ -144,6 +144,7 @@ begin
     'ari_production_task_logs','ari_production_logs','ari_packing_tasks',
     'ari_purchases','ari_daily_expenses',
     'ari_payroll_weekly','ari_cash_advances','ari_cash_advance_transactions',
+    'ari_attendance_bonus_payouts',
     'ari_attendance_adjustments','ari_notifications'
   ] loop
     execute format('create table if not exists public.%I (id text primary key, value jsonb not null, updated_at timestamptz not null default now())', t);

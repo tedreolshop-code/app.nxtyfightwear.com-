@@ -141,14 +141,15 @@ export const OrderModule: React.FC = () => {
     const total = selectedItems.reduce((acc, curr) => acc + curr.subtotal, 0) + cleanShippingFee;
 
     if (editOrderId) {
-      const existing = orders.find(o => o.id === editOrderId);
+      const currentOrders = dataStore.getOrders();
+      const existing = currentOrders.find(o => o.id === editOrderId);
       if (!existing || existing.status !== 'pending') {
         alert('Order ini sudah tidak bisa diedit (status berubah).');
         resetOrderForm();
         loadData();
         return;
       }
-      const updatedOrders = orders.map(o => o.id === editOrderId ? {
+      const updatedOrders = currentOrders.map(o => o.id === editOrderId ? {
         ...o,
         customer_name: customerName,
         customer_phone: customerPhone,
@@ -177,7 +178,7 @@ export const OrderModule: React.FC = () => {
         status: 'pending',
         notes
       };
-      dataStore.setOrders([newOrder, ...orders]);
+      dataStore.setOrders([newOrder, ...dataStore.getOrders()]);
       alert(`Order ${orderNumber} berhasil dicatat! Anda dapat meneruskannya ke proses produksi sekarang.`);
     }
 
@@ -259,7 +260,7 @@ export const OrderModule: React.FC = () => {
     dataStore.setProductionJobs(currentJobs);
 
     // Update order status to "production"
-    const updatedOrders = orders.map(o => {
+    const updatedOrders = dataStore.getOrders().map(o => {
       if (o.id === order.id) {
         return { ...o, status: 'production' as const };
       }
@@ -273,7 +274,7 @@ export const OrderModule: React.FC = () => {
 
   const handleCancelOrder = (orderId: string) => {
     if (!window.confirm('Apakah Anda yakin ingin membatalkan pesanan ini?')) return;
-    const updatedOrders = orders.map(o => {
+    const updatedOrders = dataStore.getOrders().map(o => {
       if (o.id === orderId) {
         return { ...o, status: 'cancelled' as const };
       }
@@ -291,7 +292,7 @@ export const OrderModule: React.FC = () => {
       return;
     }
     if (!window.confirm(`Hapus PERMANEN order ${order.order_number} (${order.customer_name})?\n\nTindakan ini tidak bisa dibatalkan.`)) return;
-    dataStore.setOrders(orders.filter(o => o.id !== order.id));
+    dataStore.setOrders(dataStore.getOrders().filter(o => o.id !== order.id));
     alert(`Order ${order.order_number} telah dihapus.`);
     loadData();
   };
@@ -311,7 +312,7 @@ export const OrderModule: React.FC = () => {
       dataStore.adjustProductStock(item.product_id, -item.qty, `Terjual - Order ${order.order_number}`);
     });
 
-    const updatedOrders = orders.map(o => {
+    const updatedOrders = dataStore.getOrders().map(o => {
       if (o.id === orderId) {
         return { ...o, status: 'completed' as const };
       }

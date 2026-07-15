@@ -504,7 +504,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
         allowed_tabs: allowedTabs,
         access_role: (accessRole || undefined) as Employee['access_role']
       };
-      dataStore.setEmployees([...employees, newEmp]);
+      dataStore.setEmployees([...dataStore.getEmployees(), newEmp]);
       showNotification(`Karyawan ${name} berhasil ditambahkan!`, 'success');
     }
 
@@ -521,7 +521,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
   };
 
   const handleSaveRLS = (empId: string) => {
-    const updated = employees.map(emp => {
+    const updated = dataStore.getEmployees().map(emp => {
       if (emp.id === empId) {
         return { ...emp, allowed_tabs: editingTabs };
       }

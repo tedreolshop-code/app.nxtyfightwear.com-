@@ -182,9 +182,10 @@ export const InvoiceModule: React.FC<InvoiceModuleProps> = ({ isAdmin, userRole 
   };
 
   const handleToggleInvoiceStatus = (id: string) => {
-    const updatedInvs = invoices.map(inv => {
+    const updatedInvs = dataStore.getInvoices().map(inv => {
       if (inv.id === id) {
-        return { ...inv, payment_status: inv.payment_status === 'lunas' ? 'belum_lunas' : 'lunas' as const };
+        const nextStatus: Invoice['payment_status'] = inv.payment_status === 'lunas' ? 'belum_lunas' : 'lunas';
+        return { ...inv, payment_status: nextStatus };
       }
       return inv;
     });
@@ -193,9 +194,10 @@ export const InvoiceModule: React.FC<InvoiceModuleProps> = ({ isAdmin, userRole 
   };
 
   const handleToggleSJStatus = (id: string) => {
-    const updatedSJs = deliveryNotes.map(sj => {
+    const updatedSJs = dataStore.getDeliveryNotes().map(sj => {
       if (sj.id === id) {
-        return { ...sj, status: sj.status === 'dikirim' ? 'diterima' : 'dikirim' as const };
+        const nextStatus: DeliveryNote['status'] = sj.status === 'dikirim' ? 'diterima' : 'dikirim';
+        return { ...sj, status: nextStatus };
       }
       return sj;
     });

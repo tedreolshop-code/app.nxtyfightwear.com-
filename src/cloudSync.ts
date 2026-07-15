@@ -69,6 +69,7 @@ const PER_ROW: PerRowSync[] = [
   { key: 'payroll_weekly', table: 'ari_payroll_weekly', ready: !isCloudEnabled },
   { key: 'cash_advances', table: 'ari_cash_advances', ready: !isCloudEnabled },
   { key: 'cash_advance_transactions', table: 'ari_cash_advance_transactions', ready: !isCloudEnabled },
+  { key: 'attendance_bonus_payouts', table: 'ari_attendance_bonus_payouts', ready: !isCloudEnabled },
   // Absensi (koreksi/ACC)
   { key: 'attendance_adjustments', table: 'ari_attendance_adjustments', ready: !isCloudEnabled },
   // Notifikasi
