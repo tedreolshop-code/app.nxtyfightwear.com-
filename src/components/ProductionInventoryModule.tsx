@@ -1973,23 +1973,29 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                   {manualStep === 1 && (
                     <div className="space-y-4">
                       <div className="space-y-2">
-                        <label className="block text-xs font-semibold text-gray-500">Departemen Produksi</label>
+                        <label className="block text-xs font-bold text-gray-700">Departemen Produksi</label>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {PRODUCTION_DEPARTMENTS.filter(department => !lockedManualDepartment || department.id === lockedManualDepartment).map(department => (
-                            <button
-                              key={department.id}
-                              type="button"
-                              onClick={() => setManualDepartment(department.id)}
-                              className={`relative text-left rounded-xl border-2 p-3 cursor-pointer transition-colors ${manualDepartmentId === department.id ? 'bg-emerald-50 border-[var(--color-evergreen)] text-emerald-900 shadow-sm' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'}`}
-                            >
-                              {manualDepartmentId === department.id && (
-                                <span className="absolute top-2 right-2 w-5 h-5 rounded-full bg-[var(--color-evergreen)] text-white flex items-center justify-center">
-                                  <Check className="w-3 h-3" />
-                                </span>
-                              )}
-                              <p className="text-xs font-black pr-6">{department.label}</p>
-                            </button>
-                          ))}
+                          {PRODUCTION_DEPARTMENTS.filter(department => !lockedManualDepartment || department.id === lockedManualDepartment).map(department => {
+                            const isSelected = manualDepartmentId === department.id;
+                            const palette = department.id === 'dept-eva-foam'
+                              ? { selected: 'bg-emerald-500 border-emerald-600 text-white', idle: 'bg-emerald-50 border-emerald-200 text-emerald-900 hover:bg-emerald-100' }
+                              : { selected: 'bg-sky-500 border-sky-600 text-white', idle: 'bg-sky-50 border-sky-200 text-sky-900 hover:bg-sky-100' };
+                            return (
+                              <button
+                                key={department.id}
+                                type="button"
+                                onClick={() => setManualDepartment(department.id)}
+                                className={`relative text-left rounded-xl border-2 p-3 cursor-pointer transition-colors ${isSelected ? `${palette.selected} shadow-sm` : palette.idle}`}
+                              >
+                                {isSelected && (
+                                  <span className="absolute top-2 right-2 w-5 h-5 rounded-full bg-white/25 flex items-center justify-center">
+                                    <Check className="w-3 h-3" />
+                                  </span>
+                                )}
+                                <p className="text-xs font-black pr-6">{department.label}</p>
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
 
