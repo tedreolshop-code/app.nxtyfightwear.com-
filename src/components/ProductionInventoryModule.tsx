@@ -4,6 +4,7 @@ import { ProductionHandoffPanel } from './ProductionHandoffPanel';
 import { dataStore, RECIPES, wibNowISO, wibTodayStr, stagesForProduct, DEFAULT_PRODUCTION_STAGES } from '../dataStore';
 import { brandName, brandLegalName } from '../brand';
 import { StageListEditor } from './StageListEditor';
+import TabButton from './TabButton';
 import {
   Box,
   Hammer,
@@ -41,9 +42,9 @@ interface ProductionInventoryModuleProps {
 
 type ProductionDepartmentId = ProductionJob['department_id'];
 
-const PRODUCTION_DEPARTMENTS: Array<{ id: ProductionDepartmentId; label: string; description: string }> = [
-  { id: 'dept-eva-foam', label: 'Eva Foam', description: 'Matras, pelampung, dan produk berbahan eva foam.' },
-  { id: 'dept-konveksi', label: 'Konveksi', description: 'Samsak, body protector, jahit, dan produk kain.' },
+const PRODUCTION_DEPARTMENTS: Array<{ id: ProductionDepartmentId; label: string }> = [
+  { id: 'dept-eva-foam', label: 'Eva Foam' },
+  { id: 'dept-konveksi', label: 'Konveksi' },
 ];
 
 const DEFAULT_STAGES_BY_DEPARTMENT: Record<ProductionDepartmentId, string> = {
@@ -826,57 +827,45 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
       </div>
 
       {/* Sub-Tabs navigation */}
-      <div className="no-print flex border-b border-gray-200 gap-2">
-        {!isEmployee && <button
-          onClick={() => { setSubTab('order'); triggerLoading(); }}
-          className={`px-5 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
-            subTab === 'order'
-              ? 'border-[var(--color-evergreen)] text-[var(--color-evergreen)]'
-              : 'border-transparent text-gray-400 hover:text-gray-600'
-          }`}
-        >
-          <Plus className="w-4 h-4" /> Order Produksi
-        </button>}
-        <button
+      <div className="no-print flex bg-gray-50 p-1.5 rounded-xl border border-gray-100 w-fit gap-1 flex-wrap">
+        {!isEmployee && (
+          <TabButton
+            active={subTab === 'order'}
+            onClick={() => { setSubTab('order'); triggerLoading(); }}
+            icon={Plus}
+            label="Order Produksi"
+          />
+        )}
+        <TabButton
+          active={subTab === 'tracker'}
           onClick={() => { setSubTab('tracker'); triggerLoading(); }}
-          className={`px-5 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
-            subTab === 'tracker'
-              ? 'border-[var(--color-evergreen)] text-[var(--color-evergreen)]'
-              : 'border-transparent text-gray-400 hover:text-gray-600'
-          }`}
-        >
-          <Clipboard className="w-4 h-4" /> {isEmployee ? 'Daftar Kerjaan' : 'Progress'}
-        </button>
-        {!isEmployee && <button
-          onClick={() => { setSubTab('finalize'); triggerLoading(); }}
-          className={`px-5 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
-            subTab === 'finalize'
-              ? 'border-[var(--color-evergreen)] text-[var(--color-evergreen)]'
-              : 'border-transparent text-gray-400 hover:text-gray-600'
-          }`}
-        >
-          <CheckCircle2 className="w-4 h-4" /> Finalisasi
-        </button>}
-        {!isEmployee && <button
-          onClick={() => { setSubTab('history'); triggerLoading(); }}
-          className={`px-5 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
-            subTab === 'history'
-              ? 'border-[var(--color-evergreen)] text-[var(--color-evergreen)]'
-              : 'border-transparent text-gray-400 hover:text-gray-600'
-          }`}
-        >
-          <History className="w-4 h-4" /> Riwayat &amp; Stok
-        </button>}
-        {!isRestrictedProduction && <button
-          onClick={() => { setSubTab('settings'); triggerLoading(); }}
-          className={`px-5 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
-            subTab === 'settings'
-              ? 'border-[var(--color-evergreen)] text-[var(--color-evergreen)]'
-              : 'border-transparent text-gray-400 hover:text-gray-600'
-          }`}
-        >
-          <Settings className="w-4 h-4" /> Pengaturan Alur
-        </button>}
+          icon={Clipboard}
+          label={isEmployee ? 'Daftar Kerjaan' : 'Progress'}
+        />
+        {!isEmployee && (
+          <TabButton
+            active={subTab === 'finalize'}
+            onClick={() => { setSubTab('finalize'); triggerLoading(); }}
+            icon={CheckCircle2}
+            label="Finalisasi"
+          />
+        )}
+        {!isEmployee && (
+          <TabButton
+            active={subTab === 'history'}
+            onClick={() => { setSubTab('history'); triggerLoading(); }}
+            icon={History}
+            label="Riwayat & Stok"
+          />
+        )}
+        {!isRestrictedProduction && (
+          <TabButton
+            active={subTab === 'settings'}
+            onClick={() => { setSubTab('settings'); triggerLoading(); }}
+            icon={Settings}
+            label="Pengaturan Alur"
+          />
+        )}
       </div>
 
       {/* PENGATURAN ALUR PRODUKSI — pindahan dari menu Gudang */}
@@ -1999,7 +1988,6 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                                 </span>
                               )}
                               <p className="text-xs font-black pr-6">{department.label}</p>
-                              <p className="text-[10px] mt-1 leading-relaxed">{department.description}</p>
                             </button>
                           ))}
                         </div>

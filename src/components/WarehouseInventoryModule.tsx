@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Product, RawMaterial, StockMovement } from '../types';
 import { dataStore, stagesForProduct } from '../dataStore';
+import TabButton from './TabButton';
 import {
   Box, 
   History, 
@@ -453,39 +454,24 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
       <div className="no-print bg-white rounded-2xl border border-gray-100 p-4 shadow-3xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         {/* Navigation Tabs */}
         <div className="flex bg-gray-50 p-1.5 rounded-xl border border-gray-100 w-fit gap-1 shrink-0">
-          <button
+          <TabButton
+            active={activeTab === 'bahan'}
             onClick={() => { setActiveTab('bahan'); setSearchQuery(''); }}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'bahan' 
-                ? 'bg-evergreen text-white shadow-2xs' 
-                : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5" />
-            1. Inventaris Bahan Baku
-          </button>
-          <button
+            icon={Layers}
+            label="1. Inventaris Bahan Baku"
+          />
+          <TabButton
+            active={activeTab === 'jadi'}
             onClick={() => { setActiveTab('jadi'); setSearchQuery(''); }}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'jadi' 
-                ? 'bg-evergreen text-white shadow-2xs' 
-                : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'
-            }`}
-          >
-            <Box className="w-3.5 h-3.5" />
-            2. Barang Jadi (Gudang)
-          </button>
-          <button
+            icon={Box}
+            label="2. Barang Jadi (Gudang)"
+          />
+          <TabButton
+            active={activeTab === 'mutasi'}
             onClick={() => { setActiveTab('mutasi'); setSearchQuery(''); }}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'mutasi' 
-                ? 'bg-evergreen text-white shadow-2xs' 
-                : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'
-            }`}
-          >
-            <History className="w-3.5 h-3.5" />
-            3. Log Mutasi Stok
-          </button>
+            icon={History}
+            label="3. Log Mutasi Stok"
+          />
         </div>
 
         {/* Division Filter */}
