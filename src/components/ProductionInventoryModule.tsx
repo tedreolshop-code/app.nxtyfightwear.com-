@@ -887,7 +887,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-left text-gray-400 uppercase text-[10px] border-b border-gray-100">
+                  <tr className="text-left text-gray-600 uppercase text-[10px] font-bold border-b-2 border-gray-300">
                     <th className="p-2">Produk</th>
                     <th className="p-2">Divisi</th>
                     <th className="p-2">Alur Saat Ini</th>
@@ -901,7 +901,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                       prod.variant.toLowerCase().includes(settingsSearchQuery.toLowerCase())
                     )
                     .map(prod => (
-                      <tr key={prod.id} className="border-b border-gray-50 hover:bg-emerald-50/20">
+                      <tr key={prod.id} className="border-b border-gray-200 hover:bg-emerald-50/20">
                         <td className="p-2 font-semibold text-gray-700">{prod.name} <span className="text-gray-400 font-normal">({prod.variant})</span></td>
                         <td className="p-2">
                           <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${prod.department_id === 'dept-eva-foam' ? 'bg-emerald-100 text-emerald-800' : 'bg-sky-100 text-sky-800'}`}>
@@ -1078,10 +1078,10 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                         </div>
                         <button type="button" onClick={() => setOpenedPackingTaskId('')} className="text-xs font-bold text-gray-500 bg-gray-100 rounded-lg px-3 py-1.5 cursor-pointer">Tutup</button>
                       </div>
-                      <div className="border border-gray-100 rounded-xl overflow-hidden">
+                      <div className="border border-gray-300 rounded-xl overflow-hidden">
                         <table className="w-full text-xs">
-                          <thead className="bg-gray-50 text-gray-500"><tr><th className="p-2 text-left">Barang</th><th className="p-2 text-right">Qty</th></tr></thead>
-                          <tbody>{selectedPackingTask.items.map(item => <tr key={item.id} className="border-t"><td className="p-2 font-bold text-gray-800">{item.product_name}<p className="text-[10px] text-gray-400 font-normal">{item.variant}</p></td><td className="p-2 text-right font-mono font-black">{item.qty}</td></tr>)}</tbody>
+                          <thead className="bg-gray-100 text-gray-700"><tr><th className="p-2 text-left font-bold">Barang</th><th className="p-2 text-right font-bold">Qty</th></tr></thead>
+                          <tbody>{selectedPackingTask.items.map(item => <tr key={item.id} className="border-t border-gray-200"><td className="p-2 font-bold text-gray-800">{item.product_name}<p className="text-[10px] text-gray-400 font-normal">{item.variant}</p></td><td className="p-2 text-right font-mono font-black">{item.qty}</td></tr>)}</tbody>
                         </table>
                       </div>
                       <textarea value={taskNotes} onChange={event => setTaskNotes(event.target.value)} rows={3} placeholder="Catatan packing bila ada" className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-xs" />
