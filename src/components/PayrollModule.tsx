@@ -245,7 +245,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     e.preventDefault();
     if (!editingPayroll) return;
 
-    const updatedPayrolls = payrolls.map(p => {
+    const updatedPayrolls = dataStore.getPayrollWeekly().map(p => {
       if (p.id === editingPayroll.id) {
         return {
           ...p,
@@ -622,7 +622,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
 
   const triggerSystemPrintPayroll = (pay: PayrollWeekly) => {
     // Flag as printed
-    const updatedPayrolls = payrolls.map(p => {
+    const updatedPayrolls = dataStore.getPayrollWeekly().map(p => {
       if (p.id === pay.id) {
         return { ...p, is_printed: true };
       }

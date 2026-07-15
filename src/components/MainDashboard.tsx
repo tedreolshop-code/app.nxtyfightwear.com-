@@ -251,8 +251,11 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName }) 
 
   let cards: StatCard[] = [];
   if (role === 'owner') cards = [...kartuPenjualan.slice(1), ...kartuProduksi, ...kartuSDM];
-  else if (role === 'admin_penjualan') cards = kartuPenjualan;
-  else if (role === 'admin_gudang') cards = kartuProduksi;
+  else if (role === 'admin_penjualan' || role === 'admin_marketplace') cards = kartuPenjualan;
+  else if (role === 'admin_gudang' || role === 'admin_produksi' || role === 'admin_eva_foam' || role === 'admin_konveksi') cards = kartuProduksi;
+  else if (role === 'admin_keuangan') cards = kartuPenjualan;
+  else if (role === 'admin_hrd') cards = kartuSDM;
+  else if (role === 'admin_keuangan_hr') cards = [...kartuSDM, kartuPenjualan[2]];
 
   // Daftar "perlu perhatian" untuk owner
   const perluPerhatian: Array<{ text: string; tab: string; serius: boolean }> = [];

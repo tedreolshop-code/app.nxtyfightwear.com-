@@ -783,7 +783,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
           
           {/* PO MODAL */}
           {isPoModalOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 sm:p-4" onClick={() => setIsPoModalOpen(false)}>
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 sm:p-4" onClick={() => { setIsPoModalOpen(false); handleCancelEditPurchase(); }}>
               <div className="bg-white rounded-2xl p-4 sm:p-6 w-full max-w-5xl max-h-[94vh] overflow-y-auto shadow-2xl" onClick={(e) => e.stopPropagation()}>
                 <div className="border-b border-emerald-800/10 pb-3 flex items-center justify-between mb-4">
                   <h3 className="font-bold text-lg text-emerald-950">
@@ -976,7 +976,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
 
           {/* EXPENSE MODAL */}
           {isExpenseModalOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setIsExpenseModalOpen(false)}>
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => { setIsExpenseModalOpen(false); handleCancelEditExpense(); }}>
               <div className="bg-white rounded-2xl p-6 w-full max-w-xl shadow-2xl" onClick={(e) => e.stopPropagation()}>
                 <div className="border-b border-emerald-800/10 pb-3 flex items-center justify-between mb-4">
                   <h3 className="font-bold text-lg text-emerald-950">

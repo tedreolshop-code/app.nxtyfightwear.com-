@@ -501,7 +501,7 @@ class DataStore {
   } => {
     const employee = this.getEmployees().find(e => e.id === employeeId);
     const settings = this.getWorkSettings();
-    const bonusAmount = employee?.default_attendance_bonus ?? settings.monthly_bonus_amount;
+    const bonusAmount = Math.round(Number(employee?.default_attendance_bonus ?? settings.monthly_bonus_amount) || 0);
 
     const today = wibTodayStr();
     const [year, mon] = month.split('-').map(Number);
@@ -1252,8 +1252,8 @@ class DataStore {
     if (!target) throw new Error('Data kasbon tidak ditemukan.');
     const updatedTarget = {
       ...target,
-      amount: target.amount + amount,
-      remaining_balance: target.remaining_balance + amount
+      amount: (Number(target.amount) || 0) + amount,
+      remaining_balance: (Number(target.remaining_balance) || 0) + amount
     };
     this.setCashAdvances(advances.map(adv => adv.id === target.id ? updatedTarget : adv));
     const transaction: CashAdvanceTransaction = {

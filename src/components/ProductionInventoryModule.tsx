@@ -614,7 +614,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
 
     // Update state & reset notes
     // Jangan buka modal bila update dipicu dari tombol cepat di kartu
-    setSelectedJob(prev => (prev ? updatedJob : null));
+    setSelectedJob(prev => (prev && prev.id === jobId ? updatedJob : prev));
     setModalNote('');
     loadData();
     triggerLoading();
@@ -1027,6 +1027,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                               onClick={() => {
                                 setOpenedEmployeeJobId(job.id);
                                 setOpenedPackingTaskId('');
+                                setPackingPhoto(null);
                                 setTaskJobId(job.id);
                                 setTaskStage(job.current_stage);
                                 setTaskName(job.current_stage);
@@ -1060,6 +1061,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                               setOpenedEmployeeJobId('');
                               setTaskJobId('');
                               setTaskNotes('');
+                              setPackingPhoto(null);
                             }}
                             className={`w-full text-left p-3 rounded-lg border cursor-pointer transition-colors ${openedPackingTaskId === task.id ? 'bg-sky-50 border-sky-200' : 'bg-gray-50 border-gray-100 hover:bg-sky-50/60'}`}
                           >
