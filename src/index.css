@@ -12,6 +12,11 @@
   --color-warning-bg: #FBEFE2;
 }
 
+/* Konten khusus cetak: sembunyikan di layar, muncul hanya saat print */
+.print-only {
+  display: none;
+}
+
 /* Custom continuous form (CF) dot matrix print styling */
 @media print {
   body.qr-printing * {

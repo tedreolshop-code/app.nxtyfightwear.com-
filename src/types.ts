@@ -532,6 +532,7 @@ export interface Order {
   date: string;
   items: OrderItem[];
   shipping_fee?: number; // Ongkir untuk order langsung/non-marketplace (masuk ke total)
+  discount?: number; // Potongan harga (dikurangkan dari subtotal sebelum ongkir)
   total: number;
   status: 'pending' | 'production' | 'completed' | 'cancelled';
   notes?: string;

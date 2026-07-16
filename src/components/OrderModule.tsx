@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Order, OrderItem, Product, ProductionJob, Employee } from '../types';
-import { dataStore, stagesForProduct } from '../dataStore';
-import { StageListEditor } from './StageListEditor';
-import { ShoppingBag, Plus, User, Phone, CheckCircle2, Trash2, ArrowRight, PackageCheck, Truck, ListOrdered, X } from 'lucide-react';
+import { Order, OrderItem, Product, Employee } from '../types';
+import { dataStore } from '../dataStore';
+import { ShoppingBag, Plus, User, Phone, CheckCircle2, Trash2, PackageCheck, Truck, Printer, X } from 'lucide-react';
 
 export const OrderModule: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [showAddForm, setShowAddForm] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   // Mode edit: id order pending yang sedang diedit (null = form tambah baru)
   const [editOrderId, setEditOrderId] = useState<string | null>(null);
   const [expandedOrderId, setExpandedOrderId] = useState('');
@@ -27,16 +26,18 @@ export const OrderModule: React.FC = () => {
   const [source, setSource] = useState<'online' | 'offline'>('offline');
   const [marketplaceName, setMarketplaceName] = useState('Shopee');
   const [notes, setNotes] = useState('');
-  
+
   // Selected items for new order
   const [selectedItems, setSelectedItems] = useState<OrderItem[]>([]);
   const [currentProductId, setCurrentProductId] = useState('');
   const [currentQty, setCurrentQty] = useState(1);
   const [shippingFee, setShippingFee] = useState(0);
+  const [discount, setDiscount] = useState(0);
 
-  // Preview & edit alur produksi sekali-pakai sebelum order dikirim ke produksi
-  const [productionPreviewOrder, setProductionPreviewOrder] = useState<Order | null>(null);
-  const [previewStages, setPreviewStages] = useState<Record<string, string[]>>({}); // per product_id
+  // Nota yang sedang dicetak (dirender di container .print-only)
+  const [printOrder, setPrintOrder] = useState<Order | null>(null);
+  // Offset kalibrasi printer (mm) — disimpan bersama slip gaji karena printernya sama
+  const [calibration, setCalibration] = useState({ offset_x: 0, offset_y: 0 });
 
   useEffect(() => {
     loadData();
@@ -51,6 +52,13 @@ export const OrderModule: React.FC = () => {
     setOrders(dataStore.getOrders());
     setProducts(dataStore.getProducts());
     setEmployees(dataStore.getEmployees().filter(employee => employee.status_aktif));
+    setCalibration(dataStore.getCalibration());
+  };
+
+  const updateCalibration = (patch: Partial<{ offset_x: number; offset_y: number }>) => {
+    const updated = { ...calibration, ...patch };
+    setCalibration(updated);
+    dataStore.setCalibration(updated);
   };
 
   const handleAddItem = () => {
@@ -96,11 +104,12 @@ export const OrderModule: React.FC = () => {
     setCurrentProductId('');
     setCurrentQty(1);
     setShippingFee(0);
+    setDiscount(0);
     setEditOrderId(null);
-    setShowAddForm(false);
+    setIsModalOpen(false);
   };
 
-  // Edit hanya untuk order pending — setelah masuk produksi, item sudah memotong bahan baku
+  // Edit hanya untuk order pending — setelah selesai, stok gudang sudah terpotong
   const startEditOrder = (order: Order) => {
     if (order.status !== 'pending') {
       alert('Hanya order berstatus Pending yang bisa diedit.');
@@ -108,14 +117,14 @@ export const OrderModule: React.FC = () => {
     }
     setEditOrderId(order.id);
     setCustomerName(order.customer_name);
-    setCustomerPhone(order.customer_phone);
+    setCustomerPhone(order.customer_phone || '');
     setSource(order.source);
     setMarketplaceName(order.marketplace_name || 'Shopee');
     setNotes(order.notes || '');
     setSelectedItems(order.items.map(item => ({ ...item })));
     setShippingFee(order.shipping_fee || 0);
-    setShowAddForm(true);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setDiscount(order.discount || 0);
+    setIsModalOpen(true);
   };
 
   // Nomor order: lanjutkan urutan tertinggi bulan berjalan agar tidak duplikat saat ada order yang dihapus
@@ -130,15 +139,17 @@ export const OrderModule: React.FC = () => {
     return `${prefix}${(maxSeq + 1).toString().padStart(3, '0')}`;
   };
 
+  const itemsSubtotal = selectedItems.reduce((acc, curr) => acc + curr.subtotal, 0);
+  const cleanDiscount = Math.min(Math.max(0, discount || 0), itemsSubtotal);
+  const cleanShippingFee = Math.max(0, shippingFee || 0);
+  const formTotal = itemsSubtotal - cleanDiscount + cleanShippingFee;
+
   const handleCreateOrder = (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedItems.length === 0) {
       alert('Pilih minimal satu produk untuk dipesan!');
       return;
     }
-
-    const cleanShippingFee = Math.max(0, shippingFee || 0);
-    const total = selectedItems.reduce((acc, curr) => acc + curr.subtotal, 0) + cleanShippingFee;
 
     if (editOrderId) {
       const currentOrders = dataStore.getOrders();
@@ -157,7 +168,8 @@ export const OrderModule: React.FC = () => {
         marketplace_name: source === 'online' ? marketplaceName : undefined,
         items: selectedItems,
         shipping_fee: cleanShippingFee,
-        total,
+        discount: cleanDiscount,
+        total: formTotal,
         notes
       } : o);
       dataStore.setOrders(updatedOrders);
@@ -174,101 +186,16 @@ export const OrderModule: React.FC = () => {
         date: new Date().toISOString().split('T')[0],
         items: selectedItems,
         shipping_fee: cleanShippingFee,
-        total,
+        discount: cleanDiscount,
+        total: formTotal,
         status: 'pending',
         notes
       };
       dataStore.setOrders([newOrder, ...dataStore.getOrders()]);
-      alert(`Order ${orderNumber} berhasil dicatat! Anda dapat meneruskannya ke proses produksi sekarang.`);
+      alert(`Order ${orderNumber} berhasil dicatat! Selesaikan order untuk memotong stok gudang.`);
     }
 
     resetOrderForm();
-    loadData();
-  };
-
-  // Buka modal preview alur: tampilkan tahapan tiap produk (dari master produk) yang masih bisa diedit khusus order ini
-  const openProductionPreview = (order: Order) => {
-    const stagesMap: Record<string, string[]> = {};
-    order.items.forEach(item => {
-      const product = products.find(p => p.id === item.product_id);
-      stagesMap[item.product_id] = [...stagesForProduct(product)];
-    });
-    setPreviewStages(stagesMap);
-    setProductionPreviewOrder(order);
-  };
-
-  const handleSendToProduction = (order: Order, stagesByProduct?: Record<string, string[]>) => {
-    // Fase 1: cek kecukupan bahan baku SEMUA item (belum memotong apa pun)
-    const allShortages = dataStore.checkMaterialsForOrder(
-      order.items.map(i => ({ product_id: i.product_id, product_name: i.product_name, qty: i.qty }))
-    );
-    if (allShortages.length > 0) {
-      alert(
-        `Order ${order.order_number} TIDAK bisa masuk produksi.\n\nBahan baku kurang:\n- ${allShortages.join('\n- ')}\n\nBuat PO pembelian bahan terlebih dahulu.`
-      );
-      return;
-    }
-
-    // Fase 2: potong stok bahan baku per item sesuai resep
-    for (const item of order.items) {
-      dataStore.consumeMaterialsForProduction(
-        item.product_id,
-        item.product_name,
-        item.qty,
-        `Produksi ${order.order_number} - ${item.product_name}`
-      );
-    }
-
-    // Generate ProductionJobs for each product in this order
-    const currentJobs = dataStore.getProductionJobs();
-
-    order.items.forEach(item => {
-      const product = products.find(p => p.id === item.product_id);
-      if (!product) return;
-
-      const deptId = product.department_id as 'dept-eva-foam' | 'dept-konveksi';
-
-      // Tahapan diambil dari preview yang (mungkin) diedit admin, atau alur milik produk
-      const stagesList = stagesByProduct?.[item.product_id]?.length
-        ? stagesByProduct[item.product_id]
-        : stagesForProduct(product);
-
-      const stageProgress = stagesList.map((stg, index) => ({
-        stage: stg,
-        status: (index === 0 ? 'ongoing' : 'pending') as 'pending' | 'ongoing' | 'completed',
-        notes: index === 0 ? `Dimulai otomatis dari order ${order.order_number}` : undefined
-      }));
-
-      const newJob: ProductionJob = {
-        id: `job-${Math.random().toString(36).substring(2, 7)}`,
-        order_id: order.id,
-        order_number: order.order_number,
-        product_id: item.product_id,
-        product_name: item.product_name,
-        variant: item.variant,
-        qty: item.qty,
-        department_id: deptId,
-        stages: stageProgress,
-        current_stage: stagesList[0],
-        status: 'ongoing',
-        created_at: new Date().toISOString()
-      };
-
-      currentJobs.unshift(newJob);
-    });
-
-    dataStore.setProductionJobs(currentJobs);
-
-    // Update order status to "production"
-    const updatedOrders = dataStore.getOrders().map(o => {
-      if (o.id === order.id) {
-        return { ...o, status: 'production' as const };
-      }
-      return o;
-    });
-    dataStore.setOrders(updatedOrders);
-
-    alert(`Order ${order.order_number} berhasil dikirim ke antrean Produksi!`);
     loadData();
   };
 
@@ -288,7 +215,7 @@ export const OrderModule: React.FC = () => {
   // Hapus permanen hanya untuk order yang belum menyentuh stok (pending) atau sudah dibatalkan
   const handleDeleteOrder = (order: Order) => {
     if (order.status !== 'pending' && order.status !== 'cancelled') {
-      alert('Hanya order Pending atau Dibatalkan yang boleh dihapus, agar jejak stok & produksi tetap utuh.');
+      alert('Hanya order Pending atau Dibatalkan yang boleh dihapus, agar jejak stok tetap utuh.');
       return;
     }
     if (!window.confirm(`Hapus PERMANEN order ${order.order_number} (${order.customer_name})?\n\nTindakan ini tidak bisa dibatalkan.`)) return;
@@ -297,17 +224,23 @@ export const OrderModule: React.FC = () => {
     loadData();
   };
 
+  // Selesaikan order: cek dulu kecukupan stok produk jadi, lalu potong stok gudang.
+  // Order non-marketplace SELALU ambil dari stok gudang, tidak lewat produksi.
   const handleCompleteOrder = (orderId: string) => {
     const order = orders.find(o => o.id === orderId);
     if (!order) return;
 
-    const unfinishedJobs = dataStore.getProductionJobs().filter(job => job.order_id === order.id && job.status !== 'completed');
-    const warning = unfinishedJobs.length > 0
-      ? `PERHATIAN: ${unfinishedJobs.length} pekerjaan produksi order ini BELUM selesai (${unfinishedJobs.map(job => job.product_name).join(', ')}).\n\n`
-      : '';
-    if (!window.confirm(`${warning}Tandai order ${order.order_number} selesai?\n\nStok produk jadi di gudang akan langsung dipotong dan tidak bisa di-undo.`)) return;
+    const currentProducts = dataStore.getProducts();
+    const shortages = order.items
+      .filter(item => (currentProducts.find(p => p.id === item.product_id)?.stock ?? 0) < item.qty)
+      .map(item => `${item.product_name} (${item.variant}): butuh ${item.qty}, stok gudang ${currentProducts.find(p => p.id === item.product_id)?.stock ?? 0}`);
+    if (shortages.length > 0) {
+      alert(`Order ${order.order_number} belum bisa diselesaikan.\n\nStok gudang kurang:\n- ${shortages.join('\n- ')}\n\nTambah stok produk jadi di menu Gudang terlebih dahulu.`);
+      return;
+    }
 
-    // Barang terkirim ke pembeli: potong stok produk jadi dari gudang
+    if (!window.confirm(`Selesaikan order ${order.order_number}?\n\nStok produk jadi di gudang akan langsung dipotong dan tidak bisa di-undo.`)) return;
+
     order.items.forEach(item => {
       dataStore.adjustProductStock(item.product_id, -item.qty, `Terjual - Order ${order.order_number}`);
     });
@@ -321,6 +254,13 @@ export const OrderModule: React.FC = () => {
     dataStore.setOrders(updatedOrders);
     alert('Pesanan Selesai! Stok produk jadi di gudang otomatis berkurang.');
     loadData();
+  };
+
+  const handlePrintNota = (order: Order) => {
+    setPrintOrder(order);
+    setTimeout(() => {
+      window.print();
+    }, 150);
   };
 
   const openOrderPanel = (order: Order) => {
@@ -374,7 +314,7 @@ export const OrderModule: React.FC = () => {
       case 'pending':
         return <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] rounded font-semibold border border-amber-200">Pending</span>;
       case 'production':
-        return <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-[10px] rounded font-semibold border border-blue-200 animate-pulse">Di Produksi</span>;
+        return <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-[10px] rounded font-semibold border border-blue-200">Di Produksi</span>;
       case 'completed':
         return <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] rounded font-semibold border border-emerald-200">Selesai</span>;
       case 'cancelled':
@@ -391,6 +331,86 @@ export const OrderModule: React.FC = () => {
 
   const formatIDR = (val: number) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(val);
+  };
+
+  const formatIDRCompact = (val: number) => 'Rp' + val.toLocaleString('id-ID');
+
+  // Layout nota cetak — gaya continuous form monospace, meniru slip gaji di menu Gaji
+  const renderNotaLayout = (order: Order) => {
+    const brand = dataStore.getBrandSettings();
+    const subtotal = order.items.reduce((acc, curr) => acc + curr.subtotal, 0);
+    return (
+      <div className="flex flex-col h-full font-mono select-text text-xs leading-relaxed" style={{ color: 'black' }}>
+        {/* Header */}
+        <div className="text-center space-y-0.5 border-b-2 pb-2" style={{ borderColor: 'currentColor', borderStyle: 'double' }}>
+          <h1 className="text-base font-black tracking-widest uppercase">{brand.company_name}</h1>
+          {brand.tagline && <p className="text-[10px]">{brand.tagline}</p>}
+          <p className="text-xs font-bold tracking-wider uppercase">Nota Penjualan</p>
+        </div>
+
+        {/* Info order & pelanggan */}
+        <div className="flex justify-between items-start border-b border-dashed py-2 text-[11px]" style={{ borderColor: 'currentColor' }}>
+          <div>
+            <p><span className="font-bold">No. Order :</span> {order.order_number}</p>
+            <p><span className="font-bold">Tanggal &nbsp; :</span> {order.date}</p>
+          </div>
+          <div className="text-right">
+            <p className="font-black uppercase">{order.customer_name}</p>
+            {order.customer_phone && <p>{order.customer_phone}</p>}
+          </div>
+        </div>
+
+        {/* Tabel barang */}
+        <table className="w-full border-collapse text-[10px] my-2">
+          <thead>
+            <tr className="border-t border-b" style={{ borderColor: 'currentColor' }}>
+              <th className="py-1 text-left font-bold">Barang</th>
+              <th className="py-1 text-center font-bold">Qty</th>
+              <th className="py-1 text-right font-bold">Harga</th>
+              <th className="py-1 text-right font-bold">Subtotal</th>
+            </tr>
+          </thead>
+          <tbody>
+            {order.items.map(item => (
+              <tr key={item.id}>
+                <td className="py-0.5">{item.product_name} ({item.variant})</td>
+                <td className="py-0.5 text-center">{item.qty}</td>
+                <td className="py-0.5 text-right">{formatIDRCompact(item.price)}</td>
+                <td className="py-0.5 text-right font-bold">{formatIDRCompact(item.subtotal)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {/* Ringkasan total */}
+        <div className="ml-auto w-56 space-y-1 text-[11px] border-t border-dashed pt-1" style={{ borderColor: 'currentColor' }}>
+          <div className="flex justify-between"><span>Subtotal</span><span className="font-bold">{formatIDRCompact(subtotal)}</span></div>
+          {(order.discount ?? 0) > 0 && (
+            <div className="flex justify-between"><span>Diskon</span><span className="font-bold">-{formatIDRCompact(order.discount!)}</span></div>
+          )}
+          {(order.shipping_fee ?? 0) > 0 && (
+            <div className="flex justify-between"><span>Ongkir</span><span className="font-bold">+{formatIDRCompact(order.shipping_fee!)}</span></div>
+          )}
+          <div className="border-t-2 border-b-2 py-0.5 flex justify-between font-black text-xs" style={{ borderColor: 'currentColor', borderStyle: 'double' }}>
+            <span>TOTAL</span>
+            <span>{formatIDRCompact(order.total)}</span>
+          </div>
+        </div>
+
+        {/* Catatan & footer */}
+        <div className="mt-auto pt-3 flex justify-between items-end text-[10px]">
+          <div className="max-w-[60%]">
+            {order.notes && <p className="italic">Catatan: {order.notes}</p>}
+            <p className="mt-1">Terima kasih atas pembelian Anda.</p>
+          </div>
+          <div className="text-center w-32">
+            <p>Hormat kami,</p>
+            <div className="h-10" />
+            <p className="border-t border-dotted pt-0.5" style={{ borderColor: 'currentColor' }}>( {brand.company_name} )</p>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   const visibleOrders = orders.filter(ord => {
@@ -412,77 +432,91 @@ export const OrderModule: React.FC = () => {
             <ShoppingBag className="w-5 h-5 text-[var(--color-evergreen)]" />
             Manajemen Order & Pesanan
           </h1>
-          <p className="text-xs text-gray-400">Kelola pesanan pelanggan dari kanal online (Shopee/Tokopedia) maupun pesanan langsung / offline</p>
+          <p className="text-xs text-gray-400">Order langsung / non-marketplace — barang diambil dari stok gudang produk jadi</p>
         </div>
 
         <button
-          onClick={() => { if (showAddForm) { resetOrderForm(); } else { setShowAddForm(true); } }}
+          onClick={() => setIsModalOpen(true)}
           className="bg-[var(--color-evergreen)] hover:bg-[var(--color-evergreen-dark)] text-white px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all"
         >
-          {showAddForm ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
-          {showAddForm ? 'Tutup Form' : 'Tambah Order Baru'}
+          <Plus className="w-3.5 h-3.5" />
+          Tambah Order Baru
         </button>
       </div>
 
-      {showAddForm && (
-        <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-xs space-y-4">
-          <h3 className="font-semibold text-sm text-gray-800 flex items-center gap-1">
-            <Plus className="w-4 h-4 text-[var(--color-evergreen)]" />
-            {editOrderId ? `Edit Order ${orders.find(o => o.id === editOrderId)?.order_number || ''}` : 'Catat Order Pelanggan Baru'}
-          </h3>
-
-          <form onSubmit={handleCreateOrder} className="grid grid-cols-1 md:grid-cols-12 gap-4">
-            <div className="md:col-span-4 space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Nama Pelanggan</label>
-                <div className="relative">
-                  <User className="absolute left-3 top-2.5 h-3.5 w-3.5 text-gray-400" />
-                  <input
-                    type="text"
-                    value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                    className="pl-9 w-full bg-gray-50 border border-gray-200 rounded px-3 py-1.5 text-xs"
-                    placeholder="Nama lengkap..."
-                    required
-                  />
-                </div>
+      {/* MODAL: Form tambah/edit order (konsisten dengan modal Penjualan Marketplace) */}
+      {isModalOpen && (
+        <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={resetOrderForm}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-3xl shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className={`border-b pb-3 flex items-center justify-between gap-2 mb-4 ${editOrderId ? 'border-amber-100' : 'border-gray-50'}`}>
+              <div className="flex items-center gap-2">
+                <span className={`p-1.5 rounded-md ${editOrderId ? 'bg-amber-100 text-amber-600' : 'bg-emerald-50 text-emerald-700'}`}>
+                  <Plus className="w-4 h-4" />
+                </span>
+                <h3 className="font-bold text-sm text-gray-800">
+                  {editOrderId ? `Edit Order ${orders.find(o => o.id === editOrderId)?.order_number || ''}` : 'Catat Order Pelanggan Baru'}
+                </h3>
               </div>
+              <button
+                type="button"
+                onClick={resetOrderForm}
+                className="text-gray-400 hover:text-gray-600 p-1 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">No. WhatsApp / Telepon</label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-2.5 h-3.5 w-3.5 text-gray-400" />
-                  <input
-                    type="text"
-                    value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value)}
-                    className="pl-9 w-full bg-gray-50 border border-gray-200 rounded px-3 py-1.5 text-xs"
-                    placeholder="Contoh: 081234567890"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
+            <form onSubmit={handleCreateOrder} className="space-y-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Sumber Order</label>
+                  <label className="block text-gray-500 font-semibold mb-1">Nama Pelanggan</label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-2.5 h-3.5 w-3.5 text-gray-400" />
+                    <input
+                      type="text"
+                      value={customerName}
+                      onChange={(e) => setCustomerName(e.target.value)}
+                      className="pl-9 w-full bg-gray-50 border border-gray-200 rounded px-3 py-2 text-xs"
+                      placeholder="Nama lengkap..."
+                      required
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-gray-500 font-semibold mb-1">No. WhatsApp / Telepon</label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-2.5 h-3.5 w-3.5 text-gray-400" />
+                    <input
+                      type="text"
+                      value={customerPhone}
+                      onChange={(e) => setCustomerPhone(e.target.value)}
+                      className="pl-9 w-full bg-gray-50 border border-gray-200 rounded px-3 py-2 text-xs"
+                      placeholder="Contoh: 081234567890"
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-gray-500 font-semibold mb-1">Sumber Order</label>
                   <select
                     value={source}
                     onChange={(e) => setSource(e.target.value as any)}
-                    className="w-full bg-gray-50 border border-gray-200 rounded px-2.5 py-1.5 text-xs"
+                    className="w-full bg-gray-50 border border-gray-200 rounded px-3 py-2 text-xs"
                   >
                     <option value="offline">Offline / Custom</option>
                     <option value="online">Online Store</option>
                   </select>
                 </div>
-
                 {source === 'online' && (
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">E-Commerce</label>
+                    <label className="block text-gray-500 font-semibold mb-1">E-Commerce</label>
                     <select
                       value={marketplaceName}
                       onChange={(e) => setMarketplaceName(e.target.value)}
-                      className="w-full bg-gray-50 border border-gray-200 rounded px-2.5 py-1.5 text-xs"
+                      className="w-full bg-gray-50 border border-gray-200 rounded px-3 py-2 text-xs"
                     >
                       <option value="Shopee">Shopee</option>
                       <option value="Tokopedia">Tokopedia</option>
@@ -493,36 +527,23 @@ export const OrderModule: React.FC = () => {
                 )}
               </div>
 
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Catatan Pesanan / Spesifikasi</label>
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-200 rounded p-2 text-xs"
-                  rows={2}
-                  placeholder="Instruksi tambahan, ukuran, warna..."
-                />
-              </div>
-            </div>
-
-            <div className="md:col-span-8 border-l border-gray-100 md:pl-6 space-y-4">
-              <div className="bg-gray-50/50 p-4 rounded border border-gray-100 space-y-3">
-                <span className="text-xs font-bold text-gray-700 block">Pilih Produk & Kuantitas</span>
+              {/* Pilih produk dari gudang */}
+              <div className="bg-gray-50/50 p-4 rounded-lg border border-gray-100 space-y-3">
+                <span className="font-bold text-gray-700 block">Pilih Produk & Kuantitas (dari stok gudang)</span>
                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
                   <div className="sm:col-span-7">
-                    <label className="block text-[10px] text-gray-400 font-semibold uppercase mb-1">Pilih Produk Jadi</label>
+                    <label className="block text-[10px] text-gray-400 font-semibold uppercase mb-1">Produk Jadi</label>
                     <select
                       value={currentProductId}
                       onChange={(e) => setCurrentProductId(e.target.value)}
-                      className="w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-xs"
+                      className="w-full bg-white border border-gray-200 rounded px-2.5 py-2 text-xs"
                     >
                       <option value="">-- Pilih --</option>
                       {products.map(p => (
-                        <option key={p.id} value={p.id}>{p.name} ({p.variant}) - {formatIDR(p.harga_jual)}</option>
+                        <option key={p.id} value={p.id}>{p.name} ({p.variant}) - {formatIDR(p.harga_jual)} · stok {p.stock}</option>
                       ))}
                     </select>
                   </div>
-
                   <div className="sm:col-span-3">
                     <label className="block text-[10px] text-gray-400 font-semibold uppercase mb-1">Qty</label>
                     <input
@@ -531,15 +552,14 @@ export const OrderModule: React.FC = () => {
                       value={currentQty || ''}
                       onChange={(e) => setCurrentQty(Number(e.target.value))}
                       placeholder="Qty"
-                      className="w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-xs font-mono"
+                      className="w-full bg-white border border-gray-200 rounded px-2.5 py-2 text-xs font-mono"
                     />
                   </div>
-
                   <div className="sm:col-span-2">
                     <button
                       type="button"
                       onClick={handleAddItem}
-                      className="w-full bg-[var(--color-evergreen)] hover:bg-[var(--color-evergreen-dark)] text-white text-xs font-semibold py-2 rounded flex items-center justify-center gap-1"
+                      className="w-full bg-[var(--color-evergreen)] hover:bg-[var(--color-evergreen-dark)] text-white text-xs font-semibold py-2 rounded"
                     >
                       Tambahkan
                     </button>
@@ -548,96 +568,148 @@ export const OrderModule: React.FC = () => {
               </div>
 
               {/* Items List Table */}
-              <div className="space-y-2">
-                <span className="text-xs font-bold text-gray-700 block">Rincian Barang Belanjaan:</span>
-                <div className="border border-gray-200 rounded overflow-hidden">
-                  <table className="w-full text-left border-collapse text-xs">
-                    <thead>
-                      <tr className="bg-gray-50 border-b border-gray-200 font-semibold text-gray-600">
-                        <th className="p-2">Nama Barang</th>
-                        <th className="p-2">Variant</th>
-                        <th className="p-2 text-center">Qty</th>
-                        <th className="p-2 text-right">Harga</th>
-                        <th className="p-2 text-right">Subtotal</th>
-                        <th className="p-2 text-center">Aksi</th>
+              <div className="border border-gray-200 rounded overflow-hidden">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200 font-semibold text-gray-600">
+                      <th className="p-2">Nama Barang</th>
+                      <th className="p-2">Variant</th>
+                      <th className="p-2 text-center">Qty</th>
+                      <th className="p-2 text-right">Harga</th>
+                      <th className="p-2 text-right">Subtotal</th>
+                      <th className="p-2 text-center">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedItems.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="p-4 text-center text-gray-400 italic">Belum ada barang dipilih</td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {selectedItems.length === 0 ? (
-                        <tr>
-                          <td colSpan={6} className="p-4 text-center text-gray-400 italic">Belum ada barang dipilih</td>
+                    ) : (
+                      selectedItems.map((item) => (
+                        <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50">
+                          <td className="p-2 font-medium">{item.product_name}</td>
+                          <td className="p-2">{item.variant}</td>
+                          <td className="p-2 text-center font-mono font-bold">{item.qty} Pcs</td>
+                          <td className="p-2 text-right font-mono">{formatIDR(item.price)}</td>
+                          <td className="p-2 text-right font-mono text-[var(--color-evergreen)] font-bold">{formatIDR(item.subtotal)}</td>
+                          <td className="p-2 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveItem(item.id)}
+                              className="text-rose-600 hover:text-rose-800"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
                         </tr>
-                      ) : (
-                        selectedItems.map((item) => (
-                          <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50">
-                            <td className="p-2 font-medium">{item.product_name}</td>
-                            <td className="p-2">{item.variant}</td>
-                            <td className="p-2 text-center font-mono font-bold">{item.qty} Pcs</td>
-                            <td className="p-2 text-right font-mono">{formatIDR(item.price)}</td>
-                            <td className="p-2 text-right font-mono text-[var(--color-evergreen)] font-bold">{formatIDR(item.subtotal)}</td>
-                            <td className="p-2 text-center">
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveItem(item.id)}
-                                className="text-rose-600 hover:text-rose-800"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-                {selectedItems.length > 0 && (
-                  <div className="pt-2 space-y-3">
-                    {/* Ongkir + rincian total */}
-                    <div className="flex flex-col sm:flex-row sm:items-end sm:justify-end gap-3">
-                      <div className="sm:w-52">
-                        <label className="block text-[10px] text-gray-400 font-semibold uppercase mb-1">Ongkir / Biaya Kirim (IDR)</label>
-                        <div className="relative">
-                          <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400 text-xs font-mono">Rp</span>
-                          <input
-                            type="number"
-                            min={0}
-                            value={shippingFee || ''}
-                            onChange={(e) => setShippingFee(Number(e.target.value))}
-                            placeholder="0 jika gratis / ambil sendiri"
-                            className="w-full bg-white border border-gray-200 rounded pl-8 pr-3 py-1.5 text-xs font-mono font-bold"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right text-xs font-bold text-gray-800 space-y-1">
-                      <div className="text-gray-500 font-semibold">Subtotal Barang: <span className="font-mono ml-1">{formatIDR(selectedItems.reduce((acc, curr) => acc + curr.subtotal, 0))}</span></div>
-                      {shippingFee > 0 && (
-                        <div className="text-gray-500 font-semibold">Ongkir: <span className="font-mono ml-1">+{formatIDR(shippingFee)}</span></div>
-                      )}
-                      <div>Total Tagihan: <span className="text-lg font-black text-[var(--color-evergreen)] font-mono ml-1">{formatIDR(selectedItems.reduce((acc, curr) => acc + curr.subtotal, 0) + Math.max(0, shippingFee || 0))}</span></div>
-                      <button
-                        type="submit"
-                        className="bg-[var(--color-evergreen)] hover:bg-[var(--color-evergreen-dark)] text-white text-xs font-bold px-4 py-2 rounded shadow-sm mt-1"
-                      >
-                        {editOrderId ? 'Simpan Perubahan Order' : 'Simpan Orderan'}
-                      </button>
-                    </div>
-                  </div>
-                )}
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
-            </div>
-          </form>
+
+              {/* Diskon & Ongkir */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] text-gray-400 font-semibold uppercase mb-1">Diskon (IDR)</label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400 text-xs font-mono">Rp</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={discount || ''}
+                      onChange={(e) => setDiscount(Number(e.target.value))}
+                      placeholder="0 jika tanpa diskon"
+                      className="w-full bg-white border border-gray-200 rounded pl-8 pr-3 py-2 text-xs font-mono font-bold"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] text-gray-400 font-semibold uppercase mb-1">Ongkir / Biaya Kirim (IDR)</label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400 text-xs font-mono">Rp</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={shippingFee || ''}
+                      onChange={(e) => setShippingFee(Number(e.target.value))}
+                      placeholder="0 jika gratis / ambil sendiri"
+                      className="w-full bg-white border border-gray-200 rounded pl-8 pr-3 py-2 text-xs font-mono font-bold"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-gray-500 font-semibold mb-1">Catatan Pesanan / Spesifikasi</label>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="w-full bg-gray-50 border border-gray-200 rounded p-2 text-xs"
+                  rows={2}
+                  placeholder="Instruksi tambahan, ukuran, warna..."
+                />
+              </div>
+
+              {/* Rincian total */}
+              <div className="bg-emerald-50/50 border border-emerald-800/10 rounded-lg p-3 text-right text-xs font-bold text-gray-800 space-y-1">
+                <div className="text-gray-500 font-semibold">Subtotal Barang: <span className="font-mono ml-1">{formatIDR(itemsSubtotal)}</span></div>
+                {cleanDiscount > 0 && (
+                  <div className="text-rose-600 font-semibold">Diskon: <span className="font-mono ml-1">-{formatIDR(cleanDiscount)}</span></div>
+                )}
+                {cleanShippingFee > 0 && (
+                  <div className="text-gray-500 font-semibold">Ongkir: <span className="font-mono ml-1">+{formatIDR(cleanShippingFee)}</span></div>
+                )}
+                <div>Total Tagihan: <span className="text-lg font-black text-[var(--color-evergreen)] font-mono ml-1">{formatIDR(formTotal)}</span></div>
+              </div>
+
+              <div className="flex gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={resetOrderForm}
+                  className="flex-1 py-2.5 border border-gray-200 rounded-lg text-xs font-bold text-gray-600 cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="flex-[2] bg-[var(--color-evergreen)] hover:bg-[var(--color-evergreen-dark)] text-white text-xs font-bold py-2.5 rounded-lg shadow-sm"
+                >
+                  {editOrderId ? 'Simpan Perubahan Order' : 'Simpan Orderan'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
       {/* Orders List */}
-      <div className="bg-white rounded-lg border border-gray-100 overflow-hidden shadow-xs">
+      <div className="no-print bg-white rounded-lg border border-gray-100 overflow-hidden shadow-xs">
         <div className="p-4 bg-gray-50/50 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
             <span className="text-xs font-bold text-gray-700 block">Daftar Pesanan</span>
             <span className="text-[10px] text-gray-400 font-mono">Menampilkan {visibleOrders.length} dari {orders.length} orderan</span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded px-2 py-1" title="Kalibrasi offset printer nota (mm). Setelan sama dengan slip gaji.">
+              <Printer className="w-3 h-3 text-gray-400" />
+              <span className="text-[10px] font-bold text-gray-500">Offset X</span>
+              <input
+                type="number"
+                value={calibration.offset_x}
+                onChange={(e) => updateCalibration({ offset_x: Number(e.target.value) || 0 })}
+                className="w-12 bg-gray-50 border border-gray-200 rounded px-1 py-0.5 text-[10px] font-mono text-center"
+              />
+              <span className="text-[10px] font-bold text-gray-500">Y</span>
+              <input
+                type="number"
+                value={calibration.offset_y}
+                onChange={(e) => updateCalibration({ offset_y: Number(e.target.value) || 0 })}
+                className="w-12 bg-gray-50 border border-gray-200 rounded px-1 py-0.5 text-[10px] font-mono text-center"
+              />
+              <span className="text-[10px] text-gray-400">mm</span>
+            </div>
             <input
               type="text"
               value={orderSearch}
@@ -672,7 +744,7 @@ export const OrderModule: React.FC = () => {
                 <th className="p-3 text-right">Total Tagihan</th>
                 <th className="p-3 text-center">Status</th>
                 <th className="p-3 text-center">Kirim</th>
-                <th className="p-3 text-center">Aksi Pelacakan</th>
+                <th className="p-3 text-center">Aksi</th>
               </tr>
             </thead>
             <tbody>
@@ -707,6 +779,9 @@ export const OrderModule: React.FC = () => {
                     </td>
                     <td className="p-3 text-right font-mono font-bold text-gray-800">
                       {formatIDR(ord.total)}
+                      {(ord.discount ?? 0) > 0 && (
+                        <p className="text-[10px] text-rose-500 font-normal whitespace-nowrap">disc {formatIDR(ord.discount!)}</p>
+                      )}
                       {(ord.shipping_fee ?? 0) > 0 && (
                         <p className="text-[10px] text-gray-400 font-normal whitespace-nowrap">incl. ongkir {formatIDR(ord.shipping_fee!)}</p>
                       )}
@@ -717,25 +792,24 @@ export const OrderModule: React.FC = () => {
                       <button onClick={() => openOrderPanel(ord)} className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-[10px] font-bold px-2 py-1 rounded flex items-center gap-1 mx-auto">
                         <PackageCheck className="w-3 h-3" /> Packing / Resi
                       </button>
-                      {ord.status === 'pending' && (
+
+                      {ord.status !== 'cancelled' && (
                         <button
-                          onClick={() => openProductionPreview(ord)}
-                          className="bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold px-2 py-1 rounded flex items-center gap-1 mx-auto shadow-xs"
+                          onClick={() => handlePrintNota(ord)}
+                          className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-[10px] font-bold px-2 py-1 rounded flex items-center gap-1 mx-auto"
                         >
-                          Kirim ke Produksi <ArrowRight className="w-3 h-3" />
+                          <Printer className="w-3 h-3" /> Cetak Nota
                         </button>
                       )}
 
-                      {ord.status === 'production' && (
-                        <div className="space-y-1">
-                          <div className="text-[9px] text-gray-400 font-semibold animate-pulse">Sedang dikerjakan...</div>
-                          <button
-                            onClick={() => handleCompleteOrder(ord.id)}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-2 py-1 rounded block w-full shadow-xs"
-                          >
-                            Tandai Selesai / Kirim
-                          </button>
-                        </div>
+                      {/* Pending & legacy 'production': selesaikan dengan potong stok gudang */}
+                      {(ord.status === 'pending' || ord.status === 'production') && (
+                        <button
+                          onClick={() => handleCompleteOrder(ord.id)}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-2 py-1 rounded block w-full shadow-xs"
+                        >
+                          Selesaikan (Potong Stok Gudang)
+                        </button>
                       )}
 
                       {ord.status === 'completed' && (
@@ -805,62 +879,18 @@ export const OrderModule: React.FC = () => {
         </div>
       </div>
 
-      {/* Modal preview & edit alur produksi sebelum kirim ke produksi */}
-      {productionPreviewOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setProductionPreviewOrder(null)}>
-          <div className="bg-white rounded-2xl max-w-xl w-full max-h-[92vh] overflow-y-auto p-6 shadow-2xl border border-gray-100" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-start border-b border-gray-100 pb-3 mb-4">
-              <div>
-                <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                  <ListOrdered className="w-4 h-4 text-[var(--color-evergreen)]" /> Alur Produksi Order {productionPreviewOrder.order_number}
-                </h3>
-                <p className="text-[10px] text-gray-400 mt-1">
-                  Tahapan diambil dari pengaturan produk. Ubah di sini bila order ini butuh alur khusus — perubahan hanya berlaku untuk order ini.
-                </p>
-              </div>
-              <button type="button" onClick={() => setProductionPreviewOrder(null)} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
-            </div>
-
-            <div className="space-y-5">
-              {productionPreviewOrder.items.map(item => (
-                <div key={item.id} className="space-y-2">
-                  <p className="text-xs font-bold text-gray-800">
-                    {item.product_name} <span className="text-gray-400 font-normal">({item.variant}) · {item.qty} pcs</span>
-                  </p>
-                  <StageListEditor
-                    stages={previewStages[item.product_id] || []}
-                    onChange={(stages) => setPreviewStages(prev => ({ ...prev, [item.product_id]: stages }))}
-                    compact
-                  />
-                </div>
-              ))}
-
-              <div className="flex gap-3 pt-2 border-t border-gray-100">
-                <button
-                  type="button"
-                  onClick={() => setProductionPreviewOrder(null)}
-                  className="flex-1 py-2.5 border border-gray-200 rounded-xl text-xs font-bold text-gray-600 cursor-pointer"
-                >
-                  Batal
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (Object.values(previewStages).some((stages: string[]) => stages.length === 0)) {
-                      alert('Setiap produk harus punya minimal satu tahap produksi.');
-                      return;
-                    }
-                    const order = productionPreviewOrder;
-                    setProductionPreviewOrder(null);
-                    handleSendToProduction(order, previewStages);
-                  }}
-                  className="flex-[2] py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  Kirim ke Produksi <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          </div>
+      {/* Container cetak nota — hanya tampil saat print, format continuous form seperti slip gaji */}
+      {printOrder && (
+        <div className="print-only" style={{
+          transform: `translate(${calibration.offset_x}mm, ${calibration.offset_y}mm)`,
+          fontFamily: 'Courier, monospace',
+          color: 'black',
+          width: '210mm',
+          height: '140mm',
+          padding: '10mm',
+          boxSizing: 'border-box'
+        }}>
+          {renderNotaLayout(printOrder)}
         </div>
       )}
     </div>
