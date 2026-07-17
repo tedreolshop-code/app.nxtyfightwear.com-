@@ -64,7 +64,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
   const [packingTasks, setPackingTasks] = useState<PackingTask[]>([]);
   
   // Navigation dibuat mengikuti urutan kerja admin produksi.
-  const [subTab, setSubTab] = useState<'order' | 'tracker' | 'finalize' | 'history' | 'settings'>('order');
+  const [subTab, setSubTab] = useState<'order' | 'tracker' | 'finalize' | 'history' | 'packing-docs' | 'settings'>('order');
   const [manualStep, setManualStep] = useState<1 | 2 | 3>(1);
 
   // Pengaturan Alur Produksi — pindahan dari menu Gudang, atur tahapan kerja per produk barang jadi
@@ -856,6 +856,14 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
             onClick={() => { setSubTab('history'); triggerLoading(); }}
             icon={History}
             label="Riwayat & Stok"
+          />
+        )}
+        {!isEmployee && (
+          <TabButton
+            active={subTab === 'packing-docs'}
+            onClick={() => { setSubTab('packing-docs'); triggerLoading(); }}
+            icon={Camera}
+            label="Dokumentasi Foto Packing"
           />
         )}
         {!isRestrictedProduction && (
@@ -2375,50 +2383,52 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
               </div>
             </div>}
 
-            {subTab === 'history' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
-              <div className="flex justify-between items-center border-b border-gray-100 pb-3">
-                <div>
-                  <h3 className="font-bold text-sm text-gray-800 font-sans">Dokumentasi Foto Packing</h3>
-                  <p className="text-xs text-gray-400">Foto barang saat selesai packing, sebagai bukti sebelum dikirim</p>
-                </div>
-                <Camera className="w-4.5 h-4.5 text-gray-400" />
-              </div>
-
-              <div className="space-y-2.5 max-h-[300px] overflow-y-auto">
-                {packingTasks.filter(task => task.status === 'completed' && task.photo_url).length === 0 ? (
-                  <p className="text-xs text-gray-400 italic text-center py-6">Belum ada foto dokumentasi packing.</p>
-                ) : packingTasks.filter(task => task.status === 'completed' && task.photo_url).map(task => (
-                  <div key={task.id} className="flex justify-between items-center text-xs p-3 bg-gray-50 rounded-lg border border-gray-100">
-                    <div className="flex items-center gap-3">
-                      <a href={task.photo_url} target="_blank" rel="noreferrer">
-                        <img src={task.photo_url} alt={`Dokumentasi packing ${task.order_number}`} className="w-10 h-10 object-cover rounded border border-gray-200" />
-                      </a>
-                      <div className="space-y-0.5">
-                        <p className="font-bold text-gray-800">{task.order_number} · {task.customer_name}</p>
-                        <p className="text-[10px] text-gray-400">Oleh {task.photo_uploaded_by || task.employee_name} · {task.photo_uploaded_at ? new Date(task.photo_uploaded_at).toLocaleDateString('id-ID', { hour: '2-digit', minute: '2-digit' }) : ''}</p>
-                      </div>
-                    </div>
-                    {userRole === 'owner' && canDeletePhoto(task.photo_uploaded_at) && (
-                      <button
-                        onClick={async () => {
-                          if (!confirm(`Hapus foto dokumentasi packing ${task.order_number}?`)) return;
-                          if (task.photo_url) { try { await deletePackingPhoto(task.photo_url); } catch { /* file mungkin sudah terhapus, lanjut bersihkan record */ } }
-                          dataStore.deletePackingTaskPhoto(task.id);
-                          loadData();
-                        }}
-                        title="Hapus foto (hanya bisa dalam 14 hari sejak diunggah)"
-                        className="bg-white hover:bg-red-50 text-red-600 border border-red-200 rounded px-2 py-1 text-[10px] font-semibold flex items-center gap-1 cursor-pointer"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>}
-
           </div>
 
+        </div>
+      )}
+
+      {!isEmployee && subTab === 'packing-docs' && (
+        <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs animate-fadeIn">
+          <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+            <div>
+              <h3 className="font-bold text-sm text-gray-800 font-sans">Dokumentasi Foto Packing</h3>
+              <p className="text-xs text-gray-400">Foto barang saat selesai packing, sebagai bukti sebelum dikirim</p>
+            </div>
+            <Camera className="w-4.5 h-4.5 text-gray-400" />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+            {packingTasks.filter(task => task.status === 'completed' && task.photo_url).length === 0 ? (
+              <p className="text-xs text-gray-400 italic text-center py-6 col-span-full">Belum ada foto dokumentasi packing.</p>
+            ) : packingTasks.filter(task => task.status === 'completed' && task.photo_url).map(task => (
+              <div key={task.id} className="p-3 bg-gray-50 rounded-lg border border-gray-100 space-y-2">
+                <a href={task.photo_url} target="_blank" rel="noreferrer">
+                  <img src={task.photo_url} alt={`Dokumentasi packing ${task.order_number}`} className="w-full h-36 object-cover rounded border border-gray-200" />
+                </a>
+                <div className="flex justify-between items-start gap-2">
+                  <div className="space-y-0.5 text-xs">
+                    <p className="font-bold text-gray-800">{task.order_number} · {task.customer_name}</p>
+                    <p className="text-[10px] text-gray-400">Oleh {task.photo_uploaded_by || task.employee_name} · {task.photo_uploaded_at ? new Date(task.photo_uploaded_at).toLocaleDateString('id-ID', { hour: '2-digit', minute: '2-digit' }) : ''}</p>
+                  </div>
+                  {userRole === 'owner' && canDeletePhoto(task.photo_uploaded_at) && (
+                    <button
+                      onClick={async () => {
+                        if (!confirm(`Hapus foto dokumentasi packing ${task.order_number}?`)) return;
+                        if (task.photo_url) { try { await deletePackingPhoto(task.photo_url); } catch { /* file mungkin sudah terhapus, lanjut bersihkan record */ } }
+                        dataStore.deletePackingTaskPhoto(task.id);
+                        loadData();
+                      }}
+                      title="Hapus foto (hanya bisa dalam 14 hari sejak diunggah)"
+                      className="bg-white hover:bg-red-50 text-red-600 border border-red-200 rounded px-2 py-1 text-[10px] font-semibold flex items-center gap-1 cursor-pointer shrink-0"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
