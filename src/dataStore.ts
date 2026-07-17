@@ -1332,6 +1332,13 @@ class DataStore {
     return true;
   };
 
+  setPayrollPaymentStatus = (payrollId: string, status: 'paid' | 'unpaid'): void => {
+    const payrolls = this.getPayrollWeekly().map(p =>
+      p.id === payrollId ? { ...p, payment_status: status, paid_at: status === 'paid' ? wibNowISO() : undefined } : p
+    );
+    this.setPayrollWeekly(payrolls);
+  };
+
   recordAttendance = (att: Omit<Attendance, 'id' | 'employee_name' | 'status' | 'is_mock_location_flag' | 'distance_meters'>): Attendance => {
     const attendanceLogs = this.getAttendance();
     const employees = this.getEmployees();

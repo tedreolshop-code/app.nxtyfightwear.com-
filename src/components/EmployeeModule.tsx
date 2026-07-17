@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Employee, Department, PayrollWeekly, CashAdvance, Attendance, UserRole } from '../types';
-import { dataStore, hashPin } from '../dataStore';
+import { dataStore, hashPin, currentWeeklyPayrollPeriod } from '../dataStore';
 import { QRCodeSVG } from 'qrcode.react';
 import { Users, Plus, ShieldCheck, Key, Lock, LogIn, LogOut, Check, Save, DollarSign, X, Calendar, Clock, Printer, Trash2, History, Calculator, QrCode } from 'lucide-react';
 
@@ -137,31 +137,8 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
   const [profileModalEmp, setProfileModalEmp] = useState<Employee | null>(null);
   const [activeModalTab, setActiveModalTab] = useState<'profile' | 'attendance' | 'payroll'>('payroll');
   
-  // Date Helpers for default weekly payroll (Senin - Sabtu)
-  const toDateInputValue = (date: Date) => {
-    const year = date.getFullYear();
-    const month = `${date.getMonth() + 1}`.padStart(2, '0');
-    const day = `${date.getDate()}`.padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
-  const getWeekRange = () => {
-    const today = new Date();
-    const day = today.getDay();
-    const daysUntilSaturday = (6 - day + 7) % 7;
-    const saturday = new Date(today);
-    saturday.setDate(today.getDate() + daysUntilSaturday);
-    const monday = new Date(saturday);
-    monday.setDate(saturday.getDate() - 5);
-    
-    return {
-      start: toDateInputValue(monday),
-      end: toDateInputValue(saturday)
-    };
-  };
-
-  const [modalPeriodStart, setModalPeriodStart] = useState(getWeekRange().start);
-  const [modalPeriodEnd, setModalPeriodEnd] = useState(getWeekRange().end);
+  const [modalPeriodStart, setModalPeriodStart] = useState(currentWeeklyPayrollPeriod().start);
+  const [modalPeriodEnd, setModalPeriodEnd] = useState(currentWeeklyPayrollPeriod().end);
   const [modalDaysWorked, setModalDaysWorked] = useState(6);
   const [modalOvertimeHours, setModalOvertimeHours] = useState(0);
   const [modalBasePay, setModalBasePay] = useState(0);
@@ -217,7 +194,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
     setModalOutstandingKasbon(totalOutstanding);
 
     // Reset default inputs for new slip
-    const weeklyRange = getWeekRange();
+    const weeklyRange = currentWeeklyPayrollPeriod();
     setModalPeriodStart(weeklyRange.start);
     setModalPeriodEnd(weeklyRange.end);
     setModalDaysWorked(6);
@@ -307,7 +284,8 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
       bonus: modalBonus,
       cash_advance_deduction: modalKasbonDeduction,
       total_pay: modalTotalPay,
-      is_printed: false
+      is_printed: false,
+      payment_status: 'unpaid'
     };
 
     try {
@@ -367,6 +345,11 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
     setEditingPayroll(null);
     showNotification("Data slip gaji berhasil diperbarui!", "success");
     refreshModalData(profileModalEmp);
+  };
+
+  const handleToggleModalPaymentStatus = (pay: PayrollWeekly) => {
+    dataStore.setPayrollPaymentStatus(pay.id, pay.payment_status === 'paid' ? 'unpaid' : 'paid');
+    if (profileModalEmp) refreshModalData(profileModalEmp);
   };
 
   const handleDeleteModalPayroll = (payId: string) => {
@@ -1326,7 +1309,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                           <input 
                             type="number" 
                             step="0.5"
-                            value={modalDaysWorked || ''} 
+                            value={modalDaysWorked}
                             onChange={(e) => setModalDaysWorked(Number(e.target.value))}
                             className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono font-bold text-gray-800 w-full"
                             min={0}
@@ -1339,7 +1322,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                           <input 
                             type="number" 
                             step="0.1"
-                            value={modalOvertimeHours || ''} 
+                            value={modalOvertimeHours}
                             onChange={(e) => setModalOvertimeHours(Number(e.target.value))}
                             className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono font-bold text-gray-800 w-full"
                             min={0}
@@ -1351,7 +1334,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                           <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider">Bonus / Tunjangan (Rp)</label>
                           <input 
                             type="number" 
-                            value={modalBonus || ''} 
+                            value={modalBonus}
                             onChange={(e) => setModalBonus(Number(e.target.value))}
                             className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono font-bold text-gray-800 w-full"
                             min={0}
@@ -1368,7 +1351,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                           </div>
                           <input 
                             type="number" 
-                            value={modalKasbonDeduction || ''} 
+                            value={modalKasbonDeduction}
                             onChange={(e) => setModalKasbonDeduction(Math.min(modalOutstandingKasbon, Number(e.target.value)))}
                             className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono font-bold text-amber-900 w-full"
                             min={0}
@@ -1441,7 +1424,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                             <label className="block text-[10px] font-bold text-amber-800 mb-1 uppercase tracking-wider">Jumlah Hari Kerja</label>
                             <input 
                               type="number" 
-                              value={editDaysWorked || ''} 
+                              value={editDaysWorked}
                               onChange={(e) => setEditDaysWorked(Number(e.target.value))}
                               className="bg-white border border-amber-200 rounded-lg px-3 py-2 text-xs font-mono font-bold text-gray-800 w-full"
                               min={0}
@@ -1454,7 +1437,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                             <input 
                               type="number" 
                               step="0.1"
-                              value={editOvertimeHours || ''} 
+                              value={editOvertimeHours}
                               onChange={(e) => setEditOvertimeHours(Number(e.target.value))}
                               className="bg-white border border-amber-200 rounded-lg px-3 py-2 text-xs font-mono font-bold text-gray-800 w-full"
                               min={0}
@@ -1466,7 +1449,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                             <label className="block text-[10px] font-bold text-amber-800 mb-1 uppercase tracking-wider">Bonus / Tunjangan (Rp)</label>
                             <input 
                               type="number" 
-                              value={editBonus || ''} 
+                              value={editBonus}
                               onChange={(e) => setEditBonus(Number(e.target.value))}
                               className="bg-white border border-amber-200 rounded-lg px-3 py-2 text-xs font-mono font-bold text-gray-800 w-full"
                               min={0}
@@ -1478,7 +1461,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                             <label className="block text-[10px] font-bold text-amber-800 mb-1 uppercase tracking-wider">Potongan Kasbon (Rp)</label>
                             <input 
                               type="number" 
-                              value={editKasbonDeduction || ''} 
+                              value={editKasbonDeduction}
                               onChange={(e) => setEditKasbonDeduction(Number(e.target.value))}
                               className="bg-white border border-amber-200 rounded-lg px-3 py-2 text-xs font-mono font-bold text-rose-900 w-full"
                               min={0}
@@ -1561,6 +1544,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                                   {formatIDR(pay.total_pay)}
                                 </td>
                                 <td className="p-3 text-center">
+                                  <div className="flex flex-col items-center justify-center gap-1.5">
                                   <div className="flex items-center justify-center gap-1.5">
                                     <button
                                       type="button"
@@ -1583,6 +1567,17 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                                     >
                                       Hapus
                                     </button>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleModalPaymentStatus(pay)}
+                                    className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider cursor-pointer ${
+                                      pay.payment_status === 'paid' ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                                    }`}
+                                    title={pay.payment_status === 'paid' ? 'Klik untuk batalkan status lunas' : 'Klik untuk tandai sudah dibayar'}
+                                  >
+                                    {pay.payment_status === 'paid' ? '✓ Lunas' : 'Belum Dibayar'}
+                                  </button>
                                   </div>
                                 </td>
                               </tr>

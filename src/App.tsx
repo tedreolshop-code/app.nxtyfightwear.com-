@@ -494,6 +494,7 @@ export default function App() {
         potongan_kasbon: item.cash_advance_deduction,
         total_dibayar: item.total_pay,
         status_cetak: item.is_printed ? 'sudah' : 'belum',
+        status_bayar: item.payment_status === 'paid' ? 'lunas' : 'belum dibayar',
       })), ['gaji_pokok', 'bonus', 'potongan_kasbon', 'total_dibayar']);
     } else if (type === 'cash_advance') {
       downloadExcel(`Laporan_Kasbon_${baseName}`, 'Kasbon', reportCashAdvanceTransactions.map(item => ({

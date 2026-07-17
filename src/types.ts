@@ -230,6 +230,8 @@ export interface PayrollWeekly {
   cash_advance_deduction: number;
   total_pay: number;
   is_printed: boolean;
+  payment_status: 'unpaid' | 'paid';
+  paid_at?: string;
 }
 
 export type AttendanceAdjustmentType = 'late_compensation' | 'overtime' | 'live_tiktok' | 'ignored';

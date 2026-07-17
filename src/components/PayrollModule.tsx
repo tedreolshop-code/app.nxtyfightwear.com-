@@ -11,32 +11,6 @@ interface PayrollModuleProps {
   loggedEmployee?: Employee | null;
 }
 
-const toDateInputValue = (date: Date) => {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, '0');
-  const day = `${date.getDate()}`.padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
-// Periode gaji mingguan: SABTU s/d JUMAT, dibayarkan hari Sabtu setelahnya (Minggu libur).
-// Default form = periode yang jatuh tempo pada Sabtu terdekat (termasuk hari ini bila Sabtu).
-const getSaturdayPayrollRange = () => {
-  const today = new Date();
-  const day = today.getDay();
-  const daysUntilSaturday = (6 - day + 7) % 7; // 0 bila hari ini Sabtu
-  const paySaturday = new Date(today);
-  paySaturday.setDate(today.getDate() + daysUntilSaturday);
-  const start = new Date(paySaturday);
-  start.setDate(paySaturday.getDate() - 7); // Sabtu minggu sebelumnya
-  const end = new Date(paySaturday);
-  end.setDate(paySaturday.getDate() - 1); // Jumat
-
-  return {
-    start: toDateInputValue(start),
-    end: toDateInputValue(end)
-  };
-};
-
 export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmployee }) => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [payrolls, setPayrolls] = useState<PayrollWeekly[]>([]);
@@ -75,7 +49,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
 
   // Creation/Edit states
   const [selectedEmpId, setSelectedEmpId] = useState('');
-  const defaultWeeklyPeriod = getSaturdayPayrollRange();
+  const defaultWeeklyPeriod = currentWeeklyPayrollPeriod();
   const [periodStart, setPeriodStart] = useState(defaultWeeklyPeriod.start);
   const [periodEnd, setPeriodEnd] = useState(defaultWeeklyPeriod.end);
   const [daysWorked, setDaysWorked] = useState(6);
@@ -115,7 +89,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
   };
 
   const applyDefaultWeeklyPeriod = () => {
-    const range = getSaturdayPayrollRange();
+    const range = currentWeeklyPayrollPeriod();
     setPeriodStart(range.start);
     setPeriodEnd(range.end);
   };
@@ -189,7 +163,8 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
       bonus,
       cash_advance_deduction: kasbonDeduction,
       total_pay,
-      is_printed: false
+      is_printed: false,
+      payment_status: 'unpaid'
     };
 
     try {
@@ -274,10 +249,10 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     }
 
     let csvContent = "\uFEFF"; // UTF-8 BOM
-    csvContent += "ID Slip,Nama Karyawan,Awal Periode,Akhir Periode,Hari Kerja,Jam Lembur,Gaji Pokok,Bonus,Potongan Kasbon,Total Bersih (THP),Sudah Cetak\n";
+    csvContent += "ID Slip,Nama Karyawan,Awal Periode,Akhir Periode,Hari Kerja,Jam Lembur,Gaji Pokok,Bonus,Potongan Kasbon,Total Bersih (THP),Sudah Cetak,Status Bayar\n";
 
     list.forEach(p => {
-      csvContent += `"${p.id}","${p.employee_name}","${p.period_start}","${p.period_end}",${p.days_worked},${p.overtime_hours},${p.base_pay},${p.bonus},${p.cash_advance_deduction},${p.total_pay},"${p.is_printed ? 'Ya' : 'Belum'}"\n`;
+      csvContent += `"${p.id}","${p.employee_name}","${p.period_start}","${p.period_end}",${p.days_worked},${p.overtime_hours},${p.base_pay},${p.bonus},${p.cash_advance_deduction},${p.total_pay},"${p.is_printed ? 'Ya' : 'Belum'}","${p.payment_status === 'paid' ? 'Lunas' : 'Belum Dibayar'}"\n`;
     });
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -288,6 +263,11 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const handleTogglePaymentStatus = (pay: PayrollWeekly) => {
+    dataStore.setPayrollPaymentStatus(pay.id, pay.payment_status === 'paid' ? 'unpaid' : 'paid');
+    loadData();
   };
 
   const handleDeletePayroll = (id: string) => {
@@ -1311,6 +1291,16 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
+                          <button
+                            type="button"
+                            onClick={() => handleTogglePaymentStatus(pay)}
+                            className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider cursor-pointer ${
+                              pay.payment_status === 'paid' ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                            }`}
+                            title={pay.payment_status === 'paid' ? 'Klik untuk batalkan status lunas' : 'Klik untuk tandai sudah dibayar'}
+                          >
+                            {pay.payment_status === 'paid' ? '✓ Lunas' : 'Belum Dibayar'}
+                          </button>
                           {pay.is_printed && (
                             <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[8px] font-black uppercase tracking-wider">
                               ✓ Printed
@@ -1561,7 +1551,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
 
             <form onSubmit={handleCreatePayroll} className="p-6 space-y-4 text-xs text-left">
               <div className="rounded-xl border border-emerald-100 bg-emerald-50/70 px-4 py-3 text-[11px] text-emerald-900">
-                <p className="font-black uppercase tracking-wide">Skema gaji mingguan Senin-Sabtu</p>
+                <p className="font-black uppercase tracking-wide">Skema gaji mingguan Sabtu-Jumat</p>
                 <p className="mt-1">Pilih karyawan, sistem menghitung honor dari absensi, lembur dari ACC, bonus dari default karyawan, dan kasbon dari saldo aktif. Angka tetap bisa dikoreksi sebelum slip diposting.</p>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1598,7 +1588,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                       onClick={applyDefaultWeeklyPeriod}
                       className="text-[10px] font-black text-emerald-800 bg-emerald-50 border border-emerald-100 rounded px-2 py-0.5 cursor-pointer hover:bg-emerald-100"
                     >
-                      Senin-Sabtu
+                      Sabtu-Jumat
                     </button>
                   </div>
                   <input
@@ -1646,7 +1636,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                   <input
                     type="number"
                     step="0.5"
-                    value={daysWorked || ''}
+                    value={daysWorked}
                     onChange={(e) => setDaysWorked(Number(e.target.value))}
                     className="w-full bg-emerald-50/10 border border-emerald-800/25 rounded-lg px-3 py-2 text-emerald-950 font-semibold focus:bg-white focus:outline-none focus:border-emerald-700"
                     required
@@ -1656,7 +1646,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                   <label className="block font-bold text-emerald-800 uppercase tracking-wider mb-1">Jam Lembur ACC</label>
                   <input
                     type="number"
-                    value={overtimeHours || ''}
+                    value={overtimeHours}
                     onChange={(e) => setOvertimeHours(Number(e.target.value))}
                     className="w-full bg-emerald-50/10 border border-emerald-800/25 rounded-lg px-3 py-2 text-emerald-950 font-semibold focus:bg-white focus:outline-none focus:border-emerald-700"
                     required
@@ -1669,7 +1659,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                     <span className="absolute left-3 top-2 text-emerald-800/60 font-bold">Rp</span>
                     <input
                       type="number"
-                      value={bonus || ''}
+                      value={bonus}
                       onChange={(e) => setBonus(Number(e.target.value))}
                       className="pl-9 w-full bg-emerald-50/10 border border-emerald-800/25 rounded-lg px-3 py-2 font-mono text-emerald-950 font-bold focus:bg-white focus:outline-none focus:border-emerald-700"
                       required
@@ -1682,7 +1672,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                     <span className="absolute left-3 top-2 text-emerald-800/60 font-bold">Rp</span>
                     <input
                       type="number"
-                      value={kasbonDeduction || ''}
+                      value={kasbonDeduction}
                       onChange={(e) => setKasbonDeduction(Number(e.target.value))}
                       className="pl-9 w-full bg-emerald-50/10 border border-emerald-800/25 rounded-lg px-3 py-2 font-mono text-emerald-950 font-bold focus:bg-white focus:outline-none focus:border-emerald-700"
                       required
@@ -1742,7 +1732,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                   <label className="block font-bold text-emerald-800 uppercase tracking-wider mb-1">Hari Kerja</label>
                   <input
                     type="number"
-                    value={editDaysWorked || ''}
+                    value={editDaysWorked}
                     onChange={(e) => setEditDaysWorked(Number(e.target.value))}
                     className="w-full bg-emerald-50/10 border border-emerald-800/25 rounded-lg px-3 py-2 text-emerald-950 font-semibold focus:bg-white focus:outline-none focus:border-emerald-700"
                     required
@@ -1752,7 +1742,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                   <label className="block font-bold text-emerald-800 uppercase tracking-wider mb-1">Jam Lembur</label>
                   <input
                     type="number"
-                    value={editOvertimeHours || ''}
+                    value={editOvertimeHours}
                     onChange={(e) => setEditOvertimeHours(Number(e.target.value))}
                     className="w-full bg-emerald-50/10 border border-emerald-800/25 rounded-lg px-3 py-2 text-emerald-950 font-semibold focus:bg-white focus:outline-none focus:border-emerald-700"
                     required
@@ -1765,7 +1755,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                     <span className="absolute left-3 top-2 text-emerald-800/60 font-bold">Rp</span>
                     <input
                       type="number"
-                      value={editBasePay || ''}
+                      value={editBasePay}
                       onChange={(e) => setEditBasePay(Number(e.target.value))}
                       className="pl-9 w-full bg-emerald-50/10 border border-emerald-800/25 rounded-lg px-3 py-2 font-mono text-emerald-950 font-bold focus:bg-white focus:outline-none focus:border-emerald-700"
                       required
@@ -1778,7 +1768,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                     <span className="absolute left-3 top-2 text-emerald-800/60 font-bold">Rp</span>
                     <input
                       type="number"
-                      value={editBonus || ''}
+                      value={editBonus}
                       onChange={(e) => setEditBonus(Number(e.target.value))}
                       className="pl-9 w-full bg-emerald-50/10 border border-emerald-800/25 rounded-lg px-3 py-2 font-mono text-emerald-950 font-bold focus:bg-white focus:outline-none focus:border-emerald-700"
                       required
@@ -1792,7 +1782,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                     <span className="absolute left-3 top-2 text-emerald-800/60 font-bold">Rp</span>
                     <input
                       type="number"
-                      value={editKasbonDeduction || ''}
+                      value={editKasbonDeduction}
                       onChange={(e) => setEditKasbonDeduction(Number(e.target.value))}
                       className="pl-9 w-full bg-emerald-50/10 border border-emerald-800/25 rounded-lg px-3 py-2 font-mono text-emerald-950 font-bold focus:bg-white focus:outline-none focus:border-emerald-700"
                       required
@@ -1805,7 +1795,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                     <span className="absolute left-3 top-2 text-emerald-800/60 font-bold">Rp</span>
                     <input
                       type="number"
-                      value={editTotalPay || ''}
+                      value={editTotalPay}
                       onChange={(e) => setEditTotalPay(Number(e.target.value))}
                       className="pl-9 w-full bg-emerald-800/10 border border-emerald-800/40 rounded-lg px-3 py-2 font-mono text-emerald-950 font-black focus:bg-white focus:outline-none focus:border-emerald-700"
                       required
