@@ -65,6 +65,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
   
   // Navigation dibuat mengikuti urutan kerja admin produksi.
   const [subTab, setSubTab] = useState<'order' | 'tracker' | 'finalize' | 'history' | 'packing-docs' | 'settings'>('order');
+  const [historyView, setHistoryView] = useState<'materials' | 'products' | 'reject' | 'movements'>('materials');
   const [manualStep, setManualStep] = useState<1 | 2 | 3>(1);
 
   // Pengaturan Alur Produksi — pindahan dari menu Gudang, atur tahapan kerja per produk barang jadi
@@ -1930,7 +1931,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
       )}
 
       {/* ADMIN WORKFLOW VIEWS */}
-      {!isEmployee && (subTab === 'order' || subTab === 'finalize' || subTab === 'history') && (
+      {!isEmployee && (subTab === 'order' || subTab === 'finalize') && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fadeIn">
           
           {/* LEFT COLUMN: Input Production Logs */}
@@ -2157,41 +2158,6 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
               </div>
             )}
 
-            {/* Raw Materials Monitoring (Critical Stock Warning) */}
-            {subTab === 'history' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
-              <div>
-                <h3 className="font-bold text-sm text-gray-800">Status Stok Bahan Baku</h3>
-                <p className="text-xs text-gray-400">Monitoring sisa bahan baku di pabrik {brandName()}</p>
-              </div>
-
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {rawMaterials.map((mat) => {
-                  const isCritical = mat.current_stock <= mat.stock_minimum;
-                  return (
-                    <div
-                      key={mat.id}
-                      className={`p-3 rounded-lg border text-xs flex justify-between items-center transition-all ${
-                        isCritical ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-100'
-                      }`}
-                    >
-                      <div>
-                        <p className="font-bold text-gray-800 font-sans">{mat.name}</p>
-                        <p className="text-[10px] text-gray-400 mt-0.5">Min: {mat.stock_minimum} {mat.unit}</p>
-                      </div>
-
-                      <div className="text-right">
-                        <span className={`font-mono font-bold text-xs ${isCritical ? 'text-amber-700' : 'text-[var(--color-evergreen)]'}`}>
-                          {mat.current_stock} {mat.unit}
-                        </span>
-                        {isCritical && (
-                          <span className="block text-[8px] font-black text-amber-700 uppercase mt-0.5 tracking-wider">stok kritis!</span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>}
           </div>
 
           {/* RIGHT COLUMN: Active stock of Finished Goods & movements */}
@@ -2280,42 +2246,8 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                 </form>
               </div>
             )}
-             
-            {/* Products Stock */}
-            {subTab === 'history' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
-              <div>
-                <h3 className="font-bold text-sm text-gray-800 font-sans">Sisa Stok Barang Jadi</h3>
-                <p className="text-xs text-gray-400">Stok siap kirim hasil produksi gudang {brandName()}</p>
-              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-60 overflow-y-auto">
-                {products.map((p) => {
-                  const isCritical = p.stock <= 15;
-                  return (
-                    <div
-                      key={p.id}
-                      className={`p-3.5 rounded-lg border text-xs flex justify-between items-center transition-all ${
-                        isCritical ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-100'
-                      }`}
-                    >
-                      <div>
-                        <p className="font-bold text-gray-800 font-sans">{p.name}</p>
-                        <p className="text-[10px] text-gray-400 mt-0.5">{p.variant}</p>
-                      </div>
-
-                      <div className="text-right">
-                        <p className="font-mono font-bold text-sm text-gray-800">{p.stock} Unit</p>
-                        {isCritical && (
-                          <span className="text-[9px] font-black text-amber-700 uppercase tracking-wide block mt-0.5">Kritis</span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>}
-
-            {(subTab === 'finalize' || subTab === 'history') && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
+            {subTab === 'finalize' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
               <div>
                 <h3 className="font-bold text-sm text-gray-800 font-sans">Barang Reject Produksi</h3>
                 <p className="text-xs text-gray-400">Catatan barang reject yang masih disimpan atau perlu tindak lanjut.</p>
@@ -2338,53 +2270,154 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
               </div>
             </div>}
 
-            {/* Audit History Log */}
-            {subTab === 'history' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
-              <div className="flex justify-between items-center border-b border-gray-100 pb-3">
-                <div>
-                  <h3 className="font-bold text-sm text-gray-800 font-sans">Riwayat Mutasi Stok</h3>
-                  <p className="text-xs text-gray-400">Log audit real-time sirkulasi bahan dan barang jadi</p>
-                </div>
-                <History className="w-4.5 h-4.5 text-gray-400" />
-              </div>
-
-              <div className="space-y-2.5 max-h-[300px] overflow-y-auto">
-                {movements.slice(0, 15).map((mov) => {
-                  const isIncoming = mov.type.includes('masuk');
-                  const isProduct = mov.type.includes('barang_jadi');
-                  const timeString = new Date(mov.created_at).toLocaleDateString('id-ID', { hour: '2-digit', minute: '2-digit' });
-
-                  return (
-                    <div key={mov.id} className="flex justify-between items-center text-xs p-3 bg-gray-50 rounded-lg border border-gray-100">
-                      <div className="space-y-0.5">
-                        <p className="font-bold text-gray-800 font-sans">{mov.item_name}</p>
-                        <p className="text-[10px] text-gray-400">Ref: {mov.reference} | {timeString}</p>
-                      </div>
-
-                      <div className="text-right flex items-center gap-1.5 font-mono font-bold text-[11px]">
-                        {isIncoming ? (
-                          <span className="text-emerald-700 flex items-center">
-                            <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
-                            +{mov.amount}
-                          </span>
-                        ) : (
-                          <span className="text-rose-700 flex items-center">
-                            <ArrowDownLeft className="w-3.5 h-3.5 shrink-0" />
-                            -{mov.amount}
-                          </span>
-                        )}
-                        <span className="text-[9px] font-normal text-gray-400 uppercase">
-                          {isProduct ? 'Unit' : 'Bahan'}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>}
-
           </div>
 
+        </div>
+      )}
+
+      {!isEmployee && subTab === 'history' && (
+        <div className="space-y-4 animate-fadeIn">
+          <div className="no-print flex bg-gray-50 p-1.5 rounded-xl border border-gray-100 w-fit gap-1 flex-wrap">
+            <TabButton active={historyView === 'materials'} onClick={() => setHistoryView('materials')} icon={Box} label="Stok Bahan Baku" />
+            <TabButton active={historyView === 'products'} onClick={() => setHistoryView('products')} icon={Clipboard} label="Stok Barang Jadi" />
+            <TabButton active={historyView === 'reject'} onClick={() => setHistoryView('reject')} icon={Trash2} label="Barang Reject" />
+            <TabButton active={historyView === 'movements'} onClick={() => setHistoryView('movements')} icon={History} label="Riwayat Mutasi" />
+          </div>
+
+          {historyView === 'materials' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
+            <div>
+              <h3 className="font-bold text-sm text-gray-800">Status Stok Bahan Baku</h3>
+              <p className="text-xs text-gray-400">Monitoring sisa bahan baku di pabrik {brandName()}</p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {rawMaterials.map((mat) => {
+                const isCritical = mat.current_stock <= mat.stock_minimum;
+                return (
+                  <div
+                    key={mat.id}
+                    className={`p-3 rounded-lg border text-xs flex justify-between items-center transition-all ${
+                      isCritical ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-100'
+                    }`}
+                  >
+                    <div>
+                      <p className="font-bold text-gray-800 font-sans">{mat.name}</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">Min: {mat.stock_minimum} {mat.unit}</p>
+                    </div>
+
+                    <div className="text-right">
+                      <span className={`font-mono font-bold text-xs ${isCritical ? 'text-amber-700' : 'text-[var(--color-evergreen)]'}`}>
+                        {mat.current_stock} {mat.unit}
+                      </span>
+                      {isCritical && (
+                        <span className="block text-[8px] font-black text-amber-700 uppercase mt-0.5 tracking-wider">stok kritis!</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>}
+
+          {historyView === 'products' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
+            <div>
+              <h3 className="font-bold text-sm text-gray-800 font-sans">Sisa Stok Barang Jadi</h3>
+              <p className="text-xs text-gray-400">Stok siap kirim hasil produksi gudang {brandName()}</p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {products.map((p) => {
+                const isCritical = p.stock <= 15;
+                return (
+                  <div
+                    key={p.id}
+                    className={`p-3.5 rounded-lg border text-xs flex justify-between items-center transition-all ${
+                      isCritical ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-100'
+                    }`}
+                  >
+                    <div>
+                      <p className="font-bold text-gray-800 font-sans">{p.name}</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">{p.variant}</p>
+                    </div>
+
+                    <div className="text-right">
+                      <p className="font-mono font-bold text-sm text-gray-800">{p.stock} Unit</p>
+                      {isCritical && (
+                        <span className="text-[9px] font-black text-amber-700 uppercase tracking-wide block mt-0.5">Kritis</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>}
+
+          {historyView === 'reject' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
+            <div>
+              <h3 className="font-bold text-sm text-gray-800 font-sans">Barang Reject Produksi</h3>
+              <p className="text-xs text-gray-400">Catatan barang reject yang masih disimpan atau perlu tindak lanjut.</p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {rejectedGoods.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-6 bg-gray-50 rounded-lg border border-dashed border-gray-200 col-span-full">Belum ada barang reject tercatat.</p>
+              ) : rejectedGoods.map(item => (
+                <div key={item.id} className="p-3 rounded-lg border border-rose-100 bg-rose-50/40 text-xs flex justify-between gap-3">
+                  <div>
+                    <p className="font-bold text-gray-800">{item.product_name}</p>
+                    <p className="text-[10px] text-gray-500 mt-0.5">{item.reason}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="font-mono font-black text-rose-700">{item.qty} pcs</p>
+                    <p className="text-[9px] uppercase text-rose-500 font-bold">{item.status}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>}
+
+          {historyView === 'movements' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
+            <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+              <div>
+                <h3 className="font-bold text-sm text-gray-800 font-sans">Riwayat Mutasi Stok</h3>
+                <p className="text-xs text-gray-400">Log audit real-time sirkulasi bahan dan barang jadi</p>
+              </div>
+              <History className="w-4.5 h-4.5 text-gray-400" />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+              {movements.slice(0, 30).map((mov) => {
+                const isIncoming = mov.type.includes('masuk');
+                const isProduct = mov.type.includes('barang_jadi');
+                const timeString = new Date(mov.created_at).toLocaleDateString('id-ID', { hour: '2-digit', minute: '2-digit' });
+
+                return (
+                  <div key={mov.id} className="flex justify-between items-center text-xs p-3 bg-gray-50 rounded-lg border border-gray-100">
+                    <div className="space-y-0.5">
+                      <p className="font-bold text-gray-800 font-sans">{mov.item_name}</p>
+                      <p className="text-[10px] text-gray-400">Ref: {mov.reference} | {timeString}</p>
+                    </div>
+
+                    <div className="text-right flex items-center gap-1.5 font-mono font-bold text-[11px]">
+                      {isIncoming ? (
+                        <span className="text-emerald-700 flex items-center">
+                          <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
+                          +{mov.amount}
+                        </span>
+                      ) : (
+                        <span className="text-rose-700 flex items-center">
+                          <ArrowDownLeft className="w-3.5 h-3.5 shrink-0" />
+                          -{mov.amount}
+                        </span>
+                      )}
+                      <span className="text-[9px] font-normal text-gray-400 uppercase">
+                        {isProduct ? 'Unit' : 'Bahan'}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>}
         </div>
       )}
 
