@@ -31,6 +31,8 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
   // Date Range Filter states
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
+  const [payrollPage, setPayrollPage] = useState(1);
+  const PAYROLL_PAGE_SIZE = 20;
   
   // Delete payroll state
   const [deletePayrollId, setDeletePayrollId] = useState<string | null>(null);
@@ -93,6 +95,10 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     setPeriodStart(range.start);
     setPeriodEnd(range.end);
   };
+
+  useEffect(() => {
+    setPayrollPage(1);
+  }, [filterStartDate, filterEndDate]);
 
   // Auto calculate based on employee and attendance log
   useEffect(() => {
@@ -1027,6 +1033,9 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     if (filterEndDate && pay.period_end > filterEndDate) return false;
     return true;
   });
+  const payrollTotalPages = Math.max(1, Math.ceil(filteredPayrolls.length / PAYROLL_PAGE_SIZE));
+  const payrollPageClamped = Math.min(payrollPage, payrollTotalPages);
+  const pagedPayrolls = filteredPayrolls.slice((payrollPageClamped - 1) * PAYROLL_PAGE_SIZE, payrollPageClamped * PAYROLL_PAGE_SIZE);
   const selectedPendingAdjustmentLogs = selectedEmpId
     ? attendance
         .filter(log => {
@@ -1107,7 +1116,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
               <h3 className="font-black text-sm text-gray-800">Perlu Review Pengganti Telat / Lembur / Live TikTok</h3>
               <p className="text-xs text-gray-500">Jam tambahan dipakai untuk menutup telat dulu. Sisa setelah telat tertutup baru masuk lembur.</p>
             </div>
-            <div className="space-y-2 max-h-72 overflow-y-auto">
+            <div className="space-y-2">
               {pendingAdjustmentLogs.map(log => (
                 <div key={log.id} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center bg-amber-50/60 border border-amber-100 rounded-lg p-3 text-xs">
                   <div className="md:col-span-5">
@@ -1115,7 +1124,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                     <p className="text-gray-500">{log.timestamp.slice(0, 10)} · pulang {log.timestamp.slice(11, 16)}</p>
                     <p className="text-gray-500">Pengganti telat {log.late_compensation_minutes || 0} menit · lembur {log.overtime_minutes || 0} menit</p>
                   </div>
-                  <div className="md:col-span-7 flex flex-wrap gap-2 md:justify-end">
+                  <div className="md:col-span-7 grid grid-cols-2 gap-2">
                     {(log.late_compensation_minutes || 0) > 0 && (
                       <button type="button" onClick={() => approveAdjustment(log, 'late_compensation')} className="px-3 py-2 rounded-lg bg-emerald-700 text-white font-bold cursor-pointer">Setujui Pengganti</button>
                     )}
@@ -1202,14 +1211,14 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
               )}
             </div>
             <div className="font-mono text-[11px] text-gray-500 bg-gray-50 px-2.5 py-1 rounded-md border border-gray-150">
-              Menampilkan {filteredPayrolls.length} dari {payrolls.length} slip
+              Menampilkan {pagedPayrolls.length} dari {filteredPayrolls.length} slip (halaman {payrollPageClamped}/{payrollTotalPages})
             </div>
           </div>
 
           <div className="overflow-x-auto rounded-b-lg border-t border-emerald-800/10 shadow-inner bg-emerald-50/5">
             <table className="w-full text-left border-collapse text-xs border border-emerald-800/20 bg-white">
               <thead>
-                <tr className="bg-emerald-800 text-white font-bold border-b border-emerald-950 uppercase text-[10px] tracking-wider text-center">
+                <tr className="sticky top-0 z-10 bg-emerald-800 text-white font-bold border-b border-emerald-950 uppercase text-[10px] tracking-wider text-center">
                   <th className="p-3 border-r border-emerald-700/50 text-left">Nama Karyawan</th>
                   <th className="p-3 border-r border-emerald-700/50 text-center">Periode Kerja</th>
                   <th className="p-3 border-r border-emerald-700/50 text-center">Hari / Lembur</th>
@@ -1219,14 +1228,14 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                 </tr>
               </thead>
               <tbody className="divide-y divide-emerald-100">
-                {filteredPayrolls.length === 0 ? (
+                {pagedPayrolls.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="p-8 text-center text-gray-400 italic bg-white">
                       Belum ada slip gaji yang cocok dengan filter atau terdaftar.
                     </td>
                   </tr>
                 ) : (
-                  filteredPayrolls.map((pay) => (
+                  pagedPayrolls.map((pay) => (
                     <tr key={pay.id} className="hover:bg-emerald-50/40 transition-colors font-medium text-gray-700">
                       <td className="p-3 border-r border-emerald-100/70 font-bold text-emerald-950">{pay.employee_name}</td>
                       <td className="p-3 border-r border-emerald-100/70 font-mono text-center text-[11px] text-gray-600 bg-gray-50/10">
@@ -1314,6 +1323,28 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
               </tbody>
             </table>
           </div>
+
+          {payrollTotalPages > 1 && (
+            <div className="p-3 bg-emerald-50/20 border-t border-emerald-800/10 flex items-center justify-between gap-3 text-xs">
+              <button
+                type="button"
+                disabled={payrollPageClamped <= 1}
+                onClick={() => setPayrollPage(p => Math.max(1, p - 1))}
+                className="px-3 py-1.5 rounded-lg font-bold border border-emerald-800/20 bg-white text-emerald-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer hover:bg-emerald-50"
+              >
+                &larr; Sebelumnya
+              </button>
+              <span className="font-mono text-gray-500">Halaman {payrollPageClamped} dari {payrollTotalPages}</span>
+              <button
+                type="button"
+                disabled={payrollPageClamped >= payrollTotalPages}
+                onClick={() => setPayrollPage(p => Math.min(payrollTotalPages, p + 1))}
+                className="px-3 py-1.5 rounded-lg font-bold border border-emerald-800/20 bg-white text-emerald-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer hover:bg-emerald-50"
+              >
+                Berikutnya &rarr;
+              </button>
+            </div>
+          )}
         </div>
 
       </div>
@@ -1534,8 +1565,8 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
 
       {/* POP-UP WEEKLY PAYROLL CALCULATOR MODAL */}
       {isCalculatorOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 no-print animate-fade-in">
-          <div className="bg-white rounded-2xl w-full max-w-2xl border border-emerald-800/30 overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 no-print animate-fade-in overflow-y-auto">
+          <div className="bg-white rounded-2xl w-full max-w-2xl border border-emerald-800/30 overflow-hidden shadow-2xl my-auto" onClick={(e) => e.stopPropagation()}>
             <div className="bg-emerald-800 px-6 py-4 flex items-center justify-between text-white">
               <h3 className="font-bold text-sm flex items-center gap-2 uppercase tracking-wide">
                 <Calculator className="w-4 h-4 text-emerald-100 animate-pulse" /> Generate &amp; Posting Gaji Mingguan
@@ -1704,8 +1735,8 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
 
       {/* POP-UP EDIT PAYROLL WEEKLY MODAL */}
       {editingPayroll && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 no-print animate-fade-in">
-          <div className="bg-white rounded-2xl w-full max-w-2xl border border-emerald-800/30 overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 no-print animate-fade-in overflow-y-auto">
+          <div className="bg-white rounded-2xl w-full max-w-2xl border border-emerald-800/30 overflow-hidden shadow-2xl my-auto" onClick={(e) => e.stopPropagation()}>
             <div className="bg-emerald-800 px-6 py-4 flex items-center justify-between text-white">
               <h3 className="font-bold text-sm flex items-center gap-2 uppercase tracking-wide">
                 <Edit2 className="w-4 h-4 text-emerald-100" /> Edit Slip Gaji: {editingPayroll.employee_name}
@@ -1827,8 +1858,8 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
 
       {/* CALIBRATION SETTINGS MODAL */}
       {isSettingsOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 no-print animate-fade-in">
-          <div className="bg-white rounded-2xl w-full max-w-md border border-slate-300 overflow-hidden shadow-2xl animate-scale-up" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 no-print animate-fade-in overflow-y-auto">
+          <div className="bg-white rounded-2xl w-full max-w-md border border-slate-300 overflow-hidden shadow-2xl animate-scale-up my-auto" onClick={(e) => e.stopPropagation()}>
             <div className="bg-emerald-800 px-6 py-4 flex items-center justify-between text-white">
               <h3 className="font-bold text-sm flex items-center gap-2 uppercase tracking-wide">
                 <Sliders className="w-4 h-4 text-slate-100 animate-pulse" /> Kalibrasi Cetak Dot Matrix
