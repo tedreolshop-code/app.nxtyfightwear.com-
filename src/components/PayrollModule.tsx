@@ -33,6 +33,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
   const [filterEndDate, setFilterEndDate] = useState('');
   const [payrollPage, setPayrollPage] = useState(1);
   const PAYROLL_PAGE_SIZE = 20;
+  const [payrollDetailView, setPayrollDetailView] = useState<'review' | 'register'>('register');
   
   // Delete payroll state
   const [deletePayrollId, setDeletePayrollId] = useState<string | null>(null);
@@ -1109,8 +1110,34 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
             </p>
           </div>
         </div>
-        
-        {pendingAdjustmentLogs.length > 0 && (
+
+        <div className="no-print flex bg-gray-50 p-1.5 rounded-xl border border-gray-100 w-fit gap-1 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setPayrollDetailView('review')}
+            className={`px-4 py-2 rounded-lg text-xs font-bold cursor-pointer flex items-center gap-1.5 ${
+              payrollDetailView === 'review' ? 'bg-[var(--color-evergreen)] text-white' : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            Perlu Review
+            {pendingAdjustmentLogs.length > 0 && (
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${payrollDetailView === 'review' ? 'bg-white/20' : 'bg-amber-100 text-amber-800'}`}>
+                {pendingAdjustmentLogs.length}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => setPayrollDetailView('register')}
+            className={`px-4 py-2 rounded-lg text-xs font-bold cursor-pointer flex items-center gap-1.5 ${
+              payrollDetailView === 'register' ? 'bg-[var(--color-evergreen)] text-white' : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            Buku Register Slip Gaji
+          </button>
+        </div>
+
+        {payrollDetailView === 'review' && pendingAdjustmentLogs.length > 0 && (
           <div className="bg-white border border-amber-200 rounded-xl p-4 space-y-3">
             <div>
               <h3 className="font-black text-sm text-gray-800">Perlu Review Pengganti Telat / Lembur / Live TikTok</h3>
@@ -1140,8 +1167,14 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
           </div>
         )}
 
+        {payrollDetailView === 'review' && pendingAdjustmentLogs.length === 0 && (
+          <div className="bg-white border border-gray-100 rounded-xl p-8 text-center text-gray-400 italic text-xs">
+            Tidak ada yang perlu direview saat ini.
+          </div>
+        )}
+
         {/* Payroll History & Print list with Evergreen Theme */}
-        <div className="bg-white rounded-lg border border-emerald-800/20 overflow-hidden shadow-md w-full">
+        {payrollDetailView === 'register' && <div className="bg-white rounded-lg border border-emerald-800/20 overflow-hidden shadow-md w-full">
           <div className="p-4 bg-emerald-50/40 border-b border-emerald-800/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h3 className="font-bold text-xs text-emerald-950 uppercase tracking-wide">Buku Register Slip Gaji Mingguan</h3>
@@ -1345,7 +1378,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
               </button>
             </div>
           )}
-        </div>
+        </div>}
 
       </div>
 
