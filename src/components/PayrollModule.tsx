@@ -34,6 +34,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
   const [payrollPage, setPayrollPage] = useState(1);
   const PAYROLL_PAGE_SIZE = 20;
   const [payrollDetailView, setPayrollDetailView] = useState<'review' | 'register'>('register');
+  const [employeeSearchQuery, setEmployeeSearchQuery] = useState('');
   
   // Delete payroll state
   const [deletePayrollId, setDeletePayrollId] = useState<string | null>(null);
@@ -1029,6 +1030,10 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     );
   }
 
+  const sortedFilteredEmployees = employees
+    .filter(emp => emp.name.toLowerCase().includes(employeeSearchQuery.trim().toLowerCase()))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
   const filteredPayrolls = payrolls.filter(pay => {
     if (filterStartDate && pay.period_start < filterStartDate) return false;
     if (filterEndDate && pay.period_end > filterEndDate) return false;
@@ -1201,6 +1206,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                 type="button"
                 onClick={() => {
                   applyDefaultWeeklyPeriod();
+                  setEmployeeSearchQuery('');
                   setIsCalculatorOpen(true);
                 }}
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-800 hover:bg-emerald-900 text-white border border-emerald-950 rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer hover:scale-[1.02]"
@@ -1621,6 +1627,13 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2">
                   <label className="block font-bold text-emerald-800 uppercase tracking-wider mb-1">Pilih Karyawan</label>
+                  <input
+                    type="text"
+                    value={employeeSearchQuery}
+                    onChange={(e) => setEmployeeSearchQuery(e.target.value)}
+                    placeholder="Cari nama karyawan..."
+                    className="w-full bg-emerald-50/10 border border-emerald-800/25 rounded-lg px-3 py-2 mb-1.5 text-emerald-950 focus:bg-white focus:outline-none focus:border-emerald-700"
+                  />
                   <select
                     value={selectedEmpId}
                     onChange={(e) => setSelectedEmpId(e.target.value)}
@@ -1628,7 +1641,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                     required
                   >
                     <option value="">-- Pilih Karyawan --</option>
-                    {employees.map(emp => (
+                    {sortedFilteredEmployees.map(emp => (
                       <option key={emp.id} value={emp.id}>{emp.name}</option>
                     ))}
                   </select>
@@ -1674,7 +1687,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                         </p>
                       </div>
                     </div>
-                    <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                    <div className="space-y-1.5">
                       {selectedPendingAdjustmentLogs.map(log => (
                         <div key={log.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-white/80 border border-amber-100 rounded-lg px-3 py-2">
                           <span className="text-[11px] text-gray-700">
