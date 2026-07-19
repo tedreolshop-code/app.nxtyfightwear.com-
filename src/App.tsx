@@ -58,7 +58,7 @@ const MENUS: Array<{ id: string; label: string; icon: React.ComponentType<{ clas
   { id: 'pengeluaran', label: 'Pengeluaran', icon: TrendingDown, roles: ['owner', 'admin_penjualan'] },
   { id: 'gudang', label: 'Gudang', icon: Archive, roles: ['owner', 'admin_gudang'] },
   { id: 'produksi', label: 'Produksi', icon: Hammer, roles: ['owner', 'admin_penjualan', 'admin_gudang', 'karyawan'] },
-  { id: 'karyawan', label: 'Karyawan', icon: Users, roles: ['owner'] },
+  { id: 'karyawan', label: 'Karyawan', icon: Users, roles: ['owner', 'admin_penjualan'] },
   { id: 'laporan', label: 'Laporan', icon: FileSpreadsheet, roles: ['owner'] },
   // Semua orang adalah karyawan dengan akun sendiri — absensi & slip gaji terbuka untuk semua role
   { id: 'absensi', label: 'Absensi', icon: Activity, roles: ['owner', 'admin_penjualan', 'admin_gudang', 'karyawan'] },
