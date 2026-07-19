@@ -44,6 +44,7 @@ export const CashAdvanceModule: React.FC<CashAdvanceModuleProps> = ({ actor }) =
   const [showFormModal, setShowFormModal] = useState(false);
   const [mode, setMode] = useState<FormMode>('create');
   const [formEmployeeId, setFormEmployeeId] = useState('');
+  const [formEmployeeSearch, setFormEmployeeSearch] = useState('');
   const [selectedAdvanceId, setSelectedAdvanceId] = useState('');
   const [amount, setAmount] = useState(0);
   const [date, setDate] = useState(wibTodayStr());
@@ -121,6 +122,7 @@ export const CashAdvanceModule: React.FC<CashAdvanceModuleProps> = ({ actor }) =
     setNote('');
     setDate(wibTodayStr());
     setFormError('');
+    setFormEmployeeSearch('');
     setShowFormModal(true);
   };
 
@@ -411,6 +413,13 @@ export const CashAdvanceModule: React.FC<CashAdvanceModuleProps> = ({ actor }) =
 
               <div>
                 <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Karyawan</label>
+                <input
+                  type="text"
+                  value={formEmployeeSearch}
+                  onChange={event => setFormEmployeeSearch(event.target.value)}
+                  placeholder="Cari nama karyawan..."
+                  className="w-full border border-gray-200 rounded-lg p-2.5 text-sm mb-1.5"
+                />
                 <select
                   value={formEmployeeId}
                   onChange={event => {
@@ -423,7 +432,10 @@ export const CashAdvanceModule: React.FC<CashAdvanceModuleProps> = ({ actor }) =
                   required
                 >
                   <option value="">Pilih karyawan</option>
-                  {employees.map(employee => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
+                  {employees
+                    .filter(employee => employee.name.toLowerCase().includes(formEmployeeSearch.trim().toLowerCase()))
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map(employee => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
                 </select>
               </div>
 

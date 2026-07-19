@@ -484,10 +484,12 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
   };
 
   // Filter employees for the list view
-  const filteredEmployees = employees.filter(emp => 
-    emp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    emp.id.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredEmployees = employees
+    .filter(emp =>
+      emp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      emp.id.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+    .sort((a, b) => a.name.localeCompare(b.name));
   const automaticScanType = lockedEmployee ? inferEmployeeScanType(lockedEmployee.id) : null;
   const departmentLabel = (departmentId: string) => departmentId === 'dept-eva-foam' ? 'Eva Foam' : departmentId === 'dept-konveksi' ? 'Konveksi' : departmentId;
 
@@ -1167,7 +1169,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
           {adminAttendanceTab === 'correction' && (
             <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4 shadow-xs text-left">
               <div><h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider">Koreksi & Bantuan Admin</h3><p className="text-[10px] text-gray-400">Daftar absensi yang dibuat lewat bantuan admin, lengkap dengan alasan.</p></div>
-              <div className="space-y-2 max-h-[520px] overflow-y-auto">{assistedPeriodLogs.length === 0 ? <p className="p-10 text-center text-xs text-gray-400 bg-gray-50 border border-dashed rounded-xl">Belum ada absensi dibantu admin pada periode ini.</p> : assistedPeriodLogs.map(log => <div key={log.id} className="rounded-xl border border-amber-100 bg-amber-50/60 p-3 text-xs"><div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"><div><p className="font-black text-gray-900">{log.employee_name}</p><p className="text-gray-500">{log.timestamp.slice(0, 10)} · {log.timestamp.slice(11, 16)} · {log.type_scan}</p></div><span className="rounded-full bg-white border border-amber-200 px-2 py-1 text-[10px] font-black text-amber-800">Dibantu {log.assisted_by_name || '-'}</span></div><p className="mt-2 text-gray-600">Alasan: {log.assistance_reason || '-'}</p></div>)}</div>
+              <div className="space-y-2">{assistedPeriodLogs.length === 0 ? <p className="p-10 text-center text-xs text-gray-400 bg-gray-50 border border-dashed rounded-xl">Belum ada absensi dibantu admin pada periode ini.</p> : assistedPeriodLogs.map(log => <div key={log.id} className="rounded-xl border border-amber-100 bg-amber-50/60 p-3 text-xs"><div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"><div><p className="font-black text-gray-900">{log.employee_name}</p><p className="text-gray-500">{log.timestamp.slice(0, 10)} · {log.timestamp.slice(11, 16)} · {log.type_scan}</p></div><span className="rounded-full bg-white border border-amber-200 px-2 py-1 text-[10px] font-black text-amber-800">Dibantu {log.assisted_by_name || '-'}</span></div><p className="mt-2 text-gray-600">Alasan: {log.assistance_reason || '-'}</p></div>)}</div>
             </div>
           )}
 
@@ -1278,7 +1280,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
               </div>
 
               {/* Logs Stream Container */}
-              <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
+              <div className="space-y-3">
                 {pagedHistory.length === 0 ? (
                   <p className="text-xs text-gray-400 italic text-center py-16 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
                     Tidak ada data absensi yang cocok dengan filter saat ini.
