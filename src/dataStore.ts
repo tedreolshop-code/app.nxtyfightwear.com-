@@ -1411,13 +1411,16 @@ class DataStore {
       if (checkIn) {
         const workedMinutes = Math.max(0, Math.round((new Date(att.timestamp).getTime() - new Date(checkIn.timestamp).getTime()) / 60000));
         const lateMinutes = checkIn.late_minutes ?? Math.max(0, clockMinutes(checkIn.timestamp.slice(11, 16)) - clockMinutes(workSettings.start_time));
-        const afterWorkMinutes = Math.max(0, clockMinutes(timestampClock) - clockMinutes(workSettings.end_time));
-        const lateCompensationMinutes = Math.min(lateMinutes, afterWorkMinutes);
+        const OVERTIME_GRACE_MINUTES = 60; // toleransi 1 jam setelah end_time (mis. pulang jam 16:00 -> lembur baru mulai lewat 17:00)
+        const pastGraceMinutes = Math.max(0, clockMinutes(timestampClock) - clockMinutes(workSettings.end_time) - OVERTIME_GRACE_MINUTES);
+        const lateCompensationMinutes = Math.min(lateMinutes, pastGraceMinutes);
+        const overtimeMinutesAfterLate = Math.max(0, pastGraceMinutes - lateCompensationMinutes);
+        const overtimeHours = overtimeMinutesAfterLate > 0 ? Math.ceil(overtimeMinutesAfterLate / 60) : 0; // dibulatkan ke atas per jam
         attendanceMetrics = {
           worked_minutes: workedMinutes,
           work_fraction: workedMinutes <= workSettings.half_day_max_hours * 60 ? 0.5 : 1,
           late_compensation_minutes: lateCompensationMinutes,
-          overtime_minutes: Math.max(0, afterWorkMinutes - lateCompensationMinutes)
+          overtime_minutes: overtimeHours * 60
         };
       }
     }
