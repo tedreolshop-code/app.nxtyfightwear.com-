@@ -104,6 +104,8 @@ export const MarketplaceSalesModule: React.FC = () => {
   // Suggest fee check
   const [autoCalculateFee, setAutoCalculateFee] = useState<boolean>(true);
   const [feePercentage, setFeePercentage] = useState<number>(5); // Default estimated 5% fee
+  // Biaya admin marketplace dibebankan sekali per PESANAN (bukan per barang) saat mode manual
+  const [orderAdminFee, setOrderAdminFee] = useState<number>(0);
 
   // Editing state
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
@@ -130,9 +132,24 @@ export const MarketplaceSalesModule: React.FC = () => {
     setProducts(dataStore.getProducts());
   };
 
-  // Fee admin per baris item: dihitung otomatis dari % bila auto-calc aktif, atau dari input manual
-  const feeForRow = (row: { qty: number; price: number; adminFee: number }): number =>
-    autoCalculateFee ? Math.round(row.qty * row.price * (feePercentage / 100)) : row.adminFee;
+  // Biaya admin dihitung sekali per PESANAN: otomatis dari % subtotal seluruh barang, atau input manual
+  const computeOrderFee = (rows: Array<{ qty: number; price: number }>): number => {
+    const sub = rows.reduce((s, r) => s + r.qty * r.price, 0);
+    return autoCalculateFee ? Math.round(sub * (feePercentage / 100)) : orderAdminFee;
+  };
+  // Sebar biaya pesanan ke tiap barang proporsional terhadap subtotal (sisa pembulatan ke barang terakhir)
+  // agar total admin_fee per pesanan tepat sama dengan yang diinput — data tetap per-barang.
+  const distributeFee = (rows: Array<{ qty: number; price: number }>, totalFee: number): number[] => {
+    const subs = rows.map(r => r.qty * r.price);
+    const sumSub = subs.reduce((a, b) => a + b, 0);
+    let allocated = 0;
+    return rows.map((_, i) => {
+      if (i === rows.length - 1) return totalFee - allocated;
+      const fee = sumSub > 0 ? Math.round(totalFee * subs[i] / sumSub) : Math.round(totalFee / rows.length);
+      allocated += fee;
+      return fee;
+    });
+  };
 
   // Handler for Detailed Item Sale Submission
   const handleAddDetailedSale = (e: React.FormEvent) => {
@@ -164,7 +181,7 @@ export const MarketplaceSalesModule: React.FC = () => {
       const finalDescription = resolveDescription(row);
       const linkedProductId = row.selectedProductId && row.selectedProductId !== 'custom' ? row.selectedProductId : undefined;
       const calculatedSubtotal = row.qty * row.price;
-      const rowFee = feeForRow(row);
+      const rowFee = computeOrderFee(saleItemRows); // edit = 1 barang, jadi biaya pesanan = biaya barang ini
       const finalTotal = calculatedSubtotal - rowFee;
 
       const oldItem = updatedItemSales.find(item => item.id === editingItemId);
@@ -202,11 +219,13 @@ export const MarketplaceSalesModule: React.FC = () => {
     } else {
       // Create Mode — 1 order bisa terdiri dari beberapa baris item, semuanya berbagi No Pesanan yang sama
       const sharedOrderNumber = orderNumber.trim() || 'NP-' + Math.floor(100000 + Math.random() * 900000);
-      for (const row of saleItemRows) {
+      // Biaya admin diinput sekali per pesanan, lalu disebar proporsional ke tiap barang
+      const rowFees = distributeFee(saleItemRows, computeOrderFee(saleItemRows));
+      saleItemRows.forEach((row, rowIdx) => {
         const finalDescription = resolveDescription(row);
         const linkedProductId = row.selectedProductId && row.selectedProductId !== 'custom' ? row.selectedProductId : undefined;
         const calculatedSubtotal = row.qty * row.price;
-        const rowFee = feeForRow(row);
+        const rowFee = rowFees[rowIdx];
         const finalTotal = calculatedSubtotal - rowFee;
 
         if (linkedProductId) {
@@ -229,7 +248,7 @@ export const MarketplaceSalesModule: React.FC = () => {
           admin_staff: staffName
         };
         updatedItemSales.unshift(newDetailedSale);
-      }
+      });
       dataStore.setMarketplaceItemSales(updatedItemSales);
       setItemSales(updatedItemSales);
       alert(saleItemRows.length > 1 ? `${saleItemRows.length} item dalam order berhasil dicatatkan!` : 'Detail penjualan produk berhasil dicatatkan!');
@@ -238,6 +257,7 @@ export const MarketplaceSalesModule: React.FC = () => {
     // Reset inputs but preserve date & admin name for speed typing!
     setOrderNumber('');
     setSaleItemRows([newEmptyItemRow()]);
+    setOrderAdminFee(0);
   };
 
   const handleStartEditItem = (item: MarketplaceItemSale) => {
@@ -259,6 +279,7 @@ export const MarketplaceSalesModule: React.FC = () => {
     const matchingProduct = (item.product_id && products.find(p => p.id === item.product_id))
       || products.find(p => p.name === item.description || (p.name + (p.variant ? ` - ${p.variant}` : '')) === item.description);
     setAutoCalculateFee(false); // keep historical fee values
+    setOrderAdminFee(item.admin_fee);
     setSaleItemRows([{
       key: item.id,
       selectedProductId: matchingProduct ? matchingProduct.id : 'custom',
@@ -274,6 +295,7 @@ export const MarketplaceSalesModule: React.FC = () => {
     setEditingItemId(null);
     setOrderNumber('');
     setSaleItemRows([newEmptyItemRow()]);
+    setOrderAdminFee(0);
   };
 
   // Handler for Original Daily Summary Submission
@@ -443,6 +465,24 @@ export const MarketplaceSalesModule: React.FC = () => {
     }
   });
 
+  // Kelompokkan baris per No Pesanan agar 1 pesanan multi-barang tampil menyatu (bukan terpisah)
+  const orderGroups = (() => {
+    const map = new Map<string, MarketplaceItemSale[]>();
+    for (const item of filteredItemSales) {
+      const arr = map.get(item.order_number);
+      if (arr) arr.push(item); else map.set(item.order_number, [item]);
+    }
+    return Array.from(map.values()).map(items => ({
+      order_number: items[0].order_number,
+      items,
+      date: items[0].date,
+      marketplace_ref: items[0].marketplace_ref,
+      fee: items.reduce((s, i) => s + i.admin_fee, 0),
+      total: items.filter(isCounted).reduce((s, i) => s + i.total, 0),
+      anyCounted: items.some(isCounted),
+    }));
+  })();
+
   // STATS COMPUTATION — cancel & retur TIDAK dihitung dalam omset
   const countedSales = filteredItemSales.filter(isCounted);
   const totalItemQty = countedSales.reduce((acc, curr) => acc + curr.qty, 0);
@@ -488,24 +528,27 @@ export const MarketplaceSalesModule: React.FC = () => {
     csvContent += `Periode Filter: ${startDate || 'Semua'} s/d ${endDate || 'Semua'}\n\n`;
     csvContent += 'TGL,No,No pesenan,Ref,Status,Deskripsi,QTY,Harga,Subtotal,Biaya,Total,Input Oleh\n';
 
-    filteredItemSales.forEach((item, index) => {
-      // Escape commas in description to avoid CSV breaking
-      const cleanDesc = item.description.replace(/"/g, '""');
-      const row = [
-        item.date,
-        index + 1,
-        `="${item.order_number}"`, // Forces Excel to treat order number as string (no scientific notation)
-        item.marketplace_ref,
-        STATUS_META[saleStatus(item)].label.toUpperCase(),
-        `"${cleanDesc}"`,
-        item.qty,
-        item.price,
-        item.subtotal,
-        item.admin_fee > 0 ? `-${item.admin_fee}` : '0',
-        item.total,
-        `"${item.admin_staff}"`
-      ].join(',');
-      csvContent += row + '\n';
+    // Export dikelompokkan per pesanan: No & Biaya admin hanya di baris pertama tiap pesanan (tidak per barang)
+    orderGroups.forEach((group, groupIdx) => {
+      group.items.forEach((item, itemIdx) => {
+        const cleanDesc = item.description.replace(/"/g, '""');
+        const isFirst = itemIdx === 0;
+        const row = [
+          isFirst ? item.date : '',
+          isFirst ? groupIdx + 1 : '',
+          isFirst ? `="${item.order_number}"` : '', // Forces Excel to treat order number as string
+          isFirst ? item.marketplace_ref : '',
+          STATUS_META[saleStatus(item)].label.toUpperCase(),
+          `"${cleanDesc}"`,
+          item.qty,
+          item.price,
+          item.subtotal,
+          isFirst ? (group.fee > 0 ? `-${group.fee}` : '0') : '',
+          isFirst ? group.total : '',
+          `"${item.admin_staff}"`
+        ].join(',');
+        csvContent += row + '\n';
+      });
     });
 
     // Append Summary Row (cancel & retur tidak ikut dijumlah)
@@ -584,7 +627,7 @@ export const MarketplaceSalesModule: React.FC = () => {
               <div className="space-y-0.5">
                 <span className="text-[11px] text-gray-400 font-bold uppercase tracking-wider block">Total Terjual</span>
                 <p className="text-2xl font-black text-gray-800 font-mono">{totalItemQty} <span className="text-xs font-normal text-gray-400">Pcs</span></p>
-                <span className="text-[10px] text-blue-500 font-semibold block">Dari {filteredItemSales.length} baris order</span>
+                <span className="text-[10px] text-blue-500 font-semibold block">Dari {orderGroups.length} pesanan ({filteredItemSales.length} baris barang)</span>
               </div>
               <div className="absolute -right-2 -bottom-2 opacity-5 text-blue-600 pointer-events-none">
                 <ShoppingBasket className="w-24 h-24" />
@@ -862,19 +905,6 @@ export const MarketplaceSalesModule: React.FC = () => {
                               />
                             </div>
                           </div>
-
-                          <div>
-                            <label className="block text-[10px] text-gray-400 font-bold uppercase mb-0.5">Biaya Potongan Admin (IDR)</label>
-                            <input
-                              type="number"
-                              min={0}
-                              value={(autoCalculateFee ? feeForRow(row) : row.adminFee) || ''}
-                              onChange={(e) => updateItemRow(idx, { adminFee: Number(e.target.value) })}
-                              readOnly={autoCalculateFee}
-                              className={`w-full border border-gray-200 rounded px-3 py-1.5 text-xs font-bold font-mono text-amber-600 focus:outline-none focus:ring-1 focus:ring-evergreen ${autoCalculateFee ? 'bg-gray-100' : 'bg-white'}`}
-                              placeholder="Contoh: 25000"
-                            />
-                          </div>
                         </div>
                       ))}
 
@@ -889,32 +919,49 @@ export const MarketplaceSalesModule: React.FC = () => {
                       )}
                     </div>
 
-                    {/* Auto Hitung Potongan Admin toggle (berlaku untuk semua item di atas) */}
-                    <div className="flex items-center justify-between bg-gray-50 rounded-lg p-3 border border-gray-100">
-                      <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider flex items-center gap-1">
-                        <Percent className="w-3 h-3 text-amber-500" /> Auto Hitung Potongan Admin
-                      </span>
-                      <div className="flex items-center gap-2">
-                        {autoCalculateFee && (
-                          <>
-                            <input
-                              type="number"
-                              min={0}
-                              max={100}
-                              step={0.5}
-                              value={feePercentage}
-                              onChange={(e) => setFeePercentage(Number(e.target.value))}
-                              className="w-16 bg-white border border-gray-200 rounded px-1.5 py-0.5 text-xs text-center font-mono font-bold text-gray-700"
-                            />
-                            <span className="text-[11px] text-gray-400">%</span>
-                          </>
-                        )}
+                    {/* Biaya Potongan Admin — sekali per PESANAN (bukan per barang) */}
+                    <div className="bg-gray-50 rounded-lg p-3 border border-gray-100 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider flex items-center gap-1">
+                          <Percent className="w-3 h-3 text-amber-500" /> Auto Hitung Potongan Admin
+                        </span>
+                        <div className="flex items-center gap-2">
+                          {autoCalculateFee && (
+                            <>
+                              <input
+                                type="number"
+                                min={0}
+                                max={100}
+                                step={0.5}
+                                value={feePercentage}
+                                onChange={(e) => setFeePercentage(Number(e.target.value))}
+                                className="w-16 bg-white border border-gray-200 rounded px-1.5 py-0.5 text-xs text-center font-mono font-bold text-gray-700"
+                              />
+                              <span className="text-[11px] text-gray-400">%</span>
+                            </>
+                          )}
+                          <input
+                            type="checkbox"
+                            checked={autoCalculateFee}
+                            onChange={(e) => setAutoCalculateFee(e.target.checked)}
+                            className="rounded text-evergreen focus:ring-evergreen"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-gray-400 font-bold uppercase mb-0.5">Biaya Potongan Admin — 1 Pesanan (IDR)</label>
                         <input
-                          type="checkbox"
-                          checked={autoCalculateFee}
-                          onChange={(e) => setAutoCalculateFee(e.target.checked)}
-                          className="rounded text-evergreen focus:ring-evergreen"
+                          type="number"
+                          min={0}
+                          value={computeOrderFee(saleItemRows) || ''}
+                          onChange={(e) => setOrderAdminFee(Number(e.target.value))}
+                          readOnly={autoCalculateFee}
+                          className={`w-full border border-gray-200 rounded px-3 py-1.5 text-xs font-bold font-mono text-amber-600 focus:outline-none focus:ring-1 focus:ring-evergreen ${autoCalculateFee ? 'bg-gray-100' : 'bg-white'}`}
+                          placeholder="Contoh: 25000"
                         />
+                        {saleItemRows.length > 1 && (
+                          <p className="text-[10px] text-gray-400 mt-1">Biaya ini dibebankan untuk seluruh {saleItemRows.length} barang dalam pesanan, disebar otomatis.</p>
+                        )}
                       </div>
                     </div>
 
@@ -1041,7 +1088,7 @@ export const MarketplaceSalesModule: React.FC = () => {
                 <div className="p-4 border-b border-gray-50 flex items-center justify-between">
                   <div>
                     <h3 className="font-bold text-xs text-gray-800">Laporan Penjualan Barang</h3>
-                    <p className="text-[10px] text-gray-400">Total {filteredItemSales.length} data ditemukan berdasarkan filter</p>
+                    <p className="text-[10px] text-gray-400">Total {orderGroups.length} pesanan ({filteredItemSales.length} baris barang) berdasarkan filter</p>
                   </div>
                 </div>
 
@@ -1071,66 +1118,80 @@ export const MarketplaceSalesModule: React.FC = () => {
                           </td>
                         </tr>
                       ) : (
-                        filteredItemSales.map((item, index) => (
-                          <tr key={item.id} className={`hover:bg-emerald-50/15 border-b border-emerald-100/30 transition-colors ${!isCounted(item) ? 'opacity-55 bg-gray-50/50' : ''}`}>
-                            <td className="p-3 text-center border-r border-emerald-100/70 font-mono text-emerald-950 font-bold bg-emerald-50/30 whitespace-nowrap align-middle">
-                              {formatDateExcel(item.date)}
-                            </td>
-                            <td className="p-3 text-center text-gray-500 border-r border-emerald-100/50">{index + 1}</td>
-                            <td className="p-3 font-bold text-gray-800 select-all truncate max-w-[120px] border-r border-emerald-100/50" title={item.order_number}>
-                              {item.order_number}
-                            </td>
-                            <td className="p-3 border-r border-emerald-100/50">
-                              <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider font-sans ${
-                                item.marketplace_ref.toLowerCase() === 'tokopedia' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
-                                item.marketplace_ref.toLowerCase() === 'shopee' ? 'bg-orange-100 text-orange-800 border border-orange-200' :
-                                item.marketplace_ref.toLowerCase() === 'tiktok shop' ? 'bg-pink-100 text-pink-800 border border-pink-200' :
-                                'bg-gray-100 text-gray-800 border border-gray-200'
-                              }`}>
-                                {item.marketplace_ref}
-                              </span>
-                            </td>
-                            <td className="p-3 text-center border-r border-emerald-100/50">
-                              <button
-                                type="button"
-                                onClick={() => { setStatusModalItem(item); setReturChoice(null); }}
-                                className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider font-sans border cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-gray-300 transition-all ${STATUS_META[saleStatus(item)].className}`}
-                                title="Klik untuk ubah status"
-                              >
-                                {STATUS_META[saleStatus(item)].label} ▾
-                              </button>
-                              {saleStatus(item) === 'retur' && (
-                                <span className="block text-[8px] text-gray-400 font-sans mt-0.5">{item.retur_to_stock ? 'kembali ke stok' : 'barang rusak'}</span>
+                        orderGroups.map((group, groupIdx) => {
+                          const span = group.items.length;
+                          return group.items.map((item, itemIdx) => (
+                            <tr key={item.id} className={`hover:bg-emerald-50/15 transition-colors ${itemIdx === 0 ? 'border-t-2 border-emerald-200' : 'border-t border-emerald-100/30'} ${!isCounted(item) ? 'opacity-55 bg-gray-50/50' : ''}`}>
+                              {itemIdx === 0 && (
+                                <>
+                                  <td rowSpan={span} className="p-3 text-center border-r border-emerald-100/70 font-mono text-emerald-950 font-bold bg-emerald-50/30 whitespace-nowrap align-middle">
+                                    {formatDateExcel(group.date)}
+                                  </td>
+                                  <td rowSpan={span} className="p-3 text-center text-gray-500 border-r border-emerald-100/50 align-middle">{groupIdx + 1}</td>
+                                  <td rowSpan={span} className="p-3 font-bold text-gray-800 select-all truncate max-w-[120px] border-r border-emerald-100/50 align-middle" title={group.order_number}>
+                                    {group.order_number}
+                                    {span > 1 && <span className="block text-[8px] text-gray-400 font-sans font-semibold mt-0.5">{span} barang</span>}
+                                  </td>
+                                  <td rowSpan={span} className="p-3 border-r border-emerald-100/50 align-middle">
+                                    <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider font-sans ${
+                                      group.marketplace_ref.toLowerCase() === 'tokopedia' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
+                                      group.marketplace_ref.toLowerCase() === 'shopee' ? 'bg-orange-100 text-orange-800 border border-orange-200' :
+                                      group.marketplace_ref.toLowerCase() === 'tiktok shop' ? 'bg-pink-100 text-pink-800 border border-pink-200' :
+                                      'bg-gray-100 text-gray-800 border border-gray-200'
+                                    }`}>
+                                      {group.marketplace_ref}
+                                    </span>
+                                  </td>
+                                </>
                               )}
-                            </td>
-                            <td className="p-3 text-gray-900 font-bold font-sans truncate max-w-[160px] border-r border-emerald-100/50" title={item.description}>
-                              {item.description}
-                            </td>
-                            <td className="p-3 text-center font-bold text-gray-950 border-r border-emerald-100/50">{item.qty}</td>
-                            <td className="p-3 text-right text-gray-700 border-r border-emerald-100/50 font-semibold">{formatIDR(item.price)}</td>
-                            <td className="p-3 text-right text-gray-700 border-r border-emerald-100/50 font-semibold">{formatIDR(item.subtotal)}</td>
-                            <td className="p-3 text-right text-red-600 font-bold border-r border-emerald-100/50">
-                              {item.admin_fee > 0 ? `-${formatIDR(item.admin_fee)}` : 'Rp0'}
-                            </td>
-                            <td className={`p-3 text-right font-black border-r border-emerald-100/50 text-[12px] ${isCounted(item) ? 'text-evergreen' : 'text-gray-400 line-through'}`}>{formatIDR(item.total)}</td>
-                            <td className="p-3 text-center whitespace-nowrap flex items-center justify-center gap-1.5 bg-white/30">
-                              <button
-                                onClick={() => handleStartEditItem(item)}
-                                className="p-1 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded transition-colors"
-                                title="Edit catatan"
-                              >
-                                <Edit className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteDetailedSale(item.id)}
-                                className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
-                                title="Hapus catatan"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))
+                              <td className="p-3 text-center border-r border-emerald-100/50">
+                                <button
+                                  type="button"
+                                  onClick={() => { setStatusModalItem(item); setReturChoice(null); }}
+                                  className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider font-sans border cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-gray-300 transition-all ${STATUS_META[saleStatus(item)].className}`}
+                                  title="Klik untuk ubah status"
+                                >
+                                  {STATUS_META[saleStatus(item)].label} ▾
+                                </button>
+                                {saleStatus(item) === 'retur' && (
+                                  <span className="block text-[8px] text-gray-400 font-sans mt-0.5">{item.retur_to_stock ? 'kembali ke stok' : 'barang rusak'}</span>
+                                )}
+                              </td>
+                              <td className="p-3 text-gray-900 font-bold font-sans truncate max-w-[160px] border-r border-emerald-100/50" title={item.description}>
+                                {item.description}
+                              </td>
+                              <td className="p-3 text-center font-bold text-gray-950 border-r border-emerald-100/50">{item.qty}</td>
+                              <td className="p-3 text-right text-gray-700 border-r border-emerald-100/50 font-semibold">{formatIDR(item.price)}</td>
+                              <td className="p-3 text-right text-gray-700 border-r border-emerald-100/50 font-semibold">{formatIDR(item.subtotal)}</td>
+                              {itemIdx === 0 && (
+                                <td rowSpan={span} className="p-3 text-right text-red-600 font-bold border-r border-emerald-100/50 align-middle">
+                                  {group.fee > 0 ? `-${formatIDR(group.fee)}` : 'Rp0'}
+                                </td>
+                              )}
+                              {itemIdx === 0 && (
+                                <td rowSpan={span} className={`p-3 text-right font-black border-r border-emerald-100/50 text-[12px] align-middle ${group.anyCounted ? 'text-evergreen' : 'text-gray-400 line-through'}`}>{formatIDR(group.total)}</td>
+                              )}
+                              <td className="p-3 text-center whitespace-nowrap">
+                                <div className="flex items-center justify-center gap-1.5">
+                                  <button
+                                    onClick={() => handleStartEditItem(item)}
+                                    className="p-1 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded transition-colors"
+                                    title="Edit catatan"
+                                  >
+                                    <Edit className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteDetailedSale(item.id)}
+                                    className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
+                                    title="Hapus catatan"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ));
+                        })
                       )}
                     </tbody>
                     
