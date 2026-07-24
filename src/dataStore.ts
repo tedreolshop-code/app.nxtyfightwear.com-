@@ -772,6 +772,56 @@ class DataStore {
     return true;
   };
 
+  // Hapus job produksi + balikin efek stoknya, agar bisa dibuat ulang dari awal.
+  // Bahan baku yang sudah dipotong dikembalikan; kalau job sudah selesai, barang jadi ditarik lagi
+  // dan barang reject terkait ikut dihapus.
+  deleteProductionJob = (jobId: string): { ok: boolean; message?: string } => {
+    const jobs = this.getProductionJobs();
+    const job = jobs.find(item => item.id === jobId);
+    if (!job) return { ok: false, message: 'Order produksi tidak ditemukan.' };
+
+    const movements = this.getStockMovements();
+    const ref = `Batal Produksi ${job.order_number || job.id}`;
+
+    // 1. Kembalikan bahan baku yang dipotong saat produksi dibuat
+    const materials = this.getRawMaterials();
+    const updatedMaterials = materials.map(mat => {
+      const used = (job.materials_planned || []).find(item => item.material_id === mat.id);
+      if (!used) return mat;
+      movements.unshift({
+        id: uuid(), type: 'bahan_masuk', item_id: mat.id, item_name: mat.name,
+        amount: used.qty, reference: ref, created_at: wibNowISO()
+      });
+      return { ...mat, current_stock: mat.current_stock + used.qty };
+    });
+    this.setRawMaterials(updatedMaterials);
+
+    // 2. Kalau job sudah selesai, barang jadi sudah masuk gudang -> tarik lagi
+    if (job.status === 'completed') {
+      const pulls = (job.outputs && job.outputs.length > 0)
+        ? job.outputs.map(o => ({ product_id: o.product_id, product_name: o.product_name, qty: o.good_qty }))
+        : [{ product_id: job.product_id, product_name: job.product_name, qty: job.qty }];
+      const products = this.getProducts();
+      const updatedProducts = products.map(product => {
+        const pull = pulls.find(p => p.product_id === product.id && p.qty > 0);
+        if (!pull) return product;
+        movements.unshift({
+          id: uuid(), type: 'barang_jadi_keluar', item_id: product.id, item_name: product.name,
+          amount: pull.qty, reference: ref, created_at: wibNowISO()
+        });
+        return { ...product, stock: Math.max(0, product.stock - pull.qty) };
+      });
+      this.setProducts(updatedProducts);
+      // Buang barang reject yang tercatat dari job ini
+      this.setRejectedGoods(this.getRejectedGoods().filter(rg => rg.production_job_id !== job.id));
+    }
+
+    this.setStockMovements(movements);
+    this.setProductionJobs(jobs.filter(item => item.id !== jobId));
+    this.logAudit('delete', 'production_job', `Menghapus order produksi ${job.order_number || job.id} (${job.product_name}) & mengembalikan stok bahan`, jobId);
+    return { ok: true };
+  };
+
   finalizeProductionOutput = (
     jobId: string,
     outputs: Array<{ product_id: string; product_name: string; variant: string; good_qty: number; reject_qty: number; reject_reason?: string }>

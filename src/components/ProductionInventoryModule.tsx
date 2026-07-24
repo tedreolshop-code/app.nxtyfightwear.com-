@@ -449,6 +449,21 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
     loadData();
   };
 
+  const handleDeleteProductionJob = (jobId: string) => {
+    const job = productionJobs.find(j => j.id === jobId);
+    if (!job) return;
+    const warn = job.status === 'completed'
+      ? '\n\nJob sudah SELESAI: bahan baku dikembalikan DAN barang jadi ditarik lagi dari gudang.'
+      : '\n\nBahan baku yang sudah dipotong akan dikembalikan ke gudang.';
+    if (!window.confirm(`Yakin hapus order produksi ${job.order_number || 'Internal'} (${job.product_name})?${warn}`)) return;
+    const result = dataStore.deleteProductionJob(jobId);
+    if (!result.ok) return alert(result.message || 'Gagal menghapus order produksi.');
+    setSelectedJob(null);
+    loadData();
+    triggerLoading();
+    alert('Order produksi dihapus. Stok sudah dikembalikan.');
+  };
+
   const handleCompletePackingTask = async (taskId: string) => {
     if (!window.confirm('Tandai packing ini sudah selesai?')) return;
     let photo: { url: string; uploaded_by: string } | undefined;
@@ -1907,6 +1922,26 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                     >
                       <History className="w-3.5 h-3.5" />
                       Kembalikan Tahap Sebelumnya (Mundur)
+                    </button>
+                  </div>
+                )}
+
+                {/* HAPUS JOB — hanya owner. Balikin stok bahan (& tarik barang jadi bila sudah selesai) */}
+                {userRole === 'owner' && (
+                  <div className="bg-rose-50 border border-rose-200 p-4 rounded-xl space-y-3">
+                    <p className="text-[10px] font-bold text-rose-800 uppercase tracking-wider flex items-center gap-1">
+                      <Trash2 className="w-4 h-4 shrink-0 text-rose-600" /> Hapus Order Produksi
+                    </p>
+                    <p className="text-[10.5px] text-rose-700 leading-normal font-sans">
+                      Menghapus order ini akan mengembalikan bahan baku yang sudah dipotong{selectedJob.status === 'completed' ? ' dan menarik kembali barang jadi dari gudang' : ''}. Gunakan bila ingin membuat ulang dari awal.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteProductionJob(selectedJob.id)}
+                      className="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-3.5 py-2 rounded-lg flex items-center justify-center gap-1 cursor-pointer transition-all shadow-xs"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Hapus Order Produksi Ini
                     </button>
                   </div>
                 )}
