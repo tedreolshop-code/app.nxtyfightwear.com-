@@ -693,7 +693,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
 
           {/* Profile Card & Kasbon Overview */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-white rounded-lg border border-gray-100 p-5 space-y-4 shadow-2xs">
+            <div className="bg-white rounded-lg border border-gray-200 p-5 space-y-4 shadow-xs">
               <h3 className="font-bold text-xs text-gray-500 uppercase tracking-wider">Profil Anda</h3>
               <div className="space-y-2">
                 <p className="text-sm font-bold text-gray-800">{loggedEmployee.name}</p>
@@ -718,7 +718,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
               </div>
             </div>
 
-            <div className="bg-white rounded-lg border border-gray-100 p-5 space-y-4 shadow-2xs col-span-2">
+            <div className="bg-white rounded-lg border border-gray-200 p-5 space-y-4 shadow-xs col-span-2">
               <div className="flex justify-between items-center border-b border-gray-50 pb-2">
                 <h3 className="font-bold text-xs text-gray-500 uppercase tracking-wider">Status &amp; Riwayat Kasbon</h3>
                 <div className="text-right">
@@ -766,7 +766,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
           </div>
 
           {/* Weekly Payroll History Table */}
-          <div className="bg-white rounded-lg border border-gray-100 p-6 space-y-4 shadow-2xs">
+          <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-4 shadow-xs">
             <div>
               <h3 className="font-bold text-sm text-gray-800">Riwayat Slip Gaji Mingguan Anda</h3>
               <p className="text-xs text-gray-400">Menampilkan seluruh slip gaji yang telah diselesaikan oleh admin keuangan untuk Anda</p>
@@ -1174,7 +1174,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
         )}
 
         {payrollDetailView === 'review' && pendingAdjustmentLogs.length === 0 && (
-          <div className="bg-white border border-gray-100 rounded-xl p-8 text-center text-gray-400 italic text-xs">
+          <div className="bg-white border border-gray-200 rounded-xl p-8 text-center text-gray-400 italic text-xs">
             Tidak ada yang perlu direview saat ini.
           </div>
         )}
@@ -1396,7 +1396,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
           onClick={() => setDeletePayrollId(null)}
         >
           <div 
-            className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-gray-100 text-center relative animate-scale-up"
+            className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-gray-200 text-center relative animate-scale-up"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="bg-red-50 text-red-600 p-3 rounded-full mx-auto w-fit mb-4">

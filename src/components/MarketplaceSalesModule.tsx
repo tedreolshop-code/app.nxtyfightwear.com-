@@ -616,7 +616,7 @@ export const MarketplaceSalesModule: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             
             {/* CARD 1: Total Qty Sold */}
-            <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm flex items-center gap-4 relative overflow-hidden">
+            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-xs flex items-center gap-4 relative overflow-hidden">
               <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
                 <ShoppingBasket className="w-5 h-5" />
               </div>
@@ -631,7 +631,7 @@ export const MarketplaceSalesModule: React.FC = () => {
             </div>
 
             {/* CARD 2: Top Selling Item */}
-            <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm flex items-center gap-4 relative overflow-hidden">
+            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-xs flex items-center gap-4 relative overflow-hidden">
               <div className="p-3 bg-indigo-50 text-indigo-600 rounded-lg">
                 <Tag className="w-5 h-5" />
               </div>
@@ -650,7 +650,7 @@ export const MarketplaceSalesModule: React.FC = () => {
             </div>
 
             {/* CARD 3: Admin Marketplace Fees */}
-            <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm flex items-center gap-4 relative overflow-hidden">
+            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-xs flex items-center gap-4 relative overflow-hidden">
               <div className="p-3 bg-amber-50 text-amber-600 rounded-lg">
                 <Percent className="w-5 h-5" />
               </div>
@@ -667,7 +667,7 @@ export const MarketplaceSalesModule: React.FC = () => {
             </div>
 
             {/* CARD 4: Total Omset Net */}
-            <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm flex items-center gap-4 relative overflow-hidden bg-gradient-to-br from-white to-emerald-50">
+            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-xs flex items-center gap-4 relative overflow-hidden bg-gradient-to-br from-white to-emerald-50">
               <div className="p-3 bg-emerald-500 text-white rounded-lg shadow-sm">
                 <DollarSign className="w-5 h-5" />
               </div>
@@ -949,7 +949,7 @@ export const MarketplaceSalesModule: React.FC = () => {
             <div className="space-y-4">
               
               {/* FILTERING CONTROLS */}
-              <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm space-y-3">
+              <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-50 pb-2">
                   <h4 className="font-bold text-xs text-gray-700 flex items-center gap-1.5">
                     <ListFilter className="w-3.5 h-3.5 text-evergreen" />
@@ -1062,7 +1062,7 @@ export const MarketplaceSalesModule: React.FC = () => {
               </div>
 
               {/* DATA TABLE (Layout like their Excel Picture) */}
-              <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="bg-white rounded-xl border border-gray-200 shadow-xs overflow-hidden">
                 <div className="p-4 border-b border-gray-50 flex items-center justify-between">
                   <div>
                     <h3 className="font-bold text-xs text-gray-800">Laporan Penjualan Barang</h3>
@@ -1216,7 +1216,7 @@ export const MarketplaceSalesModule: React.FC = () => {
             
             {/* LEFT COLUMN: Input Form */}
             <div className="lg:col-span-4 space-y-6">
-              <div className="bg-white rounded-xl border border-gray-100 p-6 space-y-4 shadow-sm">
+              <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-xs">
                 <div className={`border-b pb-3 flex items-center justify-between gap-1.5 ${editingDailyId ? 'border-amber-100 bg-amber-50/50 -mx-6 -mt-6 p-6 rounded-t-xl mb-4' : 'border-gray-50'}`}>
                   <div className="flex items-center gap-1.5">
                     <span className={`p-1 rounded-md ${editingDailyId ? 'bg-amber-100 text-amber-600' : 'bg-blue-50 text-blue-600'}`}>
@@ -1339,7 +1339,7 @@ export const MarketplaceSalesModule: React.FC = () => {
                 </div>
               </div>
 
-              <div className="bg-white rounded-xl border border-gray-100 p-6 space-y-4 shadow-sm">
+              <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-xs">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-50 pb-3">
                   <div>
                     <h3 className="font-bold text-sm text-gray-800">Riwayat Rekap Omset Harian</h3>
@@ -1426,7 +1426,7 @@ export const MarketplaceSalesModule: React.FC = () => {
           onClick={() => { setStatusModalItem(null); setReturChoice(null); }}
         >
           <div
-            className="bg-white rounded-2xl max-w-xs w-full p-5 shadow-2xl border border-gray-100"
+            className="bg-white rounded-2xl max-w-xs w-full p-5 shadow-2xl border border-gray-200"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Info order ringkas */}
@@ -1516,7 +1516,7 @@ export const MarketplaceSalesModule: React.FC = () => {
           id="delete-detailed-item-modal"
         >
           <div 
-            className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-gray-100 text-center relative"
+            className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-gray-200 text-center relative"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="bg-red-50 text-red-600 p-3 rounded-full mx-auto w-fit mb-4">
@@ -1554,7 +1554,7 @@ export const MarketplaceSalesModule: React.FC = () => {
           id="delete-daily-sale-modal"
         >
           <div 
-            className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-gray-100 text-center relative"
+            className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-gray-200 text-center relative"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="bg-red-50 text-red-600 p-3 rounded-full mx-auto w-fit mb-4">

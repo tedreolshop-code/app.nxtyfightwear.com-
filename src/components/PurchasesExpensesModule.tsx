@@ -699,7 +699,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
       {/* OVERVIEW STATS (KPI BREAKDOWNS) - EVERGREEN LINES */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {(!mode || mode === 'purchases') && (
-        <div className="bg-white border border-emerald-800/20 p-5 rounded-2xl shadow-xs hover:shadow-sm hover:border-emerald-800/45 transition-all relative overflow-hidden group">
+        <div className="bg-white border border-emerald-800/20 p-5 rounded-2xl shadow-xs hover:shadow-xs hover:border-emerald-800/45 transition-all relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full -mr-6 -mt-6 group-hover:scale-110 transition-transform"></div>
           <span className="text-[10px] text-emerald-800/60 font-bold uppercase tracking-wider block">Total Pembelian PO</span>
           <div className="flex items-baseline gap-1.5 mt-1.5">
@@ -712,7 +712,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
         )}
 
         {(!mode || mode === 'expenses') && (
-        <div className="bg-white border border-emerald-800/20 p-5 rounded-2xl shadow-xs hover:shadow-sm hover:border-emerald-800/45 transition-all relative overflow-hidden group">
+        <div className="bg-white border border-emerald-800/20 p-5 rounded-2xl shadow-xs hover:shadow-xs hover:border-emerald-800/45 transition-all relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-24 h-24 bg-rose-500/5 rounded-full -mr-6 -mt-6 group-hover:scale-110 transition-transform"></div>
           <span className="text-[10px] text-emerald-800/60 font-bold uppercase tracking-wider block">Total Pengeluaran Kas</span>
           <div className="flex items-baseline gap-1.5 mt-1.5">
@@ -725,7 +725,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
         )}
 
         {(!mode || mode === 'purchases') && (<>
-        <div className="bg-white border border-emerald-800/20 p-5 rounded-2xl shadow-xs hover:shadow-sm hover:border-emerald-800/45 transition-all relative overflow-hidden">
+        <div className="bg-white border border-emerald-800/20 p-5 rounded-2xl shadow-xs hover:shadow-xs hover:border-emerald-800/45 transition-all relative overflow-hidden">
           <span className="text-[10px] text-emerald-800/60 font-bold uppercase tracking-wider block">Supplier Terbanyak PO</span>
           <div className="mt-2.5">
             {purchases.length > 0 ? (
@@ -747,7 +747,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
           </div>
         </div>
 
-        <div className="bg-white border border-emerald-800/20 p-5 rounded-2xl shadow-xs hover:shadow-sm hover:border-emerald-800/45 transition-all relative overflow-hidden">
+        <div className="bg-white border border-emerald-800/20 p-5 rounded-2xl shadow-xs hover:shadow-xs hover:border-emerald-800/45 transition-all relative overflow-hidden">
           <span className="text-[10px] text-emerald-800/60 font-bold uppercase tracking-wider block">Status Berkas PO</span>
           <div className="flex items-center gap-3 mt-3">
             <div className="text-center">
@@ -1349,7 +1349,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                   </div>
 
                   {/* Right: Beautiful Invoice Receipt View of Selected PO */}
-                  <div className="md:col-span-7 bg-white rounded-2xl border border-emerald-800/20 p-6 shadow-sm space-y-6 flex flex-col justify-between">
+                  <div className="md:col-span-7 bg-white rounded-2xl border border-emerald-800/20 p-6 shadow-xs space-y-6 flex flex-col justify-between">
                     
                     {activeSelectedPo ? (
                       <div id="printable-po-document" className="space-y-6">

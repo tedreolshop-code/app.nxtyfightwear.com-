@@ -77,7 +77,7 @@ export const AttendanceBonusHistoryList: React.FC<{ employeeId: string }> = ({ e
   const sorted = [...payouts].sort((a, b) => b.month.localeCompare(a.month));
 
   return (
-    <div className="bg-white rounded-lg border border-gray-100 p-6 space-y-4 shadow-2xs">
+    <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-4 shadow-xs">
       <div>
         <h3 className="font-bold text-sm text-gray-800 flex items-center gap-1.5">
           <Gift className="w-4 h-4 text-amber-500" /> Riwayat Bonus Kehadiran Anda
@@ -191,7 +191,7 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
   return (
     <div className="space-y-6">
       {/* Header + pemilih bulan */}
-      <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm space-y-4">
+      <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
           <div>
             <h3 className="font-bold text-sm text-gray-800 flex items-center gap-1.5">
@@ -296,7 +296,7 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
       </div>
 
       {/* Riwayat penerbitan */}
-      <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm space-y-3">
+      <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-xs space-y-3">
         <h3 className="font-bold text-sm text-gray-800 flex items-center gap-1.5">
           <History className="w-4 h-4 text-gray-400" /> Riwayat Penerbitan Bonus
         </h3>
@@ -320,7 +320,7 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
                   </summary>
                   <div className="px-3 pb-3 space-y-1">
                     {list.map(p => (
-                      <div key={p.id} className="flex items-center justify-between gap-3 text-[11px] bg-white border border-gray-100 rounded px-2.5 py-1.5">
+                      <div key={p.id} className="flex items-center justify-between gap-3 text-[11px] bg-white border border-gray-200 rounded px-2.5 py-1.5">
                         <span className="font-semibold text-gray-700">{p.employee_name}</span>
                         <span className="flex items-center gap-2">
                           {p.status === 'gugur' && <span className="text-rose-500 truncate max-w-[220px]" title={p.reason}>{p.reason}</span>}

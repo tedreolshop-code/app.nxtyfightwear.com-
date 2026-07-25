@@ -199,7 +199,7 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ employee, onUpdate
 
         {!employee.attendance_qr_token ? <p className="mt-4 p-3 rounded-lg bg-amber-50 border border-amber-100 text-xs text-amber-700">QR belum tersedia. Silakan hubungi owner untuk memperbarui akun.</p> : showAttendanceQr ? (
           <div className="mt-5 flex flex-col items-center text-center gap-3">
-            <div className="bg-white p-3 border border-gray-200 rounded-xl shadow-sm"><QRCodeSVG value={`ARI-ATTENDANCE:${employee.attendance_qr_token}`} size={220} level="H" /></div>
+            <div className="bg-white p-3 border border-gray-200 rounded-xl shadow-xs"><QRCodeSVG value={`ARI-ATTENDANCE:${employee.attendance_qr_token}`} size={220} level="H" /></div>
             <div><p className="font-black text-gray-900">{employee.name}</p><p className="text-xs text-gray-500 font-mono">@{employee.username} · {deptName}</p></div>
             <p className="max-w-sm text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-2 no-print">QR ini bersifat pribadi. Jangan dikirim atau dipinjamkan kepada orang lain. Hubungi owner jika QR diduga bocor.</p>
             <button type="button" onClick={handlePrintQr} className="no-print px-4 py-2 rounded-lg bg-[var(--color-evergreen)] text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"><Printer className="w-3.5 h-3.5" /> Cetak Kartu QR</button>

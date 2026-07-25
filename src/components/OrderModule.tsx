@@ -685,7 +685,7 @@ export const OrderModule: React.FC = () => {
       )}
 
       {/* Orders List */}
-      <div className="no-print bg-white rounded-lg border border-gray-100 overflow-hidden shadow-xs">
+      <div className="no-print bg-white rounded-lg border border-gray-200 overflow-hidden shadow-xs">
         <div className="p-4 bg-gray-50/50 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
             <span className="text-xs font-bold text-gray-700 block">Daftar Pesanan</span>
@@ -848,7 +848,7 @@ export const OrderModule: React.FC = () => {
                     <tr className="bg-gray-50/60 border-b border-gray-100">
                       <td colSpan={9} className="p-4">
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                          <div className="bg-white border border-gray-100 rounded-xl p-4 space-y-3">
+                          <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
                             <div><h4 className="font-black text-xs text-gray-800 flex items-center gap-1"><PackageCheck className="w-4 h-4 text-[var(--color-evergreen)]" /> Tugas Packing</h4><p className="text-[10px] text-gray-400">Assign ke karyawan, nanti muncul di Daftar Kerjaan.</p></div>
                             <select value={packingEmployeeId} onChange={event => setPackingEmployeeId(event.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs">
                               <option value="">Pilih karyawan packing</option>
@@ -857,7 +857,7 @@ export const OrderModule: React.FC = () => {
                             {ord.packing_employee_name && <p className="text-xs text-gray-500">PIC sekarang: <b>{ord.packing_employee_name}</b></p>}
                             <button onClick={() => handleAssignPacking(ord)} className="w-full bg-[var(--color-evergreen)] text-white rounded-lg py-2 text-xs font-bold cursor-pointer">Kirim Tugas Packing</button>
                           </div>
-                          <div className="bg-white border border-gray-100 rounded-xl p-4 space-y-3">
+                          <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
                             <div><h4 className="font-black text-xs text-gray-800 flex items-center gap-1"><Truck className="w-4 h-4 text-[var(--color-evergreen)]" /> Resi Pengiriman</h4><p className="text-[10px] text-gray-400">Isi setelah paket siap/kirim.</p></div>
                             <div className="grid grid-cols-2 gap-2">
                               <input value={shipExpedition} onChange={event => setShipExpedition(event.target.value)} placeholder="Ekspedisi" className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs" />

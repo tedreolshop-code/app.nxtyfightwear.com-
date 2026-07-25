@@ -315,7 +315,7 @@ export const InvoiceModule: React.FC<InvoiceModuleProps> = ({ isAdmin, userRole 
         
         {/* LEFT COLUMN: Draft Invoice (Wizards) */}
         {canEditInvoice ? (
-          <div className="lg:col-span-5 bg-white rounded-lg border border-gray-100 p-6 space-y-4">
+          <div className="lg:col-span-5 bg-white rounded-lg border border-gray-200 p-6 space-y-4">
             <div className="border-b border-gray-50 pb-3 flex items-center gap-1.5">
               <ShoppingCart className="w-4 h-4 text-evergreen" />
               <h3 className="font-semibold text-sm text-gray-800">Draft Invoice Baru</h3>
@@ -375,7 +375,7 @@ export const InvoiceModule: React.FC<InvoiceModuleProps> = ({ isAdmin, userRole 
                     {invoiceItems.map((item, idx) => {
                       const p = products.find(prod => prod.id === item.product_id)!;
                       return (
-                        <div key={idx} className="flex justify-between items-center text-xs p-1.5 bg-white rounded border border-gray-100 font-medium">
+                        <div key={idx} className="flex justify-between items-center text-xs p-1.5 bg-white rounded border border-gray-200 font-medium">
                           <span className="text-gray-700">{p.name} <span className="text-gray-400">x{item.qty}</span></span>
                           <div className="flex items-center gap-2">
                             <span className="font-mono text-gray-600">{formatIDR(item.qty * item.price)}</span>
@@ -461,7 +461,7 @@ export const InvoiceModule: React.FC<InvoiceModuleProps> = ({ isAdmin, userRole 
         {/* RIGHT COLUMN: Active List */}
         <div className="lg:col-span-7 space-y-6">
           {/* List of Invoices */}
-          <div className="bg-white rounded-lg border border-gray-100 p-6 space-y-4">
+          <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-4">
             <div>
               <h3 className="font-semibold text-sm text-gray-800">Daftar Invoice</h3>
               <p className="text-xs text-gray-400">Total invoice aktif dalam sistem penagihan {brandName()}</p>
@@ -516,7 +516,7 @@ export const InvoiceModule: React.FC<InvoiceModuleProps> = ({ isAdmin, userRole 
           </div>
 
           {/* List of Delivery Notes */}
-          <div className="bg-white rounded-lg border border-gray-100 p-6 space-y-4">
+          <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-4">
             <div>
               <h3 className="font-semibold text-sm text-gray-800">Surat Jalan (SJ)</h3>
               <p className="text-xs text-gray-400">Surat pengiriman barang dari gudang logistik</p>

@@ -100,7 +100,7 @@ export const BrandSettingsModule: React.FC = () => {
       <form onSubmit={handleSave} className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* KIRI: form */}
         <div className="lg:col-span-7 space-y-4">
-          <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm space-y-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-xs space-y-4">
             <h3 className="font-bold text-xs text-gray-700 flex items-center gap-1.5">
               <Building2 className="w-3.5 h-3.5 text-evergreen" /> Identitas Perusahaan
             </h3>
@@ -141,7 +141,7 @@ export const BrandSettingsModule: React.FC = () => {
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm space-y-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-xs space-y-4">
             <h3 className="font-bold text-xs text-gray-700 flex items-center gap-1.5">
               <ImageIcon className="w-3.5 h-3.5 text-evergreen" /> Logo Perusahaan
             </h3>
@@ -183,7 +183,7 @@ export const BrandSettingsModule: React.FC = () => {
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm space-y-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-xs space-y-4">
             <h3 className="font-bold text-xs text-gray-700 flex items-center gap-1.5">
               <Palette className="w-3.5 h-3.5 text-evergreen" /> Warna Tema Utama
             </h3>
@@ -226,7 +226,7 @@ export const BrandSettingsModule: React.FC = () => {
 
         {/* KANAN: preview langsung */}
         <div className="lg:col-span-5 space-y-4">
-          <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm space-y-3">
+          <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-xs space-y-3">
             <h3 className="font-bold text-xs text-gray-700">Pratinjau</h3>
 
             {/* Mock sidebar */}
@@ -269,7 +269,7 @@ export const BrandSettingsModule: React.FC = () => {
           </div>
 
           {/* Mode serah terima produksi — tersimpan langsung saat dipilih */}
-          <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm space-y-3">
+          <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-xs space-y-3">
             <div>
               <h3 className="font-bold text-xs text-gray-700 flex items-center gap-1.5">
                 <GitBranch className="w-3.5 h-3.5 text-evergreen" /> Mode Serah Terima Produksi

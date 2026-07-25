@@ -196,7 +196,7 @@ export const CashAdvanceModule: React.FC<CashAdvanceModuleProps> = ({ actor }) =
         <button
           type="button"
           onClick={() => openForm(selectedEmployeeId, 'create')}
-          className="bg-white hover:bg-emerald-50 text-[var(--color-evergreen)] px-4 py-2 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 cursor-pointer w-fit"
+          className="bg-white hover:bg-emerald-50 text-[var(--color-evergreen)] px-4 py-2 rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 cursor-pointer w-fit"
         >
           <Plus className="w-4 h-4" /> Catat Transaksi
         </button>
@@ -244,7 +244,7 @@ export const CashAdvanceModule: React.FC<CashAdvanceModuleProps> = ({ actor }) =
         <button
           type="button"
           onClick={() => setViewTab('saldo')}
-          className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${viewTab === 'saldo' ? 'bg-[var(--color-evergreen)] text-white border-[var(--color-evergreen)] shadow-2xs' : 'bg-white text-gray-500 border-gray-200 hover:text-gray-800 hover:border-[var(--color-evergreen)]/40'}`}
+          className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${viewTab === 'saldo' ? 'bg-[var(--color-evergreen)] text-white border-[var(--color-evergreen)] shadow-xs' : 'bg-white text-gray-500 border-gray-200 hover:text-gray-800 hover:border-[var(--color-evergreen)]/40'}`}
         >
           <Users className="w-3.5 h-3.5" />
           1. Saldo Karyawan
@@ -252,7 +252,7 @@ export const CashAdvanceModule: React.FC<CashAdvanceModuleProps> = ({ actor }) =
         <button
           type="button"
           onClick={() => setViewTab('riwayat')}
-          className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${viewTab === 'riwayat' ? 'bg-[var(--color-evergreen)] text-white border-[var(--color-evergreen)] shadow-2xs' : 'bg-white text-gray-500 border-gray-200 hover:text-gray-800 hover:border-[var(--color-evergreen)]/40'}`}
+          className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${viewTab === 'riwayat' ? 'bg-[var(--color-evergreen)] text-white border-[var(--color-evergreen)] shadow-xs' : 'bg-white text-gray-500 border-gray-200 hover:text-gray-800 hover:border-[var(--color-evergreen)]/40'}`}
         >
           <History className="w-3.5 h-3.5" />
           2. Riwayat Transaksi
@@ -378,7 +378,7 @@ export const CashAdvanceModule: React.FC<CashAdvanceModuleProps> = ({ actor }) =
       {/* POPUP FORM TRANSAKSI */}
       {showFormModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[92vh] overflow-y-auto p-6 shadow-2xl border border-gray-100">
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[92vh] overflow-y-auto p-6 shadow-2xl border border-gray-200">
             <div className="flex justify-between items-start border-b border-gray-100 pb-3 mb-4">
               <div>
                 <h3 className="text-sm font-bold text-emerald-950 flex items-center gap-2">

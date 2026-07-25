@@ -590,7 +590,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
         </div>
 
         {currentLoggedEmployee ? (
-          <div className="bg-white px-5 py-3.5 rounded border border-emerald-300 flex items-center gap-4 shadow-sm w-full md:w-auto">
+          <div className="bg-white px-5 py-3.5 rounded border border-emerald-300 flex items-center gap-4 shadow-xs w-full md:w-auto">
             <div>
               <p className="text-[10px] uppercase font-bold text-emerald-600 tracking-wider">Sedang Logged In</p>
               <p className="text-sm font-bold text-gray-800">{currentLoggedEmployee.name}</p>
@@ -931,7 +931,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
       )}
 
       {/* Employees Table List */}
-      <div className="bg-white rounded-lg border border-gray-100 overflow-hidden shadow-xs">
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-xs">
         <div className="p-4 bg-gray-50/50 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
             <span className="text-xs font-bold text-gray-700 block">Daftar Anggota Karyawan & Hak Akses Tab</span>
@@ -1085,7 +1085,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
       {/* ============================================== */}
       {profileModalEmp && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden border border-gray-100">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden border border-gray-200">
             
             {/* Modal Header */}
             <div className="bg-[var(--color-evergreen)] text-white p-5 flex items-center justify-between">
@@ -1226,7 +1226,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                     </span>
                   </div>
 
-                  <div className="bg-white rounded-lg border border-gray-100 overflow-hidden">
+                  <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
                     <table className="w-full text-left text-xs border-collapse">
                       <thead>
                         <tr className="bg-gray-50 border-b border-gray-100 text-[10px] font-bold text-gray-500 uppercase tracking-wider">
@@ -1515,7 +1515,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                       <p className="text-[10px] text-gray-400">Berikut adalah daftar slip gaji yang telah digenerate oleh admin untuk karyawan ini.</p>
                     </div>
 
-                    <div className="bg-white rounded-lg border border-gray-100 overflow-hidden">
+                    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
                       <table className="w-full text-left text-xs border-collapse">
                         <thead>
                           <tr className="bg-gray-50 border-b border-gray-100 text-[10px] font-bold text-gray-500 uppercase tracking-wider">

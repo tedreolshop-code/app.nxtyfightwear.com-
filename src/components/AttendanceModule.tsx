@@ -756,7 +756,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
           
           {/* LEFT SIDE: PANDUAN PENGGUNAAN (4 Columns on Desktop) */}
           <div className="lg:col-span-4 space-y-4 no-print">
-            <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4 shadow-xs text-left">
+            <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4 shadow-xs text-left">
               <div className="flex items-center gap-2">
                 <HelpCircle className="w-5 h-5 text-[var(--color-evergreen)]" />
                 <h3 className="font-extrabold text-sm text-gray-800">Cara Absen</h3>
@@ -769,7 +769,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
               </ol>
             </div>
 
-            <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-2 shadow-xs text-left">
+            <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-2 shadow-xs text-left">
               <h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider flex items-center gap-2">
                 <MapPin className="w-4 h-4 text-[var(--color-evergreen)]" /> Verifikasi Lokasi GPS
               </h3>
@@ -1081,7 +1081,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
           
           {/* Real-time stats Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 no-print">
-            <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-xs flex items-center gap-3 text-left">
+            <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs flex items-center gap-3 text-left">
               <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
                 <Users className="w-5 h-5" />
               </div>
@@ -1091,7 +1091,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
               </div>
             </div>
 
-            <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-xs flex items-center gap-3 text-left">
+            <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs flex items-center gap-3 text-left">
               <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
                 <CheckCircle2 className="w-5 h-5" />
               </div>
@@ -1101,7 +1101,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
               </div>
             </div>
 
-            <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-xs flex items-center gap-3 text-left">
+            <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs flex items-center gap-3 text-left">
               <div className="w-10 h-10 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center animate-pulse">
                 <AlertTriangle className="w-5 h-5" />
               </div>
@@ -1111,7 +1111,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
               </div>
             </div>
 
-            <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-xs flex items-center gap-3 text-left">
+            <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs flex items-center gap-3 text-left">
               <div className="w-10 h-10 rounded-lg bg-slate-50 text-slate-600 flex items-center justify-center">
                 <Clock className="w-5 h-5" />
               </div>
@@ -1124,7 +1124,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
 
           {adminAttendanceTab === 'summary' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              <div className="lg:col-span-7 bg-white rounded-2xl border border-gray-100 p-5 space-y-4 shadow-xs text-left">
+              <div className="lg:col-span-7 bg-white rounded-2xl border border-gray-200 p-5 space-y-4 shadow-xs text-left">
                 <div>
                   <h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider flex items-center gap-2"><Calendar className="w-4 h-4 text-[var(--color-evergreen)]" /> Ringkasan Harian</h3>
                   <p className="text-[10px] text-gray-400 mt-0.5">Tampilan cepat untuk kondisi absensi hari ini.</p>
@@ -1138,7 +1138,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                   <div className="rounded-xl border border-purple-100 bg-purple-50 p-3"><p className="text-[10px] font-black text-purple-700 uppercase">Dibantu Admin</p><p className="text-xl font-black text-purple-900">{todayLogs.filter(log => (log.verification_method || 'gps_self') === 'admin_qr').length}</p></div>
                 </div>
               </div>
-              <div className="lg:col-span-5 bg-white rounded-2xl border border-gray-100 p-5 space-y-4 shadow-xs text-left">
+              <div className="lg:col-span-5 bg-white rounded-2xl border border-gray-200 p-5 space-y-4 shadow-xs text-left">
                 <h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider">Perlu Perhatian</h3>
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {[...notCheckedInToday.slice(0, 8).map(emp => ({ name: emp.name, text: 'Belum absen masuk', tone: 'text-rose-700 bg-rose-50 border-rose-100' })),
@@ -1152,7 +1152,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
           )}
 
           {adminAttendanceTab === 'recap' && (
-            <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4 shadow-xs text-left">
+            <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4 shadow-xs text-left">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <div><h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider">Rekap Per Karyawan</h3><p className="text-[10px] text-gray-400">Agregasi untuk analisa kedisiplinan dan payroll.</p></div>
                 <div className="relative"><Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-gray-400" /><input value={historySearch} onChange={e => setHistorySearch(e.target.value)} placeholder="Cari karyawan..." className="pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-xs" /></div>
@@ -1167,14 +1167,14 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
           )}
 
           {adminAttendanceTab === 'correction' && (
-            <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4 shadow-xs text-left">
+            <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4 shadow-xs text-left">
               <div><h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider">Koreksi & Bantuan Admin</h3><p className="text-[10px] text-gray-400">Daftar absensi yang dibuat lewat bantuan admin, lengkap dengan alasan.</p></div>
               <div className="space-y-2">{assistedPeriodLogs.length === 0 ? <p className="p-10 text-center text-xs text-gray-400 bg-gray-50 border border-dashed rounded-xl">Belum ada absensi dibantu admin pada periode ini.</p> : assistedPeriodLogs.map(log => <div key={log.id} className="rounded-xl border border-amber-100 bg-amber-50/60 p-3 text-xs"><div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"><div><p className="font-black text-gray-900">{log.employee_name}</p><p className="text-gray-500">{log.timestamp.slice(0, 10)} · {log.timestamp.slice(11, 16)} · {log.type_scan}</p></div><span className="rounded-full bg-white border border-amber-200 px-2 py-1 text-[10px] font-black text-amber-800">Dibantu {log.assisted_by_name || '-'}</span></div><p className="mt-2 text-gray-600">Alasan: {log.assistance_reason || '-'}</p></div>)}</div>
             </div>
           )}
 
           {adminAttendanceTab === 'sync' && (
-            <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4 shadow-xs text-left">
+            <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4 shadow-xs text-left">
               <div><h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider">Monitoring Sync Absensi</h3><p className="text-[10px] text-gray-400">Memantau data absensi yang sudah tersimpan lokal dan antrean yang belum terkirim cloud.</p></div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="rounded-xl bg-emerald-50 border border-emerald-100 p-3"><p className="text-[10px] font-black uppercase text-emerald-700">Tersimpan Lokal</p><p className="text-xl font-black text-emerald-900">{attendanceLogs.length}</p></div>
@@ -1189,7 +1189,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
           {adminAttendanceTab === 'history' && <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             
             {/* Left Box: Geofence Safe Zone Map Simulation (5 Columns) */}
-            <div className="lg:col-span-5 bg-white rounded-2xl border border-gray-100 p-5 space-y-4 shadow-xs text-left no-print">
+            <div className="lg:col-span-5 bg-white rounded-2xl border border-gray-200 p-5 space-y-4 shadow-xs text-left no-print">
               <div>
                 <h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider flex items-center gap-2">
                   <Map className="w-4 h-4 text-[var(--color-evergreen)]" /> Radius Absensi Pabrik
@@ -1250,7 +1250,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
             </div>
 
             {/* Right Box: Detailed Raw Logs (7 Columns) */}
-            <div className="lg:col-span-7 bg-white rounded-2xl border border-gray-100 p-5 space-y-4 shadow-xs text-left">
+            <div className="lg:col-span-7 bg-white rounded-2xl border border-gray-200 p-5 space-y-4 shadow-xs text-left">
               <div className="flex justify-between items-center">
                 <div>
                   <h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider flex items-center gap-2">

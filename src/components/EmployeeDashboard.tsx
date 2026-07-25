@@ -142,7 +142,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         
         {/* Box 1: Widget Jam & QR attendance action */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4 md:col-span-2">
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-xs p-5 space-y-4 md:col-span-2">
           <h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
             <Fingerprint className="w-4 h-4 text-[var(--color-evergreen)]" /> Absensi QR Lokasi
           </h3>
@@ -185,7 +185,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
         </div>
 
         {/* Box 2: Indikator Status Hari Ini */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-xs p-5 space-y-4">
           <h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
             <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Status Kehadiran Hari Ini
           </h3>
@@ -219,7 +219,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
         {/* Box 3: Kalender Kehadiran Pribadi Bulanan */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-xs p-5 space-y-4">
           <div className="border-b border-gray-100 pb-3 flex items-center justify-between">
             <h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
               <Calendar className="w-4 h-4 text-[var(--color-evergreen)]" /> Kalender Kehadiran Pribadi
@@ -284,7 +284,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
         </div>
 
         {/* Box 4: Slip Gaji Digital Terakhir */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-xs p-5 space-y-4">
           <div className="border-b border-gray-100 pb-3 flex items-center justify-between">
             <h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
               <FileText className="w-4 h-4 text-[var(--color-evergreen)]" /> Slip Gaji Digital Terakhir

@@ -896,7 +896,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
       {/* PENGATURAN ALUR PRODUKSI — pindahan dari menu Gudang */}
       {subTab === 'settings' && !isRestrictedProduction && (
         <div className="space-y-4 animate-fadeIn">
-          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-2xs">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
             <h2 className="text-sm font-bold text-gray-800 mb-1">Tahapan Produksi per Produk</h2>
             <p className="text-xs text-gray-400 mb-4">Atur urutan tahapan kerja untuk tiap barang jadi. Produk tanpa alur khusus otomatis memakai alur bawaan divisinya.</p>
             <div className="relative mb-3 max-w-xs">
@@ -957,7 +957,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
       {/* Modal edit alur produksi produk */}
       {stageEditProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setStageEditProduct(null)}>
-          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[92vh] overflow-y-auto p-6 shadow-2xl border border-gray-100" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[92vh] overflow-y-auto p-6 shadow-2xl border border-gray-200" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-start border-b border-gray-100 pb-3 mb-4">
               <div>
                 <h3 className="text-sm font-bold text-emerald-950 flex items-center gap-2">
@@ -1239,7 +1239,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
           )}
           
           {/* SEARCH, FILTERS & CONTROLS */}
-          {!isEmployee && <div className="bg-white rounded-xl border border-gray-200 p-4 md:p-5 shadow-2xs space-y-4">
+          {!isEmployee && <div className="bg-white rounded-xl border border-gray-200 p-4 md:p-5 shadow-xs space-y-4">
             <div className="flex flex-col md:flex-row gap-3 items-center justify-between">
               
               {/* Search bar */}
@@ -1374,7 +1374,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
 
           {/* LOADING STATE */}
           {!isEmployee && (isLoading ? (
-            <div className="flex flex-col items-center justify-center py-20 space-y-3 bg-white rounded-xl border border-gray-100">
+            <div className="flex flex-col items-center justify-center py-20 space-y-3 bg-white rounded-xl border border-gray-200">
               <Loader2 className="w-8 h-8 text-[var(--color-evergreen)] animate-spin" />
               <p className="text-xs text-gray-500 font-medium">Memuat data alur kerja...</p>
             </div>
@@ -1659,7 +1659,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
       {/* DETAIL WORKFLOW DRAWER / MODAL */}
       {selectedJob && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden border border-gray-100">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden border border-gray-200">
             
             {/* Modal Header */}
             <div className="bg-[var(--color-evergreen)] text-white p-5 flex items-center justify-between">
@@ -1770,7 +1770,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                           details.map((det, idx) => {
                             const matSuff = det.available >= det.required;
                             return (
-                              <div key={idx} className="flex items-center justify-between bg-white px-3 py-2 rounded-lg border border-gray-100 text-xs font-medium">
+                              <div key={idx} className="flex items-center justify-between bg-white px-3 py-2 rounded-lg border border-gray-200 text-xs font-medium">
                                 <span className="text-gray-700 font-sans">{det.name}</span>
                                 <div className="text-right space-y-0.5 font-mono">
                                   <p className="text-[11px] font-bold text-gray-800">
@@ -1827,7 +1827,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                       const activeStageObj = selectedJob.stages[activeStageIndex];
 
                       return (
-                        <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-4 shadow-2xs">
+                        <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-4 shadow-xs">
                           <div className="border-b border-gray-100 pb-2.5">
                             <span className="text-[9px] font-mono font-bold uppercase tracking-wider bg-amber-100 text-amber-800 px-2 py-0.5 rounded">
                               TAHAP AKTIF
@@ -1974,7 +1974,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
           <div className={`${subTab === 'finalize' ? 'hidden' : subTab === 'order' && manualStep === 1 ? 'lg:col-span-12' : subTab === 'order' ? 'lg:col-span-7' : 'lg:col-span-5'} space-y-6`}>
             {!isRestrictedProduction ? (
               <>
-              {subTab === 'order' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
+              {subTab === 'order' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-xs">
                 <div className="border-b border-gray-100 pb-3 flex items-center gap-1.5">
                   <Clipboard className="w-4.5 h-4.5 text-[var(--color-evergreen)]" />
                   <h3 className="font-bold text-sm text-gray-800">Buat Order Produksi Manual</h3>
@@ -2199,7 +2199,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
           {/* RIGHT COLUMN: Active stock of Finished Goods & movements */}
           <div className={`${subTab === 'order' && manualStep === 1 ? 'hidden' : subTab === 'finalize' ? 'lg:col-span-12' : subTab === 'order' ? 'lg:col-span-5' : 'lg:col-span-7'} space-y-6`}>
             {subTab === 'order' && manualStep > 1 && (
-              <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
+              <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-xs">
                 <div>
                   <h3 className="font-bold text-sm text-gray-800 font-sans">Order Produksi Berjalan</h3>
                   <p className="text-xs text-gray-400">Ringkasan order aktif setelah dibuat dari form manual.</p>
@@ -2227,7 +2227,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
             )}
 
             {subTab === 'finalize' && !isRestrictedProduction && (
-              <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
+              <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-xs">
                 <div className="flex justify-between items-center border-b border-gray-100 pb-3">
                   <div>
                     <h3 className="font-bold text-sm text-gray-800 font-sans">Finalisasi Hasil Order Produksi</h3>
@@ -2283,7 +2283,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
               </div>
             )}
 
-            {subTab === 'finalize' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
+            {subTab === 'finalize' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-xs">
               <div>
                 <h3 className="font-bold text-sm text-gray-800 font-sans">Barang Reject Produksi</h3>
                 <p className="text-xs text-gray-400">Catatan barang reject yang masih disimpan atau perlu tindak lanjut.</p>
@@ -2320,7 +2320,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
             <TabButton active={historyView === 'movements'} onClick={() => setHistoryView('movements')} icon={History} label="Riwayat Mutasi" />
           </div>
 
-          {historyView === 'materials' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
+          {historyView === 'materials' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-xs">
             <div>
               <h3 className="font-bold text-sm text-gray-800">Status Stok Bahan Baku</h3>
               <p className="text-xs text-gray-400">Monitoring sisa bahan baku di pabrik {brandName()}</p>
@@ -2355,7 +2355,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
             </div>
           </div>}
 
-          {historyView === 'products' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
+          {historyView === 'products' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-xs">
             <div>
               <h3 className="font-bold text-sm text-gray-800 font-sans">Sisa Stok Barang Jadi</h3>
               <p className="text-xs text-gray-400">Stok siap kirim hasil produksi gudang {brandName()}</p>
@@ -2388,7 +2388,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
             </div>
           </div>}
 
-          {historyView === 'reject' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
+          {historyView === 'reject' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-xs">
             <div>
               <h3 className="font-bold text-sm text-gray-800 font-sans">Barang Reject Produksi</h3>
               <p className="text-xs text-gray-400">Catatan barang reject yang masih disimpan atau perlu tindak lanjut.</p>
@@ -2411,7 +2411,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
             </div>
           </div>}
 
-          {historyView === 'movements' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs">
+          {historyView === 'movements' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-xs">
             <div className="flex justify-between items-center border-b border-gray-100 pb-3">
               <div>
                 <h3 className="font-bold text-sm text-gray-800 font-sans">Riwayat Mutasi Stok</h3>
@@ -2458,7 +2458,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
       )}
 
       {!isEmployee && subTab === 'packing-docs' && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-2xs animate-fadeIn">
+        <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-xs animate-fadeIn">
           <div className="flex justify-between items-center border-b border-gray-100 pb-3">
             <div>
               <h3 className="font-bold text-sm text-gray-800 font-sans">Dokumentasi Foto Packing</h3>
