@@ -140,7 +140,7 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
   }, []);
 
   const evaluations = useMemo(() =>
-    employees.map(emp => ({ emp, result: dataStore.evaluateAttendanceBonus(emp.id, month) })),
+    [...employees].sort((a, b) => a.name.localeCompare(b.name)).map(emp => ({ emp, result: dataStore.evaluateAttendanceBonus(emp.id, month) })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [employees, month, payouts]
   );

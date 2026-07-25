@@ -1034,11 +1034,12 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     .filter(emp => emp.name.toLowerCase().includes(employeeSearchQuery.trim().toLowerCase()))
     .sort((a, b) => a.name.localeCompare(b.name));
 
+  const empName = (id: string) => employees.find(e => e.id === id)?.name || '';
   const filteredPayrolls = payrolls.filter(pay => {
     if (filterStartDate && pay.period_start < filterStartDate) return false;
     if (filterEndDate && pay.period_end > filterEndDate) return false;
     return true;
-  });
+  }).sort((a, b) => empName(a.employee_id).localeCompare(empName(b.employee_id)));
   const payrollTotalPages = Math.max(1, Math.ceil(filteredPayrolls.length / PAYROLL_PAGE_SIZE));
   const payrollPageClamped = Math.min(payrollPage, payrollTotalPages);
   const pagedPayrolls = filteredPayrolls.slice((payrollPageClamped - 1) * PAYROLL_PAGE_SIZE, payrollPageClamped * PAYROLL_PAGE_SIZE);
