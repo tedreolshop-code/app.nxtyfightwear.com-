@@ -273,7 +273,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
       (selectedDept === 'eva' && div === 'Eva Foam') || 
       (selectedDept === 'konveksi' && div === 'Konveksi');
     return matchesSearch && matchesDept;
-  });
+  }).sort((a, b) => a.name.localeCompare(b.name));
 
   // Filter Finished Products
   const filteredProducts = products.filter(prod => {
