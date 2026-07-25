@@ -647,7 +647,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
 
       {showWorkSettings && (
         <div className="fixed inset-0 z-50 bg-black/70 p-4 flex items-center justify-center no-print">
-          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[94dvh] overflow-y-auto p-5 space-y-4">
+          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[94dvh] overflow-y-auto overscroll-contain p-5 space-y-4">
             <div className="flex justify-between">
               <div><h3 className="font-black text-gray-900">Jam Kerja & QR Lokasi</h3><p className="text-xs text-gray-500">Seluruh waktu menggunakan WIB (GMT+7).</p></div>
               <button onClick={() => setShowWorkSettings(false)} className="cursor-pointer"><X className="w-4 h-4" /></button>
@@ -669,7 +669,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
 
       {showAssistedScan && (
         <div className="fixed inset-0 z-50 bg-black/70 p-4 flex items-center justify-center no-print">
-          <div className="bg-white rounded-2xl w-full max-w-md max-h-[92dvh] overflow-y-auto p-5 space-y-4">
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[92dvh] overflow-y-auto overscroll-contain p-5 space-y-4">
             <div className="flex items-center justify-between">
               <div><h3 className="font-black text-gray-900">Scan QR Pribadi Karyawan</h3><p className="text-xs text-gray-500">Petugas: {assistingAdmin?.name || 'Identitas admin tidak tersedia'}</p></div>
               <button type="button" onClick={() => setShowAssistedScan(false)} className="p-2 rounded-lg hover:bg-gray-100 cursor-pointer"><X className="w-4 h-4" /></button>
@@ -849,7 +849,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                 </div>
 
                 {/* Employees Touch-Friendly Grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-2 gap-2.5 max-h-[300px] overflow-y-auto scrollbar-none pr-1">
+                <div className="grid grid-cols-2 sm:grid-cols-2 gap-2.5 max-h-[300px] overflow-y-auto overscroll-contain scrollbar-none pr-1">
                   {filteredEmployees.length === 0 ? (
                     <div className="col-span-2 text-center py-10 text-xs text-emerald-200/50 italic bg-[var(--color-evergreen-dark)]/40 rounded-xl">
                       Karyawan tidak ditemukan.
@@ -1140,7 +1140,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
               </div>
               <div className="lg:col-span-5 bg-white rounded-2xl border border-gray-200 p-5 space-y-4 shadow-xs text-left">
                 <h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider">Perlu Perhatian</h3>
-                <div className="space-y-2 max-h-64 overflow-y-auto">
+                <div className="space-y-2 max-h-64 overflow-y-auto overscroll-contain">
                   {[...notCheckedInToday.slice(0, 8).map(emp => ({ name: emp.name, text: 'Belum absen masuk', tone: 'text-rose-700 bg-rose-50 border-rose-100' })),
                     ...notCheckedOutToday.slice(0, 8).map(emp => ({ name: emp.name, text: 'Belum absen pulang', tone: 'text-sky-700 bg-sky-50 border-sky-100' }))].map((item, index) => (
                     <div key={`${item.name}-${index}`} className={`rounded-lg border p-2.5 text-xs ${item.tone}`}><b>{item.name}</b><span className="ml-2">{item.text}</span></div>

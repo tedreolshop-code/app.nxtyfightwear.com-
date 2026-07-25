@@ -784,7 +784,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
           {/* PO MODAL */}
           {isPoModalOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 sm:p-4" onClick={() => { setIsPoModalOpen(false); handleCancelEditPurchase(); }}>
-              <div className="bg-white rounded-2xl p-4 sm:p-6 w-full max-w-5xl max-h-[94dvh] overflow-y-auto shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="bg-white rounded-2xl p-4 sm:p-6 w-full max-w-5xl max-h-[94dvh] overflow-y-auto overscroll-contain shadow-2xl" onClick={(e) => e.stopPropagation()}>
                 <div className="border-b border-emerald-800/10 pb-3 flex items-center justify-between mb-4">
                   <h3 className="font-bold text-lg text-emerald-950">
                     {editingPurchaseId ? 'Edit Purchase Order' : 'Terbitkan PO Baru'}
@@ -904,7 +904,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                         Belum ada barang dimasukkan ke PO ini.
                       </div>
                     ) : (
-                      <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                      <div className="space-y-1.5 max-h-40 overflow-y-auto overscroll-contain pr-1">
                         {draftItems.map((item, idx) => (
                           <div key={idx} className="flex items-center justify-between bg-emerald-50/20 border border-emerald-100 p-2 rounded-lg text-[10px]">
                             <div className="flex-1 min-w-0 pr-2">
@@ -1306,7 +1306,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
                   
                   {/* Left mini list of POs */}
-                  <div className="md:col-span-5 space-y-2 max-h-[500px] overflow-y-auto pr-1">
+                  <div className="md:col-span-5 space-y-2 max-h-[500px] overflow-y-auto overscroll-contain pr-1">
                     {sortedPurchases.length === 0 ? (
                       <p className="text-xs text-emerald-800/40 italic text-center py-8 bg-emerald-50/5 rounded-xl border border-dashed border-emerald-800/20">
                         Tidak ada PO ditemukan.

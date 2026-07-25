@@ -727,7 +727,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                 </div>
               </div>
 
-              <div className="space-y-2 max-h-32 overflow-y-auto font-sans">
+              <div className="space-y-2 max-h-32 overflow-y-auto overscroll-contain font-sans">
                 {myAdvances.length === 0 ? (
                   <p className="text-xs text-gray-400 italic py-4 text-center">Anda tidak memiliki catatan kasbon aktif.</p>
                 ) : (
@@ -748,7 +748,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
 
               <div className="border-t border-gray-100 pt-3">
                 <p className="text-[10px] font-black uppercase tracking-wide text-gray-400 mb-2">Riwayat Transaksi Kasbon</p>
-                <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                <div className="space-y-1.5 max-h-36 overflow-y-auto overscroll-contain">
                   {myCashAdvanceTransactions.length === 0 ? (
                     <p className="text-xs text-gray-400 text-center py-3 bg-gray-50 rounded border border-dashed border-gray-200">Belum ada transaksi kasbon.</p>
                   ) : myCashAdvanceTransactions.map(transaction => (
@@ -829,7 +829,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
 
           {/* ================= PRINT & PREVIEW SYSTEM ================= */}
           {previewPayroll && (
-            <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-6 overflow-y-auto no-print font-sans">
+            <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-6 overflow-y-auto overscroll-contain no-print font-sans">
               <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-4xl overflow-hidden flex flex-col my-auto">
                 
                 {/* Modal Header Toolbar */}
@@ -942,7 +942,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                 </div>
 
                 {/* Virtual Continuous Form Paper Area */}
-                <div className="p-4 sm:p-6 bg-slate-200 max-h-[60dvh] overflow-auto flex justify-center">
+                <div className="p-4 sm:p-6 bg-slate-200 max-h-[60dvh] overflow-auto overscroll-contain flex justify-center">
                   
                   {/* Virtual Continuous Form Container */}
                   <div 
@@ -1430,7 +1430,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
       
       {/* 1. Interactive Preview Modal (On-Screen Only) */}
       {previewPayroll && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-6 overflow-y-auto no-print font-sans">
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-6 overflow-y-auto overscroll-contain no-print font-sans">
           <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-4xl overflow-hidden flex flex-col my-auto">
             
             {/* Modal Header Toolbar */}
@@ -1543,7 +1543,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
             </div>
 
             {/* Virtual Continuous Form Paper Area */}
-            <div className="p-4 sm:p-6 bg-slate-200 max-h-[60dvh] overflow-auto flex justify-center">
+            <div className="p-4 sm:p-6 bg-slate-200 max-h-[60dvh] overflow-auto overscroll-contain flex justify-center">
               
               {/* Virtual Continuous Form Container */}
               <div 
@@ -1605,7 +1605,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
 
       {/* POP-UP WEEKLY PAYROLL CALCULATOR MODAL */}
       {isCalculatorOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 no-print animate-fade-in overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 no-print animate-fade-in overflow-y-auto overscroll-contain">
           <div className="bg-white rounded-2xl w-full max-w-2xl border border-emerald-800/30 overflow-hidden shadow-2xl my-auto" onClick={(e) => e.stopPropagation()}>
             <div className="bg-emerald-800 px-6 py-4 flex items-center justify-between text-white">
               <h3 className="font-bold text-sm flex items-center gap-2 uppercase tracking-wide">
@@ -1782,7 +1782,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
 
       {/* POP-UP EDIT PAYROLL WEEKLY MODAL */}
       {editingPayroll && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 no-print animate-fade-in overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 no-print animate-fade-in overflow-y-auto overscroll-contain">
           <div className="bg-white rounded-2xl w-full max-w-2xl border border-emerald-800/30 overflow-hidden shadow-2xl my-auto" onClick={(e) => e.stopPropagation()}>
             <div className="bg-emerald-800 px-6 py-4 flex items-center justify-between text-white">
               <h3 className="font-bold text-sm flex items-center gap-2 uppercase tracking-wide">
@@ -1905,7 +1905,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
 
       {/* CALIBRATION SETTINGS MODAL */}
       {isSettingsOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 no-print animate-fade-in overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 no-print animate-fade-in overflow-y-auto overscroll-contain">
           <div className="bg-white rounded-2xl w-full max-w-md border border-slate-300 overflow-hidden shadow-2xl animate-scale-up my-auto" onClick={(e) => e.stopPropagation()}>
             <div className="bg-emerald-800 px-6 py-4 flex items-center justify-between text-white">
               <h3 className="font-bold text-sm flex items-center gap-2 uppercase tracking-wide">

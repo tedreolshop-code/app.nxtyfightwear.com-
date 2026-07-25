@@ -615,7 +615,7 @@ export default function App() {
           </div>
         </div>
 
-        <nav className="flex-1 py-4 overflow-y-auto px-3 space-y-1">
+        <nav className="flex-1 py-4 overflow-y-auto overscroll-contain px-3 space-y-1">
           {permittedMenus.map((menu) => {
             const Icon = menu.icon;
             const isSelected = activeTab === menu.id;
@@ -727,7 +727,7 @@ export default function App() {
         </div>
 
         {/* KONTEN */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-6">
+        <div className="flex-1 overflow-y-auto overscroll-contain p-4 md:p-6">
           <div className="max-w-7xl mx-auto space-y-6">
 
             {/* DASHBOARD — angka nyata dihitung dari data tersimpan */}

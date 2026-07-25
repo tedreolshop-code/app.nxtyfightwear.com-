@@ -467,7 +467,7 @@ export const InvoiceModule: React.FC<InvoiceModuleProps> = ({ isAdmin, userRole 
               <p className="text-xs text-gray-400">Total invoice aktif dalam sistem penagihan {brandName()}</p>
             </div>
 
-            <div className="space-y-3 max-h-72 overflow-y-auto">
+            <div className="space-y-3 max-h-72 overflow-y-auto overscroll-contain">
               {invoices.length === 0 ? (
                 <p className="text-xs text-gray-400 italic text-center py-6">Belum ada invoice diterbitkan.</p>
               ) : (
@@ -522,7 +522,7 @@ export const InvoiceModule: React.FC<InvoiceModuleProps> = ({ isAdmin, userRole 
               <p className="text-xs text-gray-400">Surat pengiriman barang dari gudang logistik</p>
             </div>
 
-            <div className="space-y-3 max-h-60 overflow-y-auto">
+            <div className="space-y-3 max-h-60 overflow-y-auto overscroll-contain">
               {deliveryNotes.length === 0 ? (
                 <p className="text-xs text-gray-400 italic text-center py-6">Belum ada surat jalan.</p>
               ) : (
@@ -572,7 +572,7 @@ export const InvoiceModule: React.FC<InvoiceModuleProps> = ({ isAdmin, userRole 
       
       {/* 1. Interactive Preview Modal (On-Screen Only) */}
       {(previewInvoice || previewSJ) && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-6 overflow-y-auto no-print font-sans">
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-6 overflow-y-auto overscroll-contain no-print font-sans">
           <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-4xl overflow-hidden flex flex-col my-auto">
             
             {/* Modal Header Toolbar */}
@@ -688,7 +688,7 @@ export const InvoiceModule: React.FC<InvoiceModuleProps> = ({ isAdmin, userRole 
             </div>
 
             {/* Virtual Continuous Form Paper Area */}
-            <div className="p-4 sm:p-6 bg-slate-200 max-h-[60dvh] overflow-auto flex justify-center">
+            <div className="p-4 sm:p-6 bg-slate-200 max-h-[60dvh] overflow-auto overscroll-contain flex justify-center">
               
               {/* Virtual Continuous Form Container */}
               <div 

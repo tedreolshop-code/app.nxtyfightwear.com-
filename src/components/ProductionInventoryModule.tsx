@@ -957,7 +957,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
       {/* Modal edit alur produksi produk */}
       {stageEditProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setStageEditProduct(null)}>
-          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[92dvh] overflow-y-auto p-6 shadow-2xl border border-gray-200" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[92dvh] overflow-y-auto overscroll-contain p-6 shadow-2xl border border-gray-200" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-start border-b border-gray-100 pb-3 mb-4">
               <div>
                 <h3 className="text-sm font-bold text-emerald-950 flex items-center gap-2">
@@ -1209,7 +1209,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
 
                       <div>
                         <h4 className="font-black text-xs text-gray-700 mb-2">Riwayat Kerjaan Ini</h4>
-                      <div className="space-y-2 max-h-[520px] overflow-y-auto">
+                      <div className="space-y-2 max-h-[520px] overflow-y-auto overscroll-contain">
                         {selectedLogs.length === 0 ? (
                           <p className="text-xs text-gray-400 text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-200">Belum ada riwayat untuk kerjaan ini.</p>
                         ) : selectedLogs.slice(0, 30).map(log => (
@@ -1393,7 +1393,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                   </span>
                 </div>
 
-                <div className="divide-y divide-gray-100 max-h-[650px] overflow-y-auto pr-1">
+                <div className="divide-y divide-gray-100 max-h-[650px] overflow-y-auto overscroll-contain pr-1">
                   {filteredJobs.filter(j => j.department_id === 'dept-eva-foam').length === 0 ? (
                     <div className="text-center py-16 p-6">
                       <Clipboard className="w-8 h-8 text-gray-300 mx-auto mb-2" />
@@ -1528,7 +1528,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                   </span>
                 </div>
 
-                <div className="divide-y divide-gray-100 max-h-[650px] overflow-y-auto pr-1">
+                <div className="divide-y divide-gray-100 max-h-[650px] overflow-y-auto overscroll-contain pr-1">
                   {filteredJobs.filter(j => j.department_id === 'dept-konveksi').length === 0 ? (
                     <div className="text-center py-16 p-6">
                       <Clipboard className="w-8 h-8 text-gray-300 mx-auto mb-2" />
@@ -1683,7 +1683,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
             </div>
 
             {/* Modal Body */}
-            <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-12 gap-6">
+            <div className="flex-1 overflow-y-auto overscroll-contain p-6 grid grid-cols-1 md:grid-cols-12 gap-6">
               
               {/* LEFT COLUMN: Production Details & Progressive Stepper */}
               <div className={`${isEmployee ? 'md:col-span-12' : 'md:col-span-7'} space-y-6`}>
@@ -2082,7 +2082,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
 
                       <div>
                         <label className="block text-xs font-semibold text-gray-500 mb-1">Karyawan Ditugaskan</label>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-32 overflow-y-auto bg-gray-50 border border-gray-200 rounded-lg p-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-32 overflow-y-auto overscroll-contain bg-gray-50 border border-gray-200 rounded-lg p-2">
                           {!manualDepartmentId && <p className="text-[11px] text-gray-400 col-span-full">Pilih departemen dulu.</p>}
                           {manualDepartmentId && manualAssignableEmployees.length === 0 && <p className="text-[11px] text-gray-400 col-span-full">Belum ada karyawan aktif di departemen ini.</p>}
                           {manualAssignableEmployees.map(employee => (
@@ -2204,7 +2204,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                   <h3 className="font-bold text-sm text-gray-800 font-sans">Order Produksi Berjalan</h3>
                   <p className="text-xs text-gray-400">Ringkasan order aktif setelah dibuat dari form manual.</p>
                 </div>
-                <div className="space-y-2 max-h-[520px] overflow-y-auto">
+                <div className="space-y-2 max-h-[520px] overflow-y-auto overscroll-contain">
                   {productionJobs.filter(job => job.status !== 'completed').length === 0 ? (
                     <p className="text-xs text-gray-400 text-center py-10 bg-gray-50 rounded-lg border border-dashed border-gray-200">Belum ada order produksi berjalan.</p>
                   ) : productionJobs.filter(job => job.status !== 'completed').slice(0, 12).map(job => (
@@ -2288,7 +2288,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                 <h3 className="font-bold text-sm text-gray-800 font-sans">Barang Reject Produksi</h3>
                 <p className="text-xs text-gray-400">Catatan barang reject yang masih disimpan atau perlu tindak lanjut.</p>
               </div>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
+              <div className="space-y-2 max-h-48 overflow-y-auto overscroll-contain">
                 {rejectedGoods.length === 0 ? (
                   <p className="text-xs text-gray-400 text-center py-6 bg-gray-50 rounded-lg border border-dashed border-gray-200">Belum ada barang reject tercatat.</p>
                 ) : rejectedGoods.slice(0, 10).map(item => (

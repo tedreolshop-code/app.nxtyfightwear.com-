@@ -670,7 +670,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
 
       {showAddForm && (
         <div className="fixed inset-0 z-50 bg-black/60 p-4 flex items-center justify-center no-print">
-          <form onSubmit={handleCreateEmployee} className="bg-white rounded-2xl border border-gray-200 shadow-2xl w-full max-w-5xl max-h-[92dvh] overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-12 gap-6">
+          <form onSubmit={handleCreateEmployee} className="bg-white rounded-2xl border border-gray-200 shadow-2xl w-full max-w-5xl max-h-[92dvh] overflow-y-auto overscroll-contain p-6 grid grid-cols-1 md:grid-cols-12 gap-6">
           <div className="md:col-span-12 border-b border-gray-100 pb-3 flex items-center justify-between">
             <h3 className="font-bold text-sm text-gray-800 flex items-center gap-1.5 uppercase tracking-wide">
               <Plus className="w-4 h-4 text-[var(--color-evergreen)]" /> {editEmpId ? `Edit Karyawan: ${name}` : 'Tambah Profil Karyawan Baru'}
@@ -1146,7 +1146,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
             </div>
 
             {/* Modal Scrollable Content Container */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            <div className="flex-1 overflow-y-auto overscroll-contain p-6 space-y-6">
               
               {/* TAB 1: PROFILE DETAILS */}
               {activeModalTab === 'profile' && (
@@ -1623,7 +1623,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
       {/* PRINT SLIP PREVIEW MODAL */}
       {/* ============================================== */}
       {activePrintPayroll && (
-        <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4 animate-fadeIn overflow-y-auto print:bg-white print:p-0">
+        <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4 animate-fadeIn overflow-y-auto overscroll-contain print:bg-white print:p-0">
           <div className="bg-white rounded-xl overflow-hidden shadow-2xl p-6 space-y-4 max-w-lg w-full my-auto print:shadow-none print:p-0">
             <div className="flex justify-between items-center border-b pb-2 print:hidden">
               <span className="text-xs font-bold text-gray-700 flex items-center gap-1">
