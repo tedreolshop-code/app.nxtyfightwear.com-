@@ -775,7 +775,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="border-b border-gray-200 text-gray-400 font-semibold bg-gray-50/50">
+                  <tr className="bg-evergreen text-white font-bold uppercase tracking-wider text-[10px]">
                     <th className="py-2.5 px-3">Periode</th>
                     <th className="py-2.5 px-3">Hari Kerja</th>
                     <th className="py-2.5 px-3">Jam Lembur</th>
@@ -786,7 +786,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                     <th className="py-2.5 px-3 text-center no-print">Aksi</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-emerald-200">
                   {myPayrolls.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="py-8 text-center text-gray-400 italic">
@@ -1256,18 +1256,18 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
           </div>
 
           <div className="overflow-x-auto rounded-b-lg border-t border-emerald-800/10 shadow-inner bg-emerald-50/5">
-            <table className="w-full text-left border-collapse text-xs border border-emerald-800/20 bg-white">
+            <table className="w-full text-left border-collapse text-xs border-2 border-evergreen/60 bg-white">
               <thead>
-                <tr className="sticky top-0 z-10 bg-emerald-800 text-white font-bold border-b border-emerald-950 uppercase text-[10px] tracking-wider text-center">
-                  <th className="p-3 border-r border-emerald-700/50 text-left">Nama Karyawan</th>
-                  <th className="p-3 border-r border-emerald-700/50 text-center">Periode Kerja</th>
-                  <th className="p-3 border-r border-emerald-700/50 text-center">Hari / Lembur</th>
-                  <th className="p-3 border-r border-emerald-700/50 text-left">Detail Biaya &amp; Potongan</th>
-                  <th className="p-3 border-r border-emerald-700/50 text-right">Total Bersih (IDR)</th>
+                <tr className="sticky top-0 z-10 bg-evergreen text-white font-bold border-b-2 border-evergreen-dark uppercase text-[10px] tracking-wider text-center">
+                  <th className="p-3 border-r border-white/30 text-left">Nama Karyawan</th>
+                  <th className="p-3 border-r border-white/30 text-center">Periode Kerja</th>
+                  <th className="p-3 border-r border-white/30 text-center">Hari / Lembur</th>
+                  <th className="p-3 border-r border-white/30 text-left">Detail Biaya &amp; Potongan</th>
+                  <th className="p-3 border-r border-white/30 text-right">Total Bersih (IDR)</th>
                   <th className="p-3 text-center">Aksi</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-emerald-100">
+              <tbody className="divide-y divide-emerald-200">
                 {pagedPayrolls.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="p-8 text-center text-gray-400 italic bg-white">

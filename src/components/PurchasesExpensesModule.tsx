@@ -1137,16 +1137,16 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                   <div className="overflow-x-auto rounded-xl border border-emerald-800/20 shadow-inner bg-emerald-50/5">
                     <table className="w-full text-left text-xs border-collapse">
                       <thead>
-                        <tr className="bg-emerald-800 text-white font-bold border-b border-emerald-950 uppercase text-[10px] tracking-wider text-center">
-                          <th className="p-3 border-r border-emerald-700/50 w-10">NO</th>
-                          <th className="p-3 border-r border-emerald-700/50 w-28">TANGGAL</th>
-                          <th className="p-3 border-r border-emerald-700/50 w-28 text-left">NO PO</th>
-                          <th className="p-3 border-r border-emerald-700/50 text-left">SUPPLIER</th>
-                          <th className="p-3 border-r border-emerald-700/50 text-left">DESCRIPTION / BARANG</th>
-                          <th className="p-3 border-r border-emerald-700/50 w-16 text-center">QTY</th>
-                          <th className="p-3 border-r border-emerald-700/50 w-32 text-right">HARGA (SATUAN)</th>
-                          <th className="p-3 border-r border-emerald-700/50 w-32 text-right">SUBTOTAL</th>
-                          <th className="p-3 border-r border-emerald-700/50 w-36 text-right">TOTAL PO</th>
+                        <tr className="bg-evergreen text-white font-bold border-b-2 border-evergreen-dark uppercase text-[10px] tracking-wider text-center">
+                          <th className="p-3 border-r border-white/30 w-10">NO</th>
+                          <th className="p-3 border-r border-white/30 w-28">TANGGAL</th>
+                          <th className="p-3 border-r border-white/30 w-28 text-left">NO PO</th>
+                          <th className="p-3 border-r border-white/30 text-left">SUPPLIER</th>
+                          <th className="p-3 border-r border-white/30 text-left">DESCRIPTION / BARANG</th>
+                          <th className="p-3 border-r border-white/30 w-16 text-center">QTY</th>
+                          <th className="p-3 border-r border-white/30 w-32 text-right">HARGA (SATUAN)</th>
+                          <th className="p-3 border-r border-white/30 w-32 text-right">SUBTOTAL</th>
+                          <th className="p-3 border-r border-white/30 w-36 text-right">TOTAL PO</th>
                           <th className="p-3 text-center w-24">AKSI</th>
                         </tr>
                       </thead>
@@ -1558,15 +1558,15 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
               <div className="overflow-x-auto rounded-xl border border-emerald-800/20 shadow-inner">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
-                    <tr className="bg-emerald-900 text-white font-bold border-b border-emerald-950 uppercase text-[9px] tracking-wider text-center">
-                      <th className="p-3 border-r border-emerald-800/20 w-24">Tanggal</th>
-                      <th className="p-3 border-r border-emerald-800/20 text-left">Nama Barang / Pengeluaran</th>
-                      <th className="p-3 border-r border-emerald-800/20 text-left">Kategori</th>
-                      <th className="p-3 border-r border-emerald-800/20 w-12">Qty</th>
-                      <th className="p-3 border-r border-emerald-800/20 w-28 text-right">Harga</th>
-                      <th className="p-3 border-r border-emerald-800/20 w-28 text-right">Subtotal</th>
-                      <th className="p-3 border-r border-emerald-800/20 w-32 text-right bg-emerald-950/30">Total Harian</th>
-                      <th className="p-3 border-r border-emerald-800/20 w-24 text-center">Admin</th>
+                    <tr className="bg-evergreen text-white font-bold border-b-2 border-evergreen-dark uppercase text-[9px] tracking-wider text-center">
+                      <th className="p-3 border-r border-white/30 w-24">Tanggal</th>
+                      <th className="p-3 border-r border-white/30 text-left">Nama Barang / Pengeluaran</th>
+                      <th className="p-3 border-r border-white/30 text-left">Kategori</th>
+                      <th className="p-3 border-r border-white/30 w-12">Qty</th>
+                      <th className="p-3 border-r border-white/30 w-28 text-right">Harga</th>
+                      <th className="p-3 border-r border-white/30 w-28 text-right">Subtotal</th>
+                      <th className="p-3 border-r border-white/30 w-32 text-right bg-emerald-950/30">Total Harian</th>
+                      <th className="p-3 border-r border-white/30 w-24 text-center">Admin</th>
                       <th className="p-3 text-center w-20">Aksi</th>
                     </tr>
                   </thead>

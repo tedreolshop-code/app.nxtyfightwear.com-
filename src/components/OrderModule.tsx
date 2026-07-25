@@ -571,7 +571,7 @@ export const OrderModule: React.FC = () => {
               <div className="border border-gray-200 rounded overflow-hidden">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200 font-semibold text-gray-600">
+                    <tr className="bg-evergreen text-white font-bold uppercase tracking-wider text-[10px]">
                       <th className="p-2">Nama Barang</th>
                       <th className="p-2">Variant</th>
                       <th className="p-2 text-center">Qty</th>
@@ -587,7 +587,7 @@ export const OrderModule: React.FC = () => {
                       </tr>
                     ) : (
                       selectedItems.map((item) => (
-                        <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50">
+                        <tr key={item.id} className="border-b border-emerald-200 hover:bg-gray-50">
                           <td className="p-2 font-medium">{item.product_name}</td>
                           <td className="p-2">{item.variant}</td>
                           <td className="p-2 text-center font-mono font-bold">{item.qty} Pcs</td>
@@ -735,7 +735,7 @@ export const OrderModule: React.FC = () => {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-100 font-semibold text-gray-600 uppercase tracking-wider text-[10px]">
+              <tr className="bg-evergreen text-white font-bold uppercase tracking-wider text-[10px]">
                 <th className="p-3">No. Order</th>
                 <th className="p-3">Tanggal</th>
                 <th className="p-3">Nama Pelanggan</th>
@@ -757,7 +757,7 @@ export const OrderModule: React.FC = () => {
               ) : (
                 visibleOrders.map((ord) => (
                   <React.Fragment key={ord.id}>
-                  <tr className="border-b border-gray-100 hover:bg-gray-50/55 align-top">
+                  <tr className="border-b border-emerald-200 hover:bg-gray-50/55 align-top">
                     <td className="p-3 font-mono font-bold text-gray-800">{ord.order_number}</td>
                     <td className="p-3 font-mono text-gray-500 whitespace-nowrap">{ord.date}</td>
                     <td className="p-3">

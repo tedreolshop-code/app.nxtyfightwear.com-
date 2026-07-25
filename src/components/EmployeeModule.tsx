@@ -970,7 +970,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-100 font-semibold text-gray-600 uppercase tracking-wider text-[10px]">
+              <tr className="bg-evergreen text-white font-bold uppercase tracking-wider text-[10px]">
                 <th className="p-3">Nama Karyawan</th>
                 <th className="p-3">Departemen</th>
                 <th className="p-3 text-center">Peran / Role</th>
@@ -993,7 +993,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                 const isEditing = editingEmpId === emp.id;
                 const deptObj = departments.find(d => d.id === emp.department_id);
                 return (
-                  <tr key={emp.id} className="border-b border-gray-100 hover:bg-gray-50/50">
+                  <tr key={emp.id} className="border-b border-emerald-200 hover:bg-gray-50/50">
                     <td className="p-3">
                       <div className="flex items-center gap-2.5">
                         <div className="w-8 h-8 rounded-full overflow-hidden bg-emerald-50 border border-emerald-100 flex items-center justify-center font-bold text-[var(--color-evergreen)] shrink-0">
@@ -1229,7 +1229,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                   <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
                     <table className="w-full text-left text-xs border-collapse">
                       <thead>
-                        <tr className="bg-gray-50 border-b border-gray-100 text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                        <tr className="bg-evergreen text-white font-bold uppercase tracking-wider text-[10px]">
                           <th className="p-3">Waktu Log Scan</th>
                           <th className="p-3">Hari</th>
                           <th className="p-3">Jenis Scan</th>
@@ -1249,7 +1249,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                             const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
                             const dayName = dayNames[dateObj.getDay()];
                             return (
-                              <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50/50">
+                              <tr key={idx} className="border-b border-emerald-200 hover:bg-gray-50/50">
                                 <td className="p-3 font-mono font-medium text-gray-700">
                                   {att.timestamp.replace('T', ' ').substring(0, 19)}
                                 </td>
@@ -1518,7 +1518,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
                       <table className="w-full text-left text-xs border-collapse">
                         <thead>
-                          <tr className="bg-gray-50 border-b border-gray-100 text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                          <tr className="bg-evergreen text-white font-bold uppercase tracking-wider text-[10px]">
                             <th className="p-3">ID Slip</th>
                             <th className="p-3">Periode Gaji</th>
                             <th className="p-3 text-center font-mono">Kehadiran (Hari)</th>
@@ -1537,7 +1537,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                             </tr>
                           ) : (
                             employeePayrolls.map((pay) => (
-                              <tr key={pay.id} className="border-b border-gray-50 hover:bg-gray-50/50">
+                              <tr key={pay.id} className="border-b border-emerald-200 hover:bg-gray-50/50">
                                 <td className="p-3 font-mono font-bold text-gray-400">
                                   #{pay.id.toUpperCase()}
                                 </td>

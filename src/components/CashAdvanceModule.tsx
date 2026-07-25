@@ -274,13 +274,13 @@ export const CashAdvanceModule: React.FC<CashAdvanceModuleProps> = ({ actor }) =
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
-            <thead className="bg-[var(--color-evergreen)] text-white uppercase text-[10px] font-bold tracking-wider">
+            <thead className="bg-evergreen text-white uppercase text-[10px] font-bold tracking-wider">
               <tr>
-                <th className="p-3 text-center w-10 border-r border-white/10">No</th>
-                <th className="p-3 text-left border-r border-white/10">Karyawan</th>
-                <th className="p-3 text-center w-28 border-r border-white/10">Kasbon Aktif</th>
-                <th className="p-3 text-right w-40 border-r border-white/10">Sisa Kasbon</th>
-                <th className="p-3 text-center w-28 border-r border-white/10">Status</th>
+                <th className="p-3 text-center w-10 border-r border-white/30">No</th>
+                <th className="p-3 text-left border-r border-white/30">Karyawan</th>
+                <th className="p-3 text-center w-28 border-r border-white/30">Kasbon Aktif</th>
+                <th className="p-3 text-right w-40 border-r border-white/30">Sisa Kasbon</th>
+                <th className="p-3 text-center w-28 border-r border-white/30">Status</th>
                 <th className="p-3 text-center w-56">Aksi</th>
               </tr>
             </thead>
@@ -355,7 +355,7 @@ export const CashAdvanceModule: React.FC<CashAdvanceModuleProps> = ({ actor }) =
         </div>
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-xs">
-            <thead className="bg-[var(--color-evergreen)] text-white uppercase text-[10px] font-bold tracking-wider"><tr><th className="p-3 text-left border-r border-white/10">Tanggal</th><th className="p-3 text-left border-r border-white/10">Karyawan</th><th className="p-3 text-left border-r border-white/10">Jenis</th><th className="p-3 text-right border-r border-white/10">Nominal</th><th className="p-3 text-left">Catatan</th></tr></thead>
+            <thead className="bg-evergreen text-white uppercase text-[10px] font-bold tracking-wider"><tr><th className="p-3 text-left border-r border-white/30">Tanggal</th><th className="p-3 text-left border-r border-white/30">Karyawan</th><th className="p-3 text-left border-r border-white/30">Jenis</th><th className="p-3 text-right border-r border-white/30">Nominal</th><th className="p-3 text-left">Catatan</th></tr></thead>
             <tbody>
               {selectedTransactions.length === 0 ? <tr><td colSpan={5} className="p-6 text-center text-gray-400">Belum ada transaksi kasbon.</td></tr> : selectedTransactions.map(transaction => (
                 <tr key={transaction.id} className="border-t border-gray-100">

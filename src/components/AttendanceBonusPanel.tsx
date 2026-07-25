@@ -238,7 +238,7 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
-              <tr className="border-b border-gray-200 text-gray-400 font-semibold bg-gray-50/50 text-[11px] uppercase tracking-wide">
+              <tr className="bg-evergreen text-white font-bold uppercase tracking-wider text-[10px]">
                 <th className="py-2.5 px-3">Karyawan</th>
                 <th className="py-2.5 px-3 text-center">Hadir</th>
                 <th className="py-2.5 px-3 text-center">Telat (Net)</th>
@@ -248,7 +248,7 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
                 <th className="py-2.5 px-3 text-right">Bonus</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-emerald-200">
               {evaluations.length === 0 ? (
                 <tr><td colSpan={7} className="py-8 text-center text-gray-400 italic">Tidak ada karyawan aktif.</td></tr>
               ) : evaluations.map(({ emp, result }) => (

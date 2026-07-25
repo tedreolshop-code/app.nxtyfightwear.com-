@@ -533,21 +533,21 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-[11px] border border-evergreen/10">
+            <table className="w-full text-left border-collapse text-[11px] border-2 border-evergreen/60">
               <thead>
                 <tr className="bg-evergreen text-white font-bold uppercase tracking-wider text-[10px] text-center">
-                  <th className="p-3 border-r border-white/10 w-12 text-center">No</th>
-                  <th className="p-3 border-r border-white/10 text-left w-36">ID Bahan</th>
-                  <th className="p-3 border-r border-white/10 text-left">Nama Bahan Baku</th>
-                  <th className="p-3 border-r border-white/10 text-center w-36">Divisi Pengguna</th>
-                  <th className="p-3 border-r border-white/10 text-center w-28">Satuan</th>
-                  <th className="p-3 border-r border-white/10 text-right w-36">Batas Minimum</th>
-                  <th className="p-3 border-r border-white/10 text-right w-40">Stok Berjalan</th>
-                  <th className={`p-3 text-center w-40 ${!isRestricted ? 'border-r border-white/10' : ''}`}>Status Keamanan</th>
+                  <th className="p-3 border-r border-white/30 w-12 text-center">No</th>
+                  <th className="p-3 border-r border-white/30 text-left w-36">ID Bahan</th>
+                  <th className="p-3 border-r border-white/30 text-left">Nama Bahan Baku</th>
+                  <th className="p-3 border-r border-white/30 text-center w-36">Divisi Pengguna</th>
+                  <th className="p-3 border-r border-white/30 text-center w-28">Satuan</th>
+                  <th className="p-3 border-r border-white/30 text-right w-36">Batas Minimum</th>
+                  <th className="p-3 border-r border-white/30 text-right w-40">Stok Berjalan</th>
+                  <th className={`p-3 text-center w-40 ${!isRestricted ? 'border-r border-white/30' : ''}`}>Status Keamanan</th>
                   {!isRestricted && <th className="p-3 text-center w-28">Aksi</th>}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200 font-mono bg-white">
+              <tbody className="divide-y divide-emerald-200 font-mono bg-white">
                 {filteredMaterials.length === 0 ? (
                   <tr>
                     <td colSpan={isRestricted ? 8 : 9} className="p-8 text-center text-xs text-gray-400 italic font-sans">
@@ -632,21 +632,21 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-[11px] border border-evergreen/10">
+            <table className="w-full text-left border-collapse text-[11px] border-2 border-evergreen/60">
               <thead>
                 <tr className="bg-evergreen text-white font-bold uppercase tracking-wider text-[10px] text-center">
-                  <th className="p-3 border-r border-white/10 w-12 text-center">No</th>
-                  <th className="p-3 border-r border-white/10 text-left w-36">ID Produk</th>
-                  <th className="p-3 border-r border-white/10 text-left">Nama Produk</th>
-                  <th className="p-3 border-r border-white/10 text-left w-48">Variant / Warna</th>
-                  <th className="p-3 border-r border-white/10 text-center w-36">Divisi Produksi</th>
-                  <th className="p-3 border-r border-white/10 text-right w-40">Harga Jual</th>
-                  <th className="p-3 border-r border-white/10 text-right w-40">Stok Berjalan</th>
-                  <th className="p-3 border-r border-white/10 text-center w-40">Status Keamanan</th>
+                  <th className="p-3 border-r border-white/30 w-12 text-center">No</th>
+                  <th className="p-3 border-r border-white/30 text-left w-36">ID Produk</th>
+                  <th className="p-3 border-r border-white/30 text-left">Nama Produk</th>
+                  <th className="p-3 border-r border-white/30 text-left w-48">Variant / Warna</th>
+                  <th className="p-3 border-r border-white/30 text-center w-36">Divisi Produksi</th>
+                  <th className="p-3 border-r border-white/30 text-right w-40">Harga Jual</th>
+                  <th className="p-3 border-r border-white/30 text-right w-40">Stok Berjalan</th>
+                  <th className="p-3 border-r border-white/30 text-center w-40">Status Keamanan</th>
                   <th className="p-3 text-center w-40">{isRestricted ? 'Alur' : 'Aksi'}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200 font-mono bg-white">
+              <tbody className="divide-y divide-emerald-200 font-mono bg-white">
                 {filteredProducts.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="p-8 text-center text-xs text-gray-400 italic font-sans">
@@ -739,18 +739,18 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-[11px] border border-evergreen/10">
+            <table className="w-full text-left border-collapse text-[11px] border-2 border-evergreen/60">
               <thead>
                 <tr className="bg-evergreen text-white font-bold uppercase tracking-wider text-[10px] text-center">
-                  <th className="p-3 border-r border-white/10 w-12 text-center">No</th>
-                  <th className="p-3 border-r border-white/10 text-left w-48">Waktu Transaksi</th>
-                  <th className="p-3 border-r border-white/10 text-left">Nama Barang / Bahan</th>
-                  <th className="p-3 border-r border-white/10 text-center w-36">Kategori Mutasi</th>
-                  <th className="p-3 border-r border-white/10 text-left w-56">Keterangan / Referensi</th>
+                  <th className="p-3 border-r border-white/30 w-12 text-center">No</th>
+                  <th className="p-3 border-r border-white/30 text-left w-48">Waktu Transaksi</th>
+                  <th className="p-3 border-r border-white/30 text-left">Nama Barang / Bahan</th>
+                  <th className="p-3 border-r border-white/30 text-center w-36">Kategori Mutasi</th>
+                  <th className="p-3 border-r border-white/30 text-left w-56">Keterangan / Referensi</th>
                   <th className="p-3 text-right w-40">Jumlah Mutasi</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200 font-mono bg-white">
+              <tbody className="divide-y divide-emerald-200 font-mono bg-white">
                 {filteredMovements.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="p-8 text-center text-xs text-gray-400 italic font-sans">
