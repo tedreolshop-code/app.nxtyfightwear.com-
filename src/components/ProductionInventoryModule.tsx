@@ -237,7 +237,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
     ? getFilteredProducts().filter(product => product.department_id === manualDepartmentId)
     : [];
   const manualAssignableEmployees = manualDepartmentId
-    ? employees.filter(employee => employee.department_id === manualDepartmentId)
+    ? employees.filter(employee => employee.department_id === manualDepartmentId).sort((a, b) => a.name.localeCompare(b.name))
     : [];
   const manualFilteredMaterials = manualDepartmentId
     ? rawMaterials.filter(material => !material.department_id || material.department_id === manualDepartmentId)

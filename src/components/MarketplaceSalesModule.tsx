@@ -465,7 +465,9 @@ export const MarketplaceSalesModule: React.FC = () => {
       const arr = map.get(item.order_number);
       if (arr) arr.push(item); else map.set(item.order_number, [item]);
     }
-    return Array.from(map.values()).map(items => ({
+    return Array.from(map.values()).map(rawItems => {
+      const items = [...rawItems].sort((a, b) => a.description.localeCompare(b.description));
+      return {
       order_number: items[0].order_number,
       items,
       date: items[0].date,
@@ -473,7 +475,8 @@ export const MarketplaceSalesModule: React.FC = () => {
       fee: items.reduce((s, i) => s + i.admin_fee, 0),
       total: items.filter(isCounted).reduce((s, i) => s + i.total, 0),
       anyCounted: items.some(isCounted),
-    }));
+    };
+    });
   })();
 
   // STATS COMPUTATION — cancel & retur TIDAK dihitung dalam omset
@@ -848,7 +851,7 @@ export const MarketplaceSalesModule: React.FC = () => {
                               className="w-full bg-white border border-gray-200 rounded px-3 py-2 text-xs text-gray-700 font-semibold mb-1.5 focus:outline-none focus:ring-1 focus:ring-evergreen"
                             >
                               <option value="">-- Ketik Deskripsi Custom / Pilih Produk --</option>
-                              {products.map(p => (
+                              {[...products].sort((a, b) => a.name.localeCompare(b.name)).map(p => (
                                 <option key={p.id} value={p.id}>
                                   {p.name} {p.variant ? `(${p.variant})` : ''} - {formatIDR(p.harga_jual)}
                                 </option>
