@@ -812,7 +812,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
       {/* STOCK OPNAME MODAL */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[92vh] overflow-y-auto p-6 shadow-2xl border border-gray-200">
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[92dvh] overflow-y-auto p-6 shadow-2xl border border-gray-200">
             <div className="flex justify-between items-center border-b border-gray-100 pb-3 mb-4"><div><h3 className="text-sm font-bold text-emerald-950 flex items-center gap-2"><PackagePlus className="w-4 h-4" /> Tambah Master Barang Baru</h3><p className="text-[10px] text-gray-400 mt-1">Barang baru akan tersedia untuk transaksi gudang dan dicatat pada audit log.</p></div><button type="button" onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-gray-600 cursor-pointer">✕</button></div>
             <form onSubmit={handleCreateItem} className="space-y-4">
               <div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => { setNewItemType('material'); setNewItemId(''); }} className={`py-2.5 rounded-xl border text-xs font-bold cursor-pointer ${newItemType === 'material' ? 'bg-[var(--color-evergreen)] text-white border-[var(--color-evergreen)]' : 'border-gray-200 text-gray-600'}`}>Bahan Baku</button><button type="button" onClick={() => { setNewItemType('product'); setNewItemId(''); }} className={`py-2.5 rounded-xl border text-xs font-bold cursor-pointer ${newItemType === 'product' ? 'bg-[var(--color-evergreen)] text-white border-[var(--color-evergreen)]' : 'border-gray-200 text-gray-600'}`}>Barang Jadi</button></div>
@@ -830,7 +830,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
       {/* Modal edit data master bahan/produk */}
       {editTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setEditTarget(null)}>
-          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[92vh] overflow-y-auto p-6 shadow-2xl border border-gray-200" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[92dvh] overflow-y-auto p-6 shadow-2xl border border-gray-200" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-start border-b border-gray-100 pb-3 mb-4">
               <div>
                 <h3 className="text-sm font-bold text-emerald-950 flex items-center gap-2">

@@ -447,7 +447,7 @@ export const OrderModule: React.FC = () => {
       {/* MODAL: Form tambah/edit order (konsisten dengan modal Penjualan Marketplace) */}
       {isModalOpen && (
         <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={resetOrderForm}>
-          <div className="bg-white rounded-2xl p-6 w-full max-w-3xl shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-3xl shadow-2xl max-h-[90dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className={`border-b pb-3 flex items-center justify-between gap-2 mb-4 ${editOrderId ? 'border-amber-100' : 'border-gray-50'}`}>
               <div className="flex items-center gap-2">
                 <span className={`p-1.5 rounded-md ${editOrderId ? 'bg-amber-100 text-amber-600' : 'bg-emerald-50 text-emerald-700'}`}>

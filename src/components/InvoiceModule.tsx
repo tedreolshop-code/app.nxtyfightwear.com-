@@ -688,7 +688,7 @@ export const InvoiceModule: React.FC<InvoiceModuleProps> = ({ isAdmin, userRole 
             </div>
 
             {/* Virtual Continuous Form Paper Area */}
-            <div className="p-4 sm:p-6 bg-slate-200 max-h-[60vh] overflow-auto flex justify-center">
+            <div className="p-4 sm:p-6 bg-slate-200 max-h-[60dvh] overflow-auto flex justify-center">
               
               {/* Virtual Continuous Form Container */}
               <div 

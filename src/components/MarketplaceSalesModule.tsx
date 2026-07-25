@@ -710,7 +710,7 @@ export const MarketplaceSalesModule: React.FC = () => {
             {/* MODAL SECTION: Entry Form */}
             {isModalOpen && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => { setIsModalOpen(false); handleCancelEditItem(); }}>
-                <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[90dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
                   <div className={`border-b pb-3 flex items-center justify-between gap-2 ${editingItemId ? 'border-amber-100 bg-amber-50/50 -mx-6 -mt-6 p-6 rounded-t-2xl mb-4' : 'border-gray-50 mb-4'}`}>
                     <div className="flex items-center gap-2">
                       <span className={`p-1.5 rounded-md ${editingItemId ? 'bg-amber-100 text-amber-600' : 'bg-blue-50 text-blue-600'}`}>

@@ -187,7 +187,7 @@ const sessionForEmployee = (emp: Employee): Session => ({
 function LoginPage({ onLogin }: { onLogin: (s: Session, emp?: Employee) => void }) {
   const brand = useBrand();
   return (
-    <div className="min-h-screen w-full bg-[var(--color-evergreen)] flex items-center justify-center p-4 font-sans">
+    <div className="min-h-dvh w-full bg-[var(--color-evergreen)] flex items-center justify-center p-4 font-sans">
       <div className="w-full max-w-sm space-y-6">
         {/* Brand */}
         <div className="text-center space-y-2">
@@ -597,7 +597,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen w-full bg-white font-sans text-gray-800 text-sm overflow-hidden">
+    <div className="flex flex-col md:flex-row min-h-dvh w-full bg-white font-sans text-gray-800 text-sm overflow-hidden">
       {toastEl}
       {handoffPopup && <div className="fixed inset-0 z-[90] bg-black/55 p-4 flex items-center justify-center no-print"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-4"><div><span className="text-[10px] font-black uppercase tracking-wider text-amber-700 bg-amber-50 px-2 py-1 rounded">Tugas Produksi Baru</span><h3 className="font-black text-gray-900 mt-3">{handoffPopup.product_name}</h3><p className="text-xs text-gray-500 mt-1">{handoffPopup.from_stage} → {handoffPopup.to_stage}</p></div><div className="bg-gray-50 border border-gray-100 rounded-xl p-3 text-xs"><p>Dari: <b>{handoffPopup.from_employee_name}</b></p><p>Jumlah diterima: <b>{handoffPopup.qty_sent} pcs</b></p>{handoffPopup.notes && <p className="mt-1 text-gray-500">{handoffPopup.notes}</p>}</div><p className="text-[11px] text-amber-700">Periksa barang fisik sebelum menekan Terima pada menu Produksi.</p><div className="grid grid-cols-2 gap-2"><button onClick={() => { localStorage.setItem(`nxty_handoff_seen_${handoffPopup.id}`, '1'); setHandoffPopup(null); }} className="py-2.5 rounded-xl bg-gray-100 text-gray-700 text-xs font-bold cursor-pointer">Nanti</button><button onClick={() => { localStorage.setItem(`nxty_handoff_seen_${handoffPopup.id}`, '1'); setHandoffPopup(null); setActiveTab('produksi'); }} className="py-2.5 rounded-xl bg-[var(--color-evergreen)] text-white text-xs font-bold cursor-pointer">Lihat & Konfirmasi</button></div></div></div>}
       {productionTaskPopup && <div className="fixed inset-0 z-[91] bg-black/55 p-4 flex items-center justify-center no-print"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-4"><div><span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-1 rounded">Ada Kerjaan Baru</span><h3 className="font-black text-gray-900 mt-3">{productionTaskPopup.product_name}</h3><p className="text-xs text-gray-500 mt-1">{productionTaskPopup.order_number || productionTaskPopup.id} · tahap {productionTaskPopup.current_stage}</p></div><div className="bg-gray-50 border border-gray-100 rounded-xl p-3 text-xs"><p>Target: <b>{productionTaskPopup.qty} pcs</b></p>{productionTaskPopup.notes && <p className="mt-1 text-gray-500">{productionTaskPopup.notes}</p>}</div><p className="text-[11px] text-emerald-700">Buka Daftar Kerjaan untuk input hasil kerja atau reject jika ada.</p><div className="grid grid-cols-2 gap-2"><button onClick={() => { if (loggedEmployee) localStorage.setItem(productionTaskSeenKey(loggedEmployee.id, productionTaskPopup.id), '1'); setProductionTaskPopup(null); }} className="py-2.5 rounded-xl bg-gray-100 text-gray-700 text-xs font-bold cursor-pointer">Nanti</button><button onClick={() => { if (loggedEmployee) localStorage.setItem(productionTaskSeenKey(loggedEmployee.id, productionTaskPopup.id), '1'); setProductionTaskPopup(null); setActiveTab('produksi'); }} className="py-2.5 rounded-xl bg-[var(--color-evergreen)] text-white text-xs font-bold cursor-pointer">Lihat Kerjaan</button></div></div></div>}
@@ -681,7 +681,7 @@ export default function App() {
       </aside>
 
       {/* MAIN */}
-      <main className="flex-1 flex flex-col bg-gray-50 h-screen overflow-hidden">
+      <main className="flex-1 flex flex-col bg-gray-50 h-dvh overflow-hidden">
 
         {/* HEADER */}
         <header className="no-print h-14 bg-white border-b border-gray-200 flex items-center justify-between px-4 md:px-6 shrink-0 gap-3">

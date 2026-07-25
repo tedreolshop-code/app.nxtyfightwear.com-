@@ -957,7 +957,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
       {/* Modal edit alur produksi produk */}
       {stageEditProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setStageEditProduct(null)}>
-          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[92vh] overflow-y-auto p-6 shadow-2xl border border-gray-200" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[92dvh] overflow-y-auto p-6 shadow-2xl border border-gray-200" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-start border-b border-gray-100 pb-3 mb-4">
               <div>
                 <h3 className="text-sm font-bold text-emerald-950 flex items-center gap-2">
@@ -1659,7 +1659,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
       {/* DETAIL WORKFLOW DRAWER / MODAL */}
       {selectedJob && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden border border-gray-200">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[92dvh] flex flex-col overflow-hidden border border-gray-200">
             
             {/* Modal Header */}
             <div className="bg-[var(--color-evergreen)] text-white p-5 flex items-center justify-between">

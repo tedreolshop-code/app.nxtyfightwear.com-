@@ -647,7 +647,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
 
       {showWorkSettings && (
         <div className="fixed inset-0 z-50 bg-black/70 p-4 flex items-center justify-center no-print">
-          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[94vh] overflow-y-auto p-5 space-y-4">
+          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[94dvh] overflow-y-auto p-5 space-y-4">
             <div className="flex justify-between">
               <div><h3 className="font-black text-gray-900">Jam Kerja & QR Lokasi</h3><p className="text-xs text-gray-500">Seluruh waktu menggunakan WIB (GMT+7).</p></div>
               <button onClick={() => setShowWorkSettings(false)} className="cursor-pointer"><X className="w-4 h-4" /></button>
@@ -669,7 +669,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
 
       {showAssistedScan && (
         <div className="fixed inset-0 z-50 bg-black/70 p-4 flex items-center justify-center no-print">
-          <div className="bg-white rounded-2xl w-full max-w-md max-h-[92vh] overflow-y-auto p-5 space-y-4">
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[92dvh] overflow-y-auto p-5 space-y-4">
             <div className="flex items-center justify-between">
               <div><h3 className="font-black text-gray-900">Scan QR Pribadi Karyawan</h3><p className="text-xs text-gray-500">Petugas: {assistingAdmin?.name || 'Identitas admin tidak tersedia'}</p></div>
               <button type="button" onClick={() => setShowAssistedScan(false)} className="p-2 rounded-lg hover:bg-gray-100 cursor-pointer"><X className="w-4 h-4" /></button>
