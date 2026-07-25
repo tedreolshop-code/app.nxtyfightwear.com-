@@ -693,7 +693,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
 
           {/* Profile Card & Kasbon Overview */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-white rounded-lg border border-gray-100 p-5 space-y-4 shadow-3xs">
+            <div className="bg-white rounded-lg border border-gray-100 p-5 space-y-4 shadow-2xs">
               <h3 className="font-bold text-xs text-gray-500 uppercase tracking-wider">Profil Anda</h3>
               <div className="space-y-2">
                 <p className="text-sm font-bold text-gray-800">{loggedEmployee.name}</p>
@@ -718,7 +718,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
               </div>
             </div>
 
-            <div className="bg-white rounded-lg border border-gray-100 p-5 space-y-4 shadow-3xs col-span-2">
+            <div className="bg-white rounded-lg border border-gray-100 p-5 space-y-4 shadow-2xs col-span-2">
               <div className="flex justify-between items-center border-b border-gray-50 pb-2">
                 <h3 className="font-bold text-xs text-gray-500 uppercase tracking-wider">Status &amp; Riwayat Kasbon</h3>
                 <div className="text-right">
@@ -766,7 +766,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
           </div>
 
           {/* Weekly Payroll History Table */}
-          <div className="bg-white rounded-lg border border-gray-100 p-6 space-y-4 shadow-3xs">
+          <div className="bg-white rounded-lg border border-gray-100 p-6 space-y-4 shadow-2xs">
             <div>
               <h3 className="font-bold text-sm text-gray-800">Riwayat Slip Gaji Mingguan Anda</h3>
               <p className="text-xs text-gray-400">Menampilkan seluruh slip gaji yang telah diselesaikan oleh admin keuangan untuk Anda</p>
@@ -775,7 +775,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="border-b border-gray-150 text-gray-400 font-semibold bg-gray-50/50">
+                  <tr className="border-b border-gray-200 text-gray-400 font-semibold bg-gray-50/50">
                     <th className="py-2.5 px-3">Periode</th>
                     <th className="py-2.5 px-3">Hari Kerja</th>
                     <th className="py-2.5 px-3">Jam Lembur</th>
@@ -810,7 +810,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                         <td className="py-3 px-3 text-center no-print">
                           <button
                             onClick={() => handlePrint(pay)}
-                            className="bg-emerald-600 text-white font-bold text-[10px] px-2.5 py-1 rounded shadow-3xs hover:bg-emerald-700 cursor-pointer flex items-center gap-1.5 mx-auto"
+                            className="bg-emerald-600 text-white font-bold text-[10px] px-2.5 py-1 rounded shadow-2xs hover:bg-emerald-700 cursor-pointer flex items-center gap-1.5 mx-auto"
                           >
                             <Printer className="w-3 h-3" />
                             Lihat / Cetak Slip
@@ -859,7 +859,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                 </div>
 
                 {/* Modal Configuration / Calibration Panel */}
-                <div className="bg-slate-100/50 border-b border-slate-150 p-4 sm:px-6 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs font-sans">
+                <div className="bg-slate-100/50 border-b border-slate-200 p-4 sm:px-6 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs font-sans">
                   {/* Paper Customization */}
                   <div className="space-y-1.5">
                     <span className="font-semibold text-slate-500 block uppercase text-[10px]">Pilihan Kertas &amp; Tinta</span>
@@ -1250,7 +1250,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                 </button>
               )}
             </div>
-            <div className="font-mono text-[11px] text-gray-500 bg-gray-50 px-2.5 py-1 rounded-md border border-gray-150">
+            <div className="font-mono text-[11px] text-gray-500 bg-gray-50 px-2.5 py-1 rounded-md border border-gray-200">
               Menampilkan {pagedPayrolls.length} dari {filteredPayrolls.length} slip (halaman {payrollPageClamped}/{payrollTotalPages})
             </div>
           </div>
@@ -1460,7 +1460,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
             </div>
 
             {/* Modal Configuration / Calibration Panel */}
-            <div className="bg-slate-100/50 border-b border-slate-150 p-4 sm:px-6 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+            <div className="bg-slate-100/50 border-b border-slate-200 p-4 sm:px-6 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
               {/* Paper Customization */}
               <div className="space-y-1.5">
                 <span className="font-semibold text-slate-500 block uppercase text-[10px]">Pilihan Kertas & Tinta</span>

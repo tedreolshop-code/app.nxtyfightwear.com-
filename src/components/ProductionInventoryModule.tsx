@@ -1827,7 +1827,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                       const activeStageObj = selectedJob.stages[activeStageIndex];
 
                       return (
-                        <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-4 shadow-3xs">
+                        <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-4 shadow-2xs">
                           <div className="border-b border-gray-100 pb-2.5">
                             <span className="text-[9px] font-mono font-bold uppercase tracking-wider bg-amber-100 text-amber-800 px-2 py-0.5 rounded">
                               TAHAP AKTIF

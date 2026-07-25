@@ -795,7 +795,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                       type="number"
                       value={rateHarian || ''}
                       onChange={(e) => setRateHarian(Number(e.target.value))}
-                      className="pl-7 w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-xs font-mono text-gray-850 focus:outline-none focus:border-emerald-600"
+                      className="pl-7 w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-xs font-mono text-gray-800 focus:outline-none focus:border-emerald-600"
                       required
                     />
                   </div>
@@ -809,7 +809,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                       type="number"
                       value={rateLembur || ''}
                       onChange={(e) => setRateLembur(Number(e.target.value))}
-                      className="pl-7 w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-xs font-mono text-gray-850 focus:outline-none focus:border-emerald-600"
+                      className="pl-7 w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-xs font-mono text-gray-800 focus:outline-none focus:border-emerald-600"
                       required
                     />
                   </div>
@@ -823,7 +823,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                       min="0"
                       value={defaultLiveTikTokBonus || ''}
                       onChange={(e) => setDefaultLiveTikTokBonus(Number(e.target.value))}
-                      className="pl-7 w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-xs font-mono text-gray-850 focus:outline-none focus:border-emerald-600"
+                      className="pl-7 w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-xs font-mono text-gray-800 focus:outline-none focus:border-emerald-600"
                     />
                   </div>
                 </div>
@@ -836,7 +836,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                       min="0"
                       value={defaultAttendanceBonus || ''}
                       onChange={(e) => setDefaultAttendanceBonus(Number(e.target.value))}
-                      className="pl-7 w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-xs font-mono text-gray-850 focus:outline-none focus:border-emerald-600"
+                      className="pl-7 w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-xs font-mono text-gray-800 focus:outline-none focus:border-emerald-600"
                     />
                   </div>
                 </div>
@@ -849,7 +849,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                       min="0"
                       value={defaultWeeklyKasbonDeduction || ''}
                       onChange={(e) => setDefaultWeeklyKasbonDeduction(Number(e.target.value))}
-                      className="pl-7 w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-xs font-mono text-gray-850 focus:outline-none focus:border-emerald-600"
+                      className="pl-7 w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-xs font-mono text-gray-800 focus:outline-none focus:border-emerald-600"
                     />
                   </div>
                   <p className="text-[10px] text-gray-500 mt-1">Dipakai otomatis saat generate slip mingguan hari Sabtu, tetap dibatasi sisa kasbon aktif.</p>

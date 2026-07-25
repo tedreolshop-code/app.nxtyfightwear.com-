@@ -605,7 +605,7 @@ export const InvoiceModule: React.FC<InvoiceModuleProps> = ({ isAdmin, userRole 
             </div>
 
             {/* Modal Configuration / Calibration Panel */}
-            <div className="bg-slate-100/50 border-b border-slate-150 p-4 sm:px-6 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+            <div className="bg-slate-100/50 border-b border-slate-200 p-4 sm:px-6 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
               {/* Paper Customization */}
               <div className="space-y-1.5">
                 <span className="font-semibold text-slate-500 block uppercase text-[10px]">Pilihan Kertas & Tinta</span>

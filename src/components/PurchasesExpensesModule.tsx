@@ -1292,7 +1292,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-emerald-800/60 font-bold uppercase tracking-wider text-[10px]">Total Restock Terfilter:</span>
-                      <span className="font-mono font-black text-base text-emerald-850">
+                      <span className="font-mono font-black text-base text-emerald-800">
                         {formatIDR(filteredPurchases.reduce((sum, p) => sum + p.total_price, 0))}
                       </span>
                     </div>
@@ -1676,7 +1676,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-emerald-800/60 font-bold uppercase tracking-wider text-[10px]">Total Terfilter:</span>
-                  <span className="font-mono font-black text-base text-emerald-850">
+                  <span className="font-mono font-black text-base text-emerald-800">
                     {formatIDR(filteredExpenses.reduce((sum, e) => sum + e.amount, 0))}
                   </span>
                 </div>

@@ -1198,7 +1198,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
               </div>
 
               {/* Fake Interactive Map Canvas Area */}
-              <div className="border border-gray-150 rounded-2xl p-4 bg-slate-900 text-white relative h-72 overflow-hidden flex items-center justify-center">
+              <div className="border border-gray-200 rounded-2xl p-4 bg-slate-900 text-white relative h-72 overflow-hidden flex items-center justify-center">
                 {/* Geofence Circles */}
                 <div className="absolute w-56 h-56 rounded-full border border-emerald-500/30 bg-emerald-500/5 animate-pulse flex items-center justify-center">
                   <div className="w-36 h-36 rounded-full border border-emerald-400/40 bg-emerald-400/10 flex items-center justify-center">
@@ -1242,7 +1242,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                 </div>
               </div>
 
-              <div className="bg-gray-50 border border-gray-150 rounded-xl p-3 text-[11px] text-gray-500 leading-relaxed font-medium">
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 text-[11px] text-gray-500 leading-relaxed font-medium">
                 <span className="font-bold text-gray-800 block mb-0.5">Keterangan Aturan Lokasi:</span>
                 Setiap scan masuk/pulang karyawan dihitung jarak lurusnya ke koordinat pusat departemen pabrik. 
                 Jika jarak melebihi <span className="font-bold text-gray-800">{workSettings.attendance_radius_meters} meter</span>, absensi ditolak dan tidak tersimpan.
@@ -1296,7 +1296,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                       <div
                         key={log.id}
                         className={`p-4 rounded-xl border text-xs transition-all flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between ${
-                          isAnomaly ? 'bg-amber-50/50 border-amber-200/80 text-gray-800' : 'bg-gray-50 border-gray-150 text-gray-700'
+                          isAnomaly ? 'bg-amber-50/50 border-amber-200/80 text-gray-800' : 'bg-gray-50 border-gray-200 text-gray-700'
                         }`}
                       >
                         <div className="flex gap-3 items-center min-w-0">

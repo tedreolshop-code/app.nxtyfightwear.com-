@@ -451,7 +451,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
       </div>
 
       {/* FILTER & INTERACTIVE TAB BAR */}
-      <div className="no-print bg-white rounded-2xl border border-gray-100 p-4 shadow-3xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="no-print bg-white rounded-2xl border border-gray-100 p-4 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         {/* Navigation Tabs */}
         <div className="flex bg-gray-50 p-1.5 rounded-xl border border-gray-100 w-fit gap-1 shrink-0">
           <TabButton
@@ -480,19 +480,19 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
             <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200 text-[10px] font-black shrink-0">
               <button
                 onClick={() => setSelectedDept('all')}
-                className={`px-2.5 py-1 rounded-md transition-all uppercase cursor-pointer ${selectedDept === 'all' ? 'bg-white text-evergreen font-bold shadow-3xs' : 'text-gray-500'}`}
+                className={`px-2.5 py-1 rounded-md transition-all uppercase cursor-pointer ${selectedDept === 'all' ? 'bg-white text-evergreen font-bold shadow-2xs' : 'text-gray-500'}`}
               >
                 Semua Divisi
               </button>
               <button
                 onClick={() => setSelectedDept('eva')}
-                className={`px-2.5 py-1 rounded-md transition-all uppercase cursor-pointer ${selectedDept === 'eva' ? 'bg-white text-evergreen font-bold shadow-3xs' : 'text-gray-500'}`}
+                className={`px-2.5 py-1 rounded-md transition-all uppercase cursor-pointer ${selectedDept === 'eva' ? 'bg-white text-evergreen font-bold shadow-2xs' : 'text-gray-500'}`}
               >
                 Eva Foam
               </button>
               <button
                 onClick={() => setSelectedDept('konveksi')}
-                className={`px-2.5 py-1 rounded-md transition-all uppercase cursor-pointer ${selectedDept === 'konveksi' ? 'bg-white text-evergreen font-bold shadow-3xs' : 'text-gray-500'}`}
+                className={`px-2.5 py-1 rounded-md transition-all uppercase cursor-pointer ${selectedDept === 'konveksi' ? 'bg-white text-evergreen font-bold shadow-2xs' : 'text-gray-500'}`}
               >
                 Konveksi
               </button>
@@ -521,7 +521,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
       
       {/* 1. INVENTARIS BAHAN BAKU */}
       {activeTab === 'bahan' && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-3xs overflow-hidden">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-2xs overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
             <div>
               <h2 className="font-bold text-sm text-emerald-950">Daftar Bahan Baku Pabrik</h2>
@@ -547,7 +547,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
                   {!isRestricted && <th className="p-3 text-center w-28">Aksi</th>}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-150 font-mono bg-white">
+              <tbody className="divide-y divide-gray-200 font-mono bg-white">
                 {filteredMaterials.length === 0 ? (
                   <tr>
                     <td colSpan={isRestricted ? 8 : 9} className="p-8 text-center text-xs text-gray-400 italic font-sans">
@@ -620,7 +620,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
 
       {/* 2. BARANG JADI (GUDANG) */}
       {activeTab === 'jadi' && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-3xs overflow-hidden">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-2xs overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
             <div>
               <h2 className="font-bold text-sm text-emerald-950">Inventaris Barang Jadi (Hasil Produksi)</h2>
@@ -646,7 +646,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
                   <th className="p-3 text-center w-40">{isRestricted ? 'Alur' : 'Aksi'}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-150 font-mono bg-white">
+              <tbody className="divide-y divide-gray-200 font-mono bg-white">
                 {filteredProducts.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="p-8 text-center text-xs text-gray-400 italic font-sans">
@@ -675,7 +675,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
                         </td>
                         <td className="p-3 text-center whitespace-nowrap border-r border-emerald-100/30">
                           {isCritical ? (
-                            <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-850 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase font-sans animate-pulse">
+                            <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase font-sans animate-pulse">
                               <AlertTriangle className="w-3 h-3" />
                               Stok Menipis
                             </span>
@@ -727,7 +727,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
 
       {/* 3. LOG MUTASI STOK */}
       {activeTab === 'mutasi' && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-3xs overflow-hidden">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-2xs overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
             <div>
               <h2 className="font-bold text-sm text-emerald-950">Log Perputaran &amp; Mutasi Stok</h2>
@@ -750,7 +750,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
                   <th className="p-3 text-right w-40">Jumlah Mutasi</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-150 font-mono bg-white">
+              <tbody className="divide-y divide-gray-200 font-mono bg-white">
                 {filteredMovements.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="p-8 text-center text-xs text-gray-400 italic font-sans">
@@ -772,7 +772,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
                           <span className={`px-2.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
                             mov.type === 'bahan_masuk' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' :
                             mov.type === 'bahan_keluar' ? 'bg-amber-50 text-amber-800 border border-amber-200' :
-                            mov.type === 'barang_jadi_masuk' ? 'bg-teal-50 text-teal-850 border border-teal-200' :
+                            mov.type === 'barang_jadi_masuk' ? 'bg-teal-50 text-teal-800 border border-teal-200' :
                             'bg-rose-50 text-rose-800 border border-rose-200'
                           }`}>
                             {mov.type.replace(/_/g, ' ')}

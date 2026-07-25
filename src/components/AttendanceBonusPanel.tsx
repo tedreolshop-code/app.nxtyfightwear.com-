@@ -77,7 +77,7 @@ export const AttendanceBonusHistoryList: React.FC<{ employeeId: string }> = ({ e
   const sorted = [...payouts].sort((a, b) => b.month.localeCompare(a.month));
 
   return (
-    <div className="bg-white rounded-lg border border-gray-100 p-6 space-y-4 shadow-3xs">
+    <div className="bg-white rounded-lg border border-gray-100 p-6 space-y-4 shadow-2xs">
       <div>
         <h3 className="font-bold text-sm text-gray-800 flex items-center gap-1.5">
           <Gift className="w-4 h-4 text-amber-500" /> Riwayat Bonus Kehadiran Anda
@@ -238,7 +238,7 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
-              <tr className="border-b border-gray-150 text-gray-400 font-semibold bg-gray-50/50 text-[11px] uppercase tracking-wide">
+              <tr className="border-b border-gray-200 text-gray-400 font-semibold bg-gray-50/50 text-[11px] uppercase tracking-wide">
                 <th className="py-2.5 px-3">Karyawan</th>
                 <th className="py-2.5 px-3 text-center">Hadir</th>
                 <th className="py-2.5 px-3 text-center">Telat (Net)</th>
