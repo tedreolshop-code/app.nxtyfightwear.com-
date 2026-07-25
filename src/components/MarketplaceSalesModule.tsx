@@ -1086,7 +1086,7 @@ export const MarketplaceSalesModule: React.FC = () => {
                         orderGroups.map((group, groupIdx) => {
                           const span = group.items.length;
                           return group.items.map((item, itemIdx) => (
-                            <tr key={item.id} className={`hover:bg-emerald-50/15 transition-colors ${itemIdx === 0 ? 'border-t-2 border-emerald-200' : 'border-t border-emerald-100/30'} ${!isCounted(item) ? 'opacity-55 bg-gray-50/50' : ''}`}>
+                            <tr key={item.id} className={`hover:bg-emerald-50/15 transition-colors ${itemIdx === 0 ? 'border-t-2 border-gray-900' : 'border-t border-emerald-100/30'} ${!isCounted(item) ? 'opacity-55 bg-gray-50/50' : ''}`}>
                               {itemIdx === 0 && (
                                 <>
                                   <td rowSpan={span} className="p-3 text-center border-r border-emerald-100/70 font-mono text-emerald-950 font-bold bg-emerald-50/30 whitespace-nowrap align-middle">
