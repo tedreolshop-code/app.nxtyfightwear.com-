@@ -4,6 +4,10 @@ import { dataStore, hashPin, currentWeeklyPayrollPeriod } from '../dataStore';
 import { QRCodeSVG } from 'qrcode.react';
 import { Users, Plus, ShieldCheck, Key, Lock, LogIn, LogOut, Check, Save, DollarSign, X, Calendar, Clock, Printer, Trash2, History, Calculator, QrCode } from 'lucide-react';
 
+// Rapikan nama: tiap kata awalan kapital, sisanya kecil (mis. "BUDI santoso" -> "Budi Santoso")
+const toTitleCase = (s: string): string =>
+  s.trim().replace(/\s+/g, ' ').toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase());
+
 interface EmployeeModuleProps {
   currentLoggedEmployee: Employee | null;
   onLoginEmployee: (emp: Employee | null) => void;
@@ -129,7 +133,14 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
   }, []);
 
   const loadData = () => {
-    setEmployees(dataStore.getEmployees());
+    // Rapikan nama karyawan lama ke Title Case sekali; tulis ulang hanya bila ada yang berubah
+    const raw = dataStore.getEmployees();
+    const normalized = raw.map(emp => {
+      const clean = toTitleCase(emp.name);
+      return clean === emp.name ? emp : { ...emp, name: clean };
+    });
+    if (normalized.some((emp, i) => emp !== raw[i])) dataStore.setEmployees(normalized);
+    setEmployees(normalized);
     setDepartments(dataStore.getDepartments());
   };
 
@@ -444,13 +455,15 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
       return;
     }
 
+    const cleanName = toTitleCase(name);
+
     if (editEmpId) {
       // Mode edit: perbarui data; PIN hanya diganti bila diisi
       const updated = dataStore.getEmployees().map(emp2 => {
         if (emp2.id !== editEmpId) return emp2;
         return {
           ...emp2,
-          name,
+          name: cleanName,
           username: username.trim().toLowerCase(),
           department_id: departmentId,
           role,
@@ -467,12 +480,12 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
         };
       });
       dataStore.setEmployees(updated);
-      showNotification(`Data karyawan ${name} berhasil diperbarui!`, 'success');
+      showNotification(`Data karyawan ${cleanName} berhasil diperbarui!`, 'success');
     } else {
       const newEmp: Employee = {
         id: `emp-${Date.now().toString().slice(-4)}`,
         username: username.trim().toLowerCase(),
-        name,
+        name: cleanName,
         department_id: departmentId,
         role,
         rate_harian: rateHarian,
@@ -488,7 +501,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
         access_role: (accessRole || undefined) as Employee['access_role']
       };
       dataStore.setEmployees([...dataStore.getEmployees(), newEmp]);
-      showNotification(`Karyawan ${name} berhasil ditambahkan!`, 'success');
+      showNotification(`Karyawan ${cleanName} berhasil ditambahkan!`, 'success');
     }
 
     resetForm();
