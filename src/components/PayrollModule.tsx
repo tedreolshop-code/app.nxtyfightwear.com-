@@ -1255,7 +1255,9 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
             </div>
           </div>
 
-          <div className="overflow-x-auto rounded-b-lg border-t border-emerald-800/10 shadow-inner bg-emerald-50/5">
+          {/* max-h wajib: tanpa batas tinggi, wrapper tidak pernah scroll vertikal
+              sehingga header sticky di bawah ikut hanyut saat halaman digulir */}
+          <div className="overflow-x-auto overflow-y-auto overscroll-contain max-h-[70dvh] rounded-b-lg border-t border-emerald-800/10 shadow-inner bg-emerald-50/5">
             <table className="w-full text-left border-collapse text-xs border-2 border-evergreen/60 bg-white">
               <thead>
                 <tr className="sticky top-0 z-10 bg-evergreen text-white font-bold border-b-2 border-evergreen-dark uppercase text-[10px] tracking-wider text-center">
