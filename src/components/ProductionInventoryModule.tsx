@@ -239,9 +239,10 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
   const manualAssignableEmployees = manualDepartmentId
     ? employees.filter(employee => employee.department_id === manualDepartmentId).sort((a, b) => a.name.localeCompare(b.name))
     : [];
-  const manualFilteredMaterials = manualDepartmentId
+  const manualFilteredMaterials = (manualDepartmentId
     ? rawMaterials.filter(material => !material.department_id || material.department_id === manualDepartmentId)
-    : rawMaterials;
+    : rawMaterials
+  ).slice().sort((a, b) => a.name.localeCompare(b.name));
 
   // Auto populate ingredients when a product is selected
   useEffect(() => {
