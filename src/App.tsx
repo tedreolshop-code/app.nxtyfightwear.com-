@@ -638,7 +638,7 @@ export default function App() {
         </nav>
 
         {/* Info akun & logout */}
-        <div className="p-4 border-t border-[var(--color-evergreen-dark)] space-y-3">
+        <div className="shrink-0 p-4 border-t border-[var(--color-evergreen-dark)] space-y-3">
           {/* Status sinkronisasi data */}
           <div className="flex items-center gap-2 text-[11px] font-semibold">
             <span className={`w-2 h-2 rounded-full shrink-0 ${
