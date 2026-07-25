@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { MarketplaceSale, MarketplaceItemSale, MarketplaceSaleStatus, Product } from '../types';
-import { dataStore } from '../dataStore';
+import { dataStore, wibNowISO } from '../dataStore';
 import { brandName, brandLegalName } from '../brand';
 import { 
   ShoppingBag, 
@@ -231,6 +231,7 @@ export const MarketplaceSalesModule: React.FC = () => {
           product_id: linkedProductId,
           status: inputStatus,
           date: inputDate,
+          created_at: wibNowISO(),
           order_number: sharedOrderNumber,
           marketplace_ref: finalMarketplaceRef,
           description: finalDescription,
@@ -451,11 +452,10 @@ export const MarketplaceSalesModule: React.FC = () => {
 
     return isWithinDate && isMarketplaceMatch && isStatusMatch && matchesSearch;
   }).sort((a, b) => {
-    if (sortBy === 'newest') {
-      return b.date.localeCompare(a.date) || b.id.localeCompare(a.id);
-    } else {
-      return a.date.localeCompare(b.date) || a.id.localeCompare(b.id);
-    }
+    // Urut waktu input; data lama tanpa created_at pakai tanggal transaksi
+    const ka = a.created_at || a.date;
+    const kb = b.created_at || b.date;
+    return sortBy === 'newest' ? kb.localeCompare(ka) : ka.localeCompare(kb);
   });
 
   // Kelompokkan baris per No Pesanan agar 1 pesanan multi-barang tampil menyatu (bukan terpisah)
@@ -1031,8 +1031,8 @@ export const MarketplaceSalesModule: React.FC = () => {
                         onChange={(e) => setSortBy(e.target.value as any)}
                         className="w-full bg-gray-50 border border-gray-200 rounded px-2.5 py-1 text-xs font-semibold text-gray-600 focus:outline-none focus:ring-1 focus:ring-evergreen"
                       >
-                        <option value="newest">Terbaru (Newest)</option>
-                        <option value="oldest">Terlama (Oldest)</option>
+                        <option value="newest">Input Terbaru</option>
+                        <option value="oldest">Input Terlama</option>
                       </select>
                     </div>
                   </div>
@@ -1061,21 +1061,22 @@ export const MarketplaceSalesModule: React.FC = () => {
                 </div>
 
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse text-[11px] border border-evergreen/15">
+                  {/* table-fixed + padding rapat: 12 kolom muat di desktop normal tanpa scroll samping */}
+                  <table className="w-full table-fixed text-left border-collapse text-[11px] border border-evergreen/15 [&_th]:px-2 [&_th]:py-1.5 [&_td]:px-2 [&_td]:py-1.5 [&_td]:truncate">
                     <thead>
                       <tr className="bg-evergreen border-b border-evergreen-dark text-white font-bold uppercase tracking-wider text-[10px] text-center">
-                        <th className="p-3 border-r border-white/10 w-24">TGL</th>
-                        <th className="p-3 border-r border-white/10 w-10">No</th>
+                        <th className="p-3 border-r border-white/10 w-[74px]">TGL</th>
+                        <th className="p-3 border-r border-white/10 w-8">No</th>
                         <th className="p-3 border-r border-white/10 text-left">No pesenan</th>
-                        <th className="p-3 border-r border-white/10 text-left">Ref</th>
-                        <th className="p-3 border-r border-white/10 text-center w-24">Status</th>
+                        <th className="p-3 border-r border-white/10 text-left w-[86px]">Ref</th>
+                        <th className="p-3 border-r border-white/10 text-center w-[78px]">Status</th>
                         <th className="p-3 border-r border-white/10 text-left">Deskripsi</th>
-                        <th className="p-3 border-r border-white/10 text-center w-12">QTY</th>
-                        <th className="p-3 border-r border-white/10 text-right w-24">Harga</th>
-                        <th className="p-3 border-r border-white/10 text-right w-28">Subtotal</th>
-                        <th className="p-3 border-r border-white/10 text-right w-24">Biaya</th>
-                        <th className="p-3 border-r border-white/10 text-right font-black w-28">Total</th>
-                        <th className="p-3 text-center w-16">Aksi</th>
+                        <th className="p-3 border-r border-white/10 text-center w-10">QTY</th>
+                        <th className="p-3 border-r border-white/10 text-right w-[82px]">Harga</th>
+                        <th className="p-3 border-r border-white/10 text-right w-[92px]">Subtotal</th>
+                        <th className="p-3 border-r border-white/10 text-right w-[82px]">Biaya</th>
+                        <th className="p-3 border-r border-white/10 text-right font-black w-[96px]">Total</th>
+                        <th className="p-3 text-center w-[58px]">Aksi</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-150 font-mono bg-white">
@@ -1096,12 +1097,12 @@ export const MarketplaceSalesModule: React.FC = () => {
                                     {formatDateExcel(group.date)}
                                   </td>
                                   <td rowSpan={span} className="p-3 text-center text-gray-500 border-r border-emerald-100/50 align-middle">{groupIdx + 1}</td>
-                                  <td rowSpan={span} className="p-3 font-bold text-gray-800 select-all truncate max-w-[120px] border-r border-emerald-100/50 align-middle" title={group.order_number}>
+                                  <td rowSpan={span} className="p-3 font-bold text-gray-800 select-all truncate border-r border-emerald-100/50 align-middle" title={group.order_number}>
                                     {group.order_number}
                                     {span > 1 && <span className="block text-[8px] text-gray-400 font-sans font-semibold mt-0.5">{span} barang</span>}
                                   </td>
                                   <td rowSpan={span} className="p-3 border-r border-emerald-100/50 align-middle">
-                                    <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider font-sans ${
+                                    <span className={`block truncate px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider font-sans ${
                                       group.marketplace_ref.toLowerCase() === 'tokopedia' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
                                       group.marketplace_ref.toLowerCase() === 'shopee' ? 'bg-orange-100 text-orange-800 border border-orange-200' :
                                       group.marketplace_ref.toLowerCase() === 'tiktok shop' ? 'bg-pink-100 text-pink-800 border border-pink-200' :
@@ -1125,7 +1126,7 @@ export const MarketplaceSalesModule: React.FC = () => {
                                   <span className="block text-[8px] text-gray-400 font-sans mt-0.5">{item.retur_to_stock ? 'kembali ke stok' : 'barang rusak'}</span>
                                 )}
                               </td>
-                              <td className="p-3 text-gray-900 font-bold font-sans truncate max-w-[160px] border-r border-emerald-100/50" title={item.description}>
+                              <td className="p-3 text-gray-900 font-bold font-sans truncate border-r border-emerald-100/50" title={item.description}>
                                 {item.description}
                               </td>
                               <td className="p-3 text-center font-bold text-gray-950 border-r border-emerald-100/50">{item.qty}</td>

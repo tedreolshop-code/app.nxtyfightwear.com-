@@ -331,6 +331,7 @@ export interface MarketplaceItemSale {
   status?: MarketplaceSaleStatus;
   retur_to_stock?: boolean; // khusus status retur: barang layak jual dikembalikan ke stok?
   date: string;
+  created_at?: string; // Waktu input WIB; data lama tidak punya, fallback ke date
   order_number: string;
   marketplace_ref: string; // e.g., Tokopedia, Shopee, TikTok Shop, etc.
   description: string;
