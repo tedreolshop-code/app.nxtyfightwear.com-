@@ -284,7 +284,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
       (selectedDept === 'eva' && prod.department_id === 'dept-eva-foam') || 
       (selectedDept === 'konveksi' && prod.department_id === 'dept-konveksi');
     return matchesSearch && matchesDept;
-  });
+  }).sort((a, b) => a.name.localeCompare(b.name));
 
   // Filter Movements
   const filteredMovements = movements.filter(mov => {
