@@ -101,10 +101,7 @@ export const MarketplaceSalesModule: React.FC = () => {
   const [dailyRevenue, setDailyRevenue] = useState<number>(0);
   const [dailyFilterChannel, setDailyFilterChannel] = useState<string>('all');
 
-  // Suggest fee check
-  const [autoCalculateFee, setAutoCalculateFee] = useState<boolean>(true);
-  const [feePercentage, setFeePercentage] = useState<number>(5); // Default estimated 5% fee
-  // Biaya admin marketplace dibebankan sekali per PESANAN (bukan per barang) saat mode manual
+  // Biaya admin marketplace dibebankan sekali per PESANAN (bukan per barang), diinput manual
   const [orderAdminFee, setOrderAdminFee] = useState<number>(0);
 
   // Editing state
@@ -132,11 +129,8 @@ export const MarketplaceSalesModule: React.FC = () => {
     setProducts(dataStore.getProducts());
   };
 
-  // Biaya admin dihitung sekali per PESANAN: otomatis dari % subtotal seluruh barang, atau input manual
-  const computeOrderFee = (rows: Array<{ qty: number; price: number }>): number => {
-    const sub = rows.reduce((s, r) => s + r.qty * r.price, 0);
-    return autoCalculateFee ? Math.round(sub * (feePercentage / 100)) : orderAdminFee;
-  };
+  // Biaya admin diinput manual sekali per PESANAN (angka asli dari marketplace), lalu disebar ke tiap barang
+  const computeOrderFee = (_rows: Array<{ qty: number; price: number }>): number => orderAdminFee;
   // Sebar biaya pesanan ke tiap barang proporsional terhadap subtotal (sisa pembulatan ke barang terakhir)
   // agar total admin_fee per pesanan tepat sama dengan yang diinput — data tetap per-barang.
   const distributeFee = (rows: Array<{ qty: number; price: number }>, totalFee: number): number[] => {
@@ -278,7 +272,6 @@ export const MarketplaceSalesModule: React.FC = () => {
     // Find matching product (utamakan tautan product_id yang tersimpan)
     const matchingProduct = (item.product_id && products.find(p => p.id === item.product_id))
       || products.find(p => p.name === item.description || (p.name + (p.variant ? ` - ${p.variant}` : '')) === item.description);
-    setAutoCalculateFee(false); // keep historical fee values
     setOrderAdminFee(item.admin_fee);
     setSaleItemRows([{
       key: item.id,
@@ -919,50 +912,22 @@ export const MarketplaceSalesModule: React.FC = () => {
                       )}
                     </div>
 
-                    {/* Biaya Potongan Admin — sekali per PESANAN (bukan per barang) */}
-                    <div className="bg-gray-50 rounded-lg p-3 border border-gray-100 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider flex items-center gap-1">
-                          <Percent className="w-3 h-3 text-amber-500" /> Auto Hitung Potongan Admin
-                        </span>
-                        <div className="flex items-center gap-2">
-                          {autoCalculateFee && (
-                            <>
-                              <input
-                                type="number"
-                                min={0}
-                                max={100}
-                                step={0.5}
-                                value={feePercentage}
-                                onChange={(e) => setFeePercentage(Number(e.target.value))}
-                                className="w-16 bg-white border border-gray-200 rounded px-1.5 py-0.5 text-xs text-center font-mono font-bold text-gray-700"
-                              />
-                              <span className="text-[11px] text-gray-400">%</span>
-                            </>
-                          )}
-                          <input
-                            type="checkbox"
-                            checked={autoCalculateFee}
-                            onChange={(e) => setAutoCalculateFee(e.target.checked)}
-                            className="rounded text-evergreen focus:ring-evergreen"
-                          />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-[10px] text-gray-400 font-bold uppercase mb-0.5">Biaya Potongan Admin — 1 Pesanan (IDR)</label>
-                        <input
-                          type="number"
-                          min={0}
-                          value={computeOrderFee(saleItemRows) || ''}
-                          onChange={(e) => setOrderAdminFee(Number(e.target.value))}
-                          readOnly={autoCalculateFee}
-                          className={`w-full border border-gray-200 rounded px-3 py-1.5 text-xs font-bold font-mono text-amber-600 focus:outline-none focus:ring-1 focus:ring-evergreen ${autoCalculateFee ? 'bg-gray-100' : 'bg-white'}`}
-                          placeholder="Contoh: 25000"
-                        />
-                        {saleItemRows.length > 1 && (
-                          <p className="text-[10px] text-gray-400 mt-1">Biaya ini dibebankan untuk seluruh {saleItemRows.length} barang dalam pesanan, disebar otomatis.</p>
-                        )}
-                      </div>
+                    {/* Biaya Potongan Admin — diinput manual sekali per PESANAN (angka asli marketplace) */}
+                    <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+                      <label className="block text-[10px] text-gray-400 font-bold uppercase mb-0.5 flex items-center gap-1">
+                        <Percent className="w-3 h-3 text-amber-500" /> Biaya Potongan Admin — 1 Pesanan (IDR)
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={orderAdminFee || ''}
+                        onChange={(e) => setOrderAdminFee(Number(e.target.value))}
+                        className="w-full bg-white border border-gray-200 rounded px-3 py-1.5 text-xs font-bold font-mono text-amber-600 focus:outline-none focus:ring-1 focus:ring-evergreen"
+                        placeholder="Contoh: 25000"
+                      />
+                      {saleItemRows.length > 1 && (
+                        <p className="text-[10px] text-gray-400 mt-1">Biaya ini dibebankan untuk seluruh {saleItemRows.length} barang dalam pesanan, disebar otomatis.</p>
+                      )}
                     </div>
 
                     {/* Submit Button */}
