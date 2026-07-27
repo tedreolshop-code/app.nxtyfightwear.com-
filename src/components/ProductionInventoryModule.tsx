@@ -113,6 +113,8 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
   const [openedPackingTaskId, setOpenedPackingTaskId] = useState('');
   const [packingPhoto, setPackingPhoto] = useState<File | null>(null);
   const [uploadingPackingPhoto, setUploadingPackingPhoto] = useState(false);
+  // Task packing yang sedang dilengkapi fotonya dari tab Dokumentasi
+  const [uploadingPhotoTaskId, setUploadingPhotoTaskId] = useState('');
   const [taskStage, setTaskStage] = useState('');
   const [taskName, setTaskName] = useState('');
   const [taskQtyDone, setTaskQtyDone] = useState(0);
@@ -268,6 +270,11 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
     .filter(mov => movementFilter === 'all'
       || (movementFilter === 'product') === mov.type.includes('barang_jadi'))
     .slice(0, MOVEMENT_LIMIT);
+
+  // Packing selesai yang belum ada fotonya, terbaru dulu
+  const packingTasksTanpaFoto = packingTasks
+    .filter(task => task.status === 'completed' && !task.photo_url)
+    .sort((a, b) => String(b.completed_at || '').localeCompare(String(a.completed_at || '')));
 
   // Tabel Stok Barang Jadi: ikut filter divisi, urut nama lalu varian
   const visibleProducts = products
@@ -526,6 +533,25 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
     alert('Order produksi dihapus. Stok sudah dikembalikan.');
   };
 
+  /** Lengkapi foto packing yang sudah selesai tapi fotonya gagal / terlewat diunggah. */
+  const handleAttachPackingPhoto = async (task: PackingTask, file?: File | null) => {
+    if (!file) return;
+    setUploadingPhotoTaskId(task.id);
+    try {
+      const url = await uploadPackingPhoto(task.order_number || task.id, file);
+      if (!url) {
+        alert('Penyimpanan foto tidak aktif. Isi VITE_SUPABASE_* di .env lalu muat ulang halaman.');
+        return;
+      }
+      dataStore.setPackingTaskPhoto(task.id, { url, uploaded_by: currentEmployee?.name || dataStore.getCurrentActor().name });
+      loadData();
+    } catch (error) {
+      alert(`Upload foto gagal: ${error instanceof Error ? error.message : 'periksa koneksi internet'}. Coba lagi dari daftar ini.`);
+    } finally {
+      setUploadingPhotoTaskId('');
+    }
+  };
+
   const handleCompletePackingTask = async (taskId: string) => {
     if (!window.confirm('Tandai packing ini sudah selesai?')) return;
     let photo: { url: string; uploaded_by: string } | undefined;
@@ -536,7 +562,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
         const url = await uploadPackingPhoto(task?.order_number || taskId, packingPhoto);
         if (url) photo = { url, uploaded_by: currentEmployee?.name || dataStore.getCurrentActor().name };
       } catch {
-        alert('Packing tercatat, tapi upload foto gagal. Bisa diabaikan atau dicoba lagi nanti.');
+        alert('Packing tercatat, tapi upload foto gagal. Fotonya bisa dilengkapi lewat menu Produksi > Dokumentasi Foto Packing.');
       } finally {
         setUploadingPackingPhoto(false);
       }
@@ -1180,7 +1206,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                       {isCloudEnabled && (
                         <div>
                           <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1"><Camera className="w-3.5 h-3.5" /> Foto Dokumentasi Barang (opsional)</label>
-                          <input type="file" accept="image/*" onChange={event => setPackingPhoto(event.target.files?.[0] || null)} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs" />
+                          <input type="file" accept="image/*" capture="environment" onChange={event => setPackingPhoto(event.target.files?.[0] || null)} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs" />
                         </div>
                       )}
                       <button type="button" disabled={uploadingPackingPhoto} onClick={() => handleCompletePackingTask(selectedPackingTask.id)} className="w-full py-2.5 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 bg-[var(--color-evergreen)] text-white cursor-pointer hover:bg-[var(--color-evergreen-dark)] disabled:opacity-60"><CheckCircle2 className="w-4 h-4" /> {uploadingPackingPhoto ? 'Mengunggah foto...' : 'Selesai Packing'}</button>
@@ -2646,6 +2672,35 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
             </div>
             <Camera className="w-4.5 h-4.5 text-gray-400" />
           </div>
+
+          {/* Packing selesai yang fotonya belum ada — dulu tidak terlihat sama sekali,
+              padahal upload bisa gagal atau terlewat saat karyawan menyelesaikan packing */}
+          {packingTasksTanpaFoto.length > 0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3 space-y-2">
+              <p className="text-xs font-bold text-amber-800">
+                {packingTasksTanpaFoto.length} packing selesai belum ada fotonya
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {packingTasksTanpaFoto.map(task => (
+                  <label key={task.id} className="bg-white border border-amber-200 rounded-lg p-2.5 text-xs cursor-pointer hover:bg-amber-50/60 block">
+                    <p className="font-bold text-gray-800">{task.order_number}</p>
+                    <p className="text-[10px] text-gray-400">{task.customer_name} · packing oleh {task.employee_name}</p>
+                    <span className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold text-amber-800">
+                      <Camera className="w-3 h-3" /> {uploadingPhotoTaskId === task.id ? 'Mengunggah…' : 'Ambil / Pilih Foto'}
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      disabled={uploadingPhotoTaskId === task.id}
+                      onChange={event => handleAttachPackingPhoto(task, event.target.files?.[0])}
+                      className="hidden"
+                    />
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
             {packingTasks.filter(task => task.status === 'completed' && task.photo_url).length === 0 ? (

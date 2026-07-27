@@ -685,6 +685,18 @@ class DataStore {
     return true;
   };
 
+  /** Lampirkan / ganti foto dokumentasi pada packing yang sudah selesai (upload gagal atau terlewat). */
+  setPackingTaskPhoto = (taskId: string, photo: { url: string; uploaded_by: string }): boolean => {
+    const tasks = this.getPackingTasks();
+    const task = tasks.find(item => item.id === taskId);
+    if (!task) return false;
+    this.setPackingTasks(tasks.map(item => item.id === taskId
+      ? { ...item, photo_url: photo.url, photo_uploaded_at: wibNowISO(), photo_uploaded_by: photo.uploaded_by }
+      : item));
+    this.logAudit('update', 'packing_task', `${photo.uploaded_by} melengkapi foto dokumentasi packing ${task.order_number}`, task.id);
+    return true;
+  };
+
   deletePackingTaskPhoto = (taskId: string): boolean => {
     const tasks = this.getPackingTasks();
     const task = tasks.find(item => item.id === taskId);
