@@ -42,6 +42,9 @@ interface ProductionInventoryModuleProps {
 
 type ProductionDepartmentId = ProductionJob['department_id'];
 
+// Baris mutasi terbaru yang ditampilkan di tabel Riwayat Mutasi
+const MOVEMENT_LIMIT = 100;
+
 const PRODUCTION_DEPARTMENTS: Array<{ id: ProductionDepartmentId; label: string }> = [
   { id: 'dept-eva-foam', label: 'Eva Foam' },
   { id: 'dept-konveksi', label: 'Konveksi' },
@@ -70,6 +73,8 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
   // Filter divisi untuk tabel Stok Bahan Baku dan Stok Barang Jadi di Riwayat & Stok.
   // Khusus bahan baku, yang berdivisi Umum selalu ikut tampil karena dipakai keduanya.
   const [historyDivFilter, setHistoryDivFilter] = useState<'all' | 'Eva Foam' | 'Konveksi'>('all');
+  // Filter jenis item tabel Riwayat Mutasi
+  const [movementFilter, setMovementFilter] = useState<'all' | 'material' | 'product'>('all');
 
   // Pengaturan Alur Produksi — pindahan dari menu Gudang, atur tahapan kerja per produk barang jadi
   const [stageEditProduct, setStageEditProduct] = useState<Product | null>(null);
@@ -250,6 +255,13 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
       return div === historyDivFilter || div === 'Umum';
     })
     .sort((a, b) => a.name.localeCompare(b.name, 'id'));
+
+  // Tabel Riwayat Mutasi: ikut filter jenis item, urut terbaru, dibatasi agar tabel tidak
+  // membengkak (data mutasi terus bertambah dan tidak pernah dihapus per baris)
+  const visibleMovements = movements
+    .filter(mov => movementFilter === 'all'
+      || (movementFilter === 'product') === mov.type.includes('barang_jadi'))
+    .slice(0, MOVEMENT_LIMIT);
 
   // Tabel Stok Barang Jadi: ikut filter divisi, urut nama lalu varian
   const visibleProducts = products
@@ -2523,46 +2535,84 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
           </div>}
 
           {historyView === 'movements' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-xs">
-            <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
                 <h3 className="font-bold text-sm text-gray-800 font-sans">Riwayat Mutasi Stok</h3>
-                <p className="text-xs text-gray-400">Log audit real-time sirkulasi bahan dan barang jadi</p>
+                <p className="text-xs text-gray-400">
+                  Log audit real-time sirkulasi bahan dan barang jadi · urut terbaru
+                  {movements.length > MOVEMENT_LIMIT && <span> · {MOVEMENT_LIMIT} terbaru dari {movements.length} mutasi</span>}
+                </p>
               </div>
-              <History className="w-4.5 h-4.5 text-gray-400" />
+
+              {/* Mutasi tidak punya divisi, jadi filternya per jenis item */}
+              <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200 text-[10px] font-black w-fit shrink-0">
+                {([['all', 'Semua'], ['material', 'Bahan Baku'], ['product', 'Barang Jadi']] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    onClick={() => setMovementFilter(value)}
+                    className={`px-2.5 py-1 rounded-md uppercase transition-all cursor-pointer ${
+                      movementFilter === value ? 'bg-white text-evergreen shadow-xs' : 'text-gray-500'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-              {movements.slice(0, 30).map((mov) => {
-                const isIncoming = mov.type.includes('masuk');
-                const isProduct = mov.type.includes('barang_jadi');
-                const timeString = new Date(mov.created_at).toLocaleDateString('id-ID', { hour: '2-digit', minute: '2-digit' });
-
-                return (
-                  <div key={mov.id} className="flex justify-between items-center text-xs p-3 bg-gray-50 rounded-lg border border-gray-100">
-                    <div className="space-y-0.5">
-                      <p className="font-bold text-gray-800 font-sans">{mov.item_name}</p>
-                      <p className="text-[10px] text-gray-400">Ref: {mov.reference} | {timeString}</p>
-                    </div>
-
-                    <div className="text-right flex items-center gap-1.5 font-mono font-bold text-[11px]">
-                      {isIncoming ? (
-                        <span className="text-emerald-700 flex items-center">
-                          <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
-                          +{mov.amount}
-                        </span>
-                      ) : (
-                        <span className="text-rose-700 flex items-center">
-                          <ArrowDownLeft className="w-3.5 h-3.5 shrink-0" />
-                          -{mov.amount}
-                        </span>
-                      )}
-                      <span className="text-[9px] font-normal text-gray-400 uppercase">
-                        {isProduct ? 'Unit' : 'Bahan'}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
+            {/* Satu tabel, bentuknya sama dengan Stok Bahan Baku & Stok Barang Jadi */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left bg-evergreen text-white font-bold uppercase tracking-wider text-[10px]">
+                    <th className="p-2 w-10 text-center">No</th>
+                    <th className="p-2 w-36">Waktu</th>
+                    <th className="p-2">Nama Item</th>
+                    <th className="p-2 w-28">Jenis</th>
+                    <th className="p-2 w-24 text-right">Jumlah</th>
+                    <th className="p-2">Referensi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleMovements.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="p-6 text-center text-gray-400 italic">
+                        {movements.length === 0 ? 'Belum ada mutasi stok tercatat.' : `Tidak ada mutasi untuk jenis ${movementFilter === 'material' ? 'bahan baku' : 'barang jadi'}.`}
+                      </td>
+                    </tr>
+                  ) : (
+                    visibleMovements.map((mov, index) => {
+                      const isIncoming = mov.type.includes('masuk');
+                      const isProduct = mov.type.includes('barang_jadi');
+                      return (
+                        <tr key={mov.id} className="border-b border-emerald-200 hover:bg-emerald-50/20">
+                          <td className="p-2 text-center text-gray-400">{index + 1}</td>
+                          <td className="p-2 font-mono text-gray-500 whitespace-nowrap">
+                            {new Date(mov.created_at).toLocaleString('id-ID', {
+                              day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+                            })}
+                          </td>
+                          <td className="p-2 font-semibold text-gray-700">{mov.item_name}</td>
+                          <td className="p-2">
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
+                              isProduct ? 'bg-sky-100 text-sky-800' : 'bg-emerald-100 text-emerald-800'
+                            }`}>
+                              {isProduct ? 'Barang Jadi' : 'Bahan Baku'}
+                            </span>
+                          </td>
+                          <td className={`p-2 text-right font-mono font-bold whitespace-nowrap ${isIncoming ? 'text-[var(--color-evergreen)]' : 'text-rose-700'}`}>
+                            <span className="inline-flex items-center gap-0.5">
+                              {isIncoming ? <ArrowUpRight className="w-3 h-3 shrink-0" /> : <ArrowDownLeft className="w-3 h-3 shrink-0" />}
+                              {isIncoming ? '+' : '-'}{mov.amount}
+                            </span>
+                          </td>
+                          <td className="p-2 text-gray-500">{mov.reference}</td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>}
         </div>
