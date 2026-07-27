@@ -187,22 +187,31 @@ export const MarketplaceSalesModule: React.FC = () => {
         dataStore.adjustProductStock(linkedProductId, -row.qty, `Terjual - ${marketplaceRef} ${orderNumber.trim() || editingItemId}`);
       }
 
+      // No pesanan, tanggal, marketplace, dan admin bersifat per-PESANAN, bukan per-barang.
+      // Kalau hanya baris yang diedit yang diubah, 1 pesanan bisa punya 2 admin/tanggal berbeda
+      // (admin "terbagi"). Jadi field pesanan disamakan ke semua barang di pesanan yang sama.
+      const orderFields = {
+        date: inputDate,
+        order_number: orderNumber.trim() || oldItem?.order_number || '',
+        marketplace_ref: finalMarketplaceRef,
+        admin_staff: staffName,
+      };
       const updated = updatedItemSales.map(item => {
         if (item.id === editingItemId) {
           return {
             ...item,
+            ...orderFields,
             product_id: linkedProductId,
-            date: inputDate,
-            order_number: orderNumber.trim() || item.order_number,
-            marketplace_ref: finalMarketplaceRef,
             description: finalDescription,
             qty: row.qty,
             price: row.price,
             subtotal: calculatedSubtotal,
             admin_fee: rowFee,
             total: finalTotal,
-            admin_staff: staffName
           };
+        }
+        if (oldItem && item.order_number === oldItem.order_number) {
+          return { ...item, ...orderFields };
         }
         return item;
       });

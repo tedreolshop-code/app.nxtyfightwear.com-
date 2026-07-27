@@ -925,6 +925,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                       prod.name.toLowerCase().includes(settingsSearchQuery.toLowerCase()) ||
                       prod.variant.toLowerCase().includes(settingsSearchQuery.toLowerCase())
                     )
+                    .sort((a, b) => a.name.localeCompare(b.name, 'id') || a.variant.localeCompare(b.variant, 'id'))
                     .map(prod => (
                       <tr key={prod.id} className="border-b border-emerald-200 hover:bg-emerald-50/20">
                         <td className="p-2 font-semibold text-gray-700">{prod.name} <span className="text-gray-400 font-normal">({prod.variant})</span></td>
@@ -2327,7 +2328,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {rawMaterials.map((mat) => {
+              {[...rawMaterials].sort((a, b) => a.name.localeCompare(b.name, 'id')).map((mat) => {
                 const isCritical = mat.current_stock <= mat.stock_minimum;
                 return (
                   <div
@@ -2362,7 +2363,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {products.map((p) => {
+              {[...products].sort((a, b) => a.name.localeCompare(b.name, 'id') || a.variant.localeCompare(b.variant, 'id')).map((p) => {
                 const isCritical = p.stock <= 15;
                 return (
                   <div

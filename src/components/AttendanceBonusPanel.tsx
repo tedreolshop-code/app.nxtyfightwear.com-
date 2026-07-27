@@ -145,6 +145,15 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
     [employees, month, payouts]
   );
 
+  // Rekap bonus BERJALAN (bulan ini) — selalu tampil, tanpa perlu ganti pilihan bulan.
+  // Angkanya posisi sementara: hari ini & sisa bulan belum dinilai.
+  const running = useMemo(() => {
+    const rows = employees.map(emp => dataStore.evaluateAttendanceBonus(emp.id, currentMonth));
+    const aman = rows.filter(r => r.status === 'aman');
+    return { amanCount: aman.length, total: aman.reduce((sum, r) => sum + r.amount, 0), employeeCount: rows.length };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employees, currentMonth, payouts]);
+
   const alreadyIssued = payouts.some(p => p.month === month);
   const isFutureOrCurrent = month >= currentMonth;
   const totalCair = evaluations.filter(e => e.result.status === 'aman').reduce((sum, e) => sum + e.result.amount, 0);
@@ -209,7 +218,7 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
                 onChange={e => setMonth(e.target.value)}
                 className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-semibold text-gray-700 focus:outline-none focus:ring-1 focus:ring-evergreen"
               >
-                {monthOptions.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
+                {monthOptions.map(m => <option key={m} value={m}>{monthLabel(m)}{m === currentMonth ? ' (Berjalan)' : ''}</option>)}
               </select>
             </label>
             <button
@@ -226,6 +235,19 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
             </button>
           </div>
         </div>
+
+        <button
+          onClick={() => setMonth(currentMonth)}
+          className="w-full flex flex-wrap items-center justify-between gap-2 text-left bg-emerald-50/60 border border-emerald-100 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-emerald-50"
+        >
+          <span className="text-[11px] text-emerald-800">
+            <b className="uppercase tracking-wide">Bonus berjalan {monthLabel(currentMonth)}</b>
+            <span className="block text-emerald-600 mt-0.5">
+              {running.amanCount} dari {running.employeeCount} karyawan masih aman · posisi sementara s/d kemarin
+            </span>
+          </span>
+          <span className="font-mono font-black text-emerald-800 text-lg">{formatIDR(running.total)}</span>
+        </button>
 
         {isFutureOrCurrent && (
           <div className="flex items-start gap-2 text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
