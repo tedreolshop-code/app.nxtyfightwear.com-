@@ -44,3 +44,29 @@ test('Riwayat Mutasi tampil sebagai tabel dan bisa difilter per jenis item', asy
   await page.getByRole('button', { name: 'Barang Jadi', exact: true }).click();
   await expect(rows).toHaveCount(2);
 });
+
+test('Pengaturan Alur bisa difilter per divisi', async ({ page }) => {
+  await isolateAsOwner(page);
+  await page.goto('/');
+  await page.locator('#nav-tab-produksi').click();
+  await page.getByRole('button', { name: 'Pengaturan Alur' }).click();
+
+  const rows = page.getByRole('table').locator('tbody tr');
+  const semua = await rows.count();
+  expect(semua).toBeGreaterThan(1);
+
+  await page.getByRole('button', { name: 'Eva Foam', exact: true }).click();
+  const eva = await rows.count();
+  await expect(rows.first().locator('td').nth(1)).toContainText('Eva Foam');
+
+  await page.getByRole('button', { name: 'Konveksi', exact: true }).click();
+  const konveksi = await rows.count();
+  await expect(rows.first().locator('td').nth(1)).toContainText('Konveksi');
+
+  // Kedua divisi berjumlah sama dengan daftar penuh (produk selalu punya satu divisi)
+  expect(eva + konveksi).toBe(semua);
+
+  // Pencarian dan filter divisi bekerja bersamaan
+  await page.getByPlaceholder('Cari produk...').fill('zzz-tidak-ada');
+  await expect(page.getByText('Tidak ada produk yang cocok')).toBeVisible();
+});

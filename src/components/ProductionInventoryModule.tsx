@@ -42,6 +42,10 @@ interface ProductionInventoryModuleProps {
 
 type ProductionDepartmentId = ProductionJob['department_id'];
 
+type DivisionFilter = 'all' | 'Eva Foam' | 'Konveksi';
+const departmentIdOf = (division: Exclude<DivisionFilter, 'all'>) =>
+  division === 'Eva Foam' ? 'dept-eva-foam' : 'dept-konveksi';
+
 // Baris mutasi terbaru yang ditampilkan di tabel Riwayat Mutasi
 const MOVEMENT_LIMIT = 100;
 
@@ -72,7 +76,9 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
   const [manualStep, setManualStep] = useState<1 | 2 | 3>(1);
   // Filter divisi untuk tabel Stok Bahan Baku dan Stok Barang Jadi di Riwayat & Stok.
   // Khusus bahan baku, yang berdivisi Umum selalu ikut tampil karena dipakai keduanya.
-  const [historyDivFilter, setHistoryDivFilter] = useState<'all' | 'Eva Foam' | 'Konveksi'>('all');
+  const [historyDivFilter, setHistoryDivFilter] = useState<DivisionFilter>('all');
+  // Filter divisi tabel Pengaturan Alur (terpisah dari Riwayat & Stok)
+  const [stageDivFilter, setStageDivFilter] = useState<DivisionFilter>('all');
   // Filter jenis item tabel Riwayat Mutasi
   const [movementFilter, setMovementFilter] = useState<'all' | 'material' | 'product'>('all');
 
@@ -265,19 +271,18 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
 
   // Tabel Stok Barang Jadi: ikut filter divisi, urut nama lalu varian
   const visibleProducts = products
-    .filter(prod => historyDivFilter === 'all'
-      || prod.department_id === (historyDivFilter === 'Eva Foam' ? 'dept-eva-foam' : 'dept-konveksi'))
+    .filter(prod => historyDivFilter === 'all' || prod.department_id === departmentIdOf(historyDivFilter))
     .sort((a, b) => a.name.localeCompare(b.name, 'id') || a.variant.localeCompare(b.variant, 'id'));
 
-  // Dipakai tabel Stok Bahan Baku dan Stok Barang Jadi
-  const divisionFilterButtons = (
+  // Dipakai tabel Stok Bahan Baku, Stok Barang Jadi, dan Pengaturan Alur
+  const renderDivisionFilter = (active: DivisionFilter, onChange: (value: DivisionFilter) => void) => (
     <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200 text-[10px] font-black w-fit shrink-0">
       {([['all', 'Semua Divisi'], ['Eva Foam', 'Eva Foam'], ['Konveksi', 'Konveksi']] as const).map(([value, label]) => (
         <button
           key={value}
-          onClick={() => setHistoryDivFilter(value)}
+          onClick={() => onChange(value)}
           className={`px-2.5 py-1 rounded-md uppercase transition-all cursor-pointer ${
-            historyDivFilter === value ? 'bg-white text-evergreen shadow-xs' : 'text-gray-500'
+            active === value ? 'bg-white text-evergreen shadow-xs' : 'text-gray-500'
           }`}
         >
           {label}
@@ -285,6 +290,15 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
       ))}
     </div>
   );
+
+  // Produk yang tampil di Pengaturan Alur: ikut pencarian dan filter divisi, urut nama lalu varian
+  const stageSettingProducts = products
+    .filter(prod =>
+      (prod.name.toLowerCase().includes(settingsSearchQuery.toLowerCase()) ||
+        prod.variant.toLowerCase().includes(settingsSearchQuery.toLowerCase())) &&
+      (stageDivFilter === 'all' || prod.department_id === departmentIdOf(stageDivFilter))
+    )
+    .sort((a, b) => a.name.localeCompare(b.name, 'id') || a.variant.localeCompare(b.variant, 'id'));
 
   const manualFilteredMaterials = (manualDepartmentId
     ? rawMaterials.filter(material => !material.department_id || material.department_id === manualDepartmentId)
@@ -946,15 +960,18 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
           <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
             <h2 className="text-sm font-bold text-gray-800 mb-1">Tahapan Produksi per Produk</h2>
             <p className="text-xs text-gray-400 mb-4">Atur urutan tahapan kerja untuk tiap barang jadi. Produk tanpa alur khusus otomatis memakai alur bawaan divisinya.</p>
-            <div className="relative mb-3 max-w-xs">
-              <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-gray-400" />
-              <input
-                type="text"
-                value={settingsSearchQuery}
-                onChange={(e) => setSettingsSearchQuery(e.target.value)}
-                placeholder="Cari produk..."
-                className="w-full bg-gray-50 border border-gray-200 rounded pl-9 pr-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-evergreen"
-              />
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+              <div className="relative w-full sm:max-w-xs">
+                <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-gray-400" />
+                <input
+                  type="text"
+                  value={settingsSearchQuery}
+                  onChange={(e) => setSettingsSearchQuery(e.target.value)}
+                  placeholder="Cari produk..."
+                  className="w-full bg-gray-50 border border-gray-200 rounded pl-9 pr-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-evergreen"
+                />
+              </div>
+              {renderDivisionFilter(stageDivFilter, setStageDivFilter)}
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
@@ -967,12 +984,14 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                   </tr>
                 </thead>
                 <tbody>
-                  {products
-                    .filter(prod =>
-                      prod.name.toLowerCase().includes(settingsSearchQuery.toLowerCase()) ||
-                      prod.variant.toLowerCase().includes(settingsSearchQuery.toLowerCase())
-                    )
-                    .sort((a, b) => a.name.localeCompare(b.name, 'id') || a.variant.localeCompare(b.variant, 'id'))
+                  {stageSettingProducts.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="p-6 text-center text-gray-400 italic">
+                        {products.length === 0 ? 'Belum ada barang jadi terdaftar.' : 'Tidak ada produk yang cocok dengan pencarian / filter divisi.'}
+                      </td>
+                    </tr>
+                  )}
+                  {stageSettingProducts
                     .map(prod => (
                       <tr key={prod.id} className="border-b border-emerald-200 hover:bg-emerald-50/20">
                         <td className="p-2 font-semibold text-gray-700">{prod.name} <span className="text-gray-400 font-normal">({prod.variant})</span></td>
@@ -2378,7 +2397,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                 </p>
               </div>
 
-              {divisionFilterButtons}
+              {renderDivisionFilter(historyDivFilter, setHistoryDivFilter)}
             </div>
 
             {/* Satu tabel urut abjad; divisi jadi kolom ("Umum" = dipakai kedua divisi) */}
@@ -2454,7 +2473,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                 </p>
               </div>
 
-              {divisionFilterButtons}
+              {renderDivisionFilter(historyDivFilter, setHistoryDivFilter)}
             </div>
 
             {/* Satu tabel urut nama lalu varian; ambang kritis 15 unit sama seperti sebelumnya */}
