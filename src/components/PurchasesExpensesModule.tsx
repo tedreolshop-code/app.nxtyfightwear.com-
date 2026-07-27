@@ -977,7 +977,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
           {/* EXPENSE MODAL */}
           {isExpenseModalOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => { setIsExpenseModalOpen(false); handleCancelEditExpense(); }}>
-              <div className="bg-white rounded-2xl p-6 w-full max-w-xl shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="bg-white rounded-2xl p-6 w-full max-w-xl max-h-[94dvh] overflow-y-auto overscroll-contain shadow-2xl" onClick={(e) => e.stopPropagation()}>
                 <div className="border-b border-emerald-800/10 pb-3 flex items-center justify-between mb-4">
                   <h3 className="font-bold text-lg text-emerald-950">
                     {editingExpenseId ? 'Edit Catatan Pengeluaran' : 'Catat Kas Keluar'}

@@ -877,7 +877,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
 
       {showAdjustModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-gray-200" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl max-w-md w-full max-h-[92dvh] overflow-y-auto overscroll-contain p-6 shadow-2xl border border-gray-200" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center border-b border-gray-100 pb-3 mb-4">
               <h3 className="text-sm font-bold text-emerald-950 flex items-center gap-1.5">
                 <Wrench className="w-4 h-4 text-warning-orange" />

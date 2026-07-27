@@ -1719,7 +1719,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
             </div>
 
             {/* Modal Body */}
-            <div className="flex-1 overflow-y-auto overscroll-contain p-6 grid grid-cols-1 md:grid-cols-12 gap-6">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 grid grid-cols-1 md:grid-cols-12 gap-6">
               
               {/* LEFT COLUMN: Production Details & Progressive Stepper */}
               <div className={`${isEmployee ? 'md:col-span-12' : 'md:col-span-7'} space-y-6`}>

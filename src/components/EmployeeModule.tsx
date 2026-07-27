@@ -1146,7 +1146,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
             </div>
 
             {/* Modal Scrollable Content Container */}
-            <div className="flex-1 overflow-y-auto overscroll-contain p-6 space-y-6">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 space-y-6">
               
               {/* TAB 1: PROFILE DETAILS */}
               {activeModalTab === 'profile' && (
