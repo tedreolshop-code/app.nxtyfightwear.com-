@@ -206,6 +206,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
           movements.unshift({
             id: Math.random().toString(36).substring(2, 9),
             type: 'bahan_masuk',
+            department_id: currentMaterials.find(m => m.id === item.material_id)?.department_id,
             item_id: item.material_id,
             item_name: item.description,
             amount: item.qty,

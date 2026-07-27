@@ -138,7 +138,7 @@ export const ProductionHandoffPanel: React.FC<Props> = ({ jobs, currentEmployee,
         const products = dataStore.getProducts().map(product => product.id === job.product_id ? { ...product, stock: product.stock + handoff.qty_sent } : product);
         dataStore.setProducts(products);
         const movements = dataStore.getStockMovements();
-        movements.unshift({ id: `mov-${Math.random().toString(36).slice(2, 9)}`, type: 'barang_jadi_masuk', item_id: job.product_id, item_name: job.product_name, amount: handoff.qty_sent, reference: `Serah-terima final ${handoff.order_number || job.id}`, created_at: wibNowISO() });
+        movements.unshift({ id: `mov-${Math.random().toString(36).slice(2, 9)}`, type: 'barang_jadi_masuk', department_id: job.department_id, item_id: job.product_id, item_name: job.product_name, amount: handoff.qty_sent, reference: `Serah-terima final ${handoff.order_number || job.id}`, created_at: wibNowISO() });
         dataStore.setStockMovements(movements);
       }
     }

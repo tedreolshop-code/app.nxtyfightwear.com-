@@ -570,7 +570,18 @@ class DataStore {
   getMarketplaceSales = (): MarketplaceSale[] => this.get('marketplace_sales', INITIAL_MARKETPLACE_SALES);
   setMarketplaceSales = (data: MarketplaceSale[]) => this.set('marketplace_sales', data);
 
-  getMarketplaceItemSales = (): MarketplaceItemSale[] => this.get('marketplace_item_sales', INITIAL_MARKETPLACE_ITEM_SALES);
+  getMarketplaceItemSales = (): MarketplaceItemSale[] => {
+    const sales = this.get('marketplace_item_sales', INITIAL_MARKETPLACE_ITEM_SALES);
+    // Migrasi: baris lama belum punya divisi. Diisi dari produk yang ditautkan, karena
+    // itulah sumber kebenarannya. Baris deskripsi bebas (tanpa product_id) dibiarkan
+    // kosong = belum berdivisi, dan bisa dipilih manual lewat form.
+    const products = this.getProducts();
+    const migrated = sales.map(sale => (sale.department_id || !sale.product_id)
+      ? sale
+      : { ...sale, department_id: products.find(p => p.id === sale.product_id)?.department_id });
+    if (migrated.some((sale, i) => sale !== sales[i])) this.set('marketplace_item_sales', migrated);
+    return migrated;
+  };
   setMarketplaceItemSales = (data: MarketplaceItemSale[]) => this.set('marketplace_item_sales', data);
 
   getPurchases = (): Purchase[] => this.get('purchases', INITIAL_PURCHASES);
@@ -744,6 +755,7 @@ class DataStore {
       movements.unshift({
         id: uuid(),
         type: 'bahan_keluar',
+        department_id: mat.department_id,
         item_id: mat.id,
         item_name: mat.name,
         amount: used.qty,
@@ -803,7 +815,7 @@ class DataStore {
       const used = (job.materials_planned || []).find(item => item.material_id === mat.id);
       if (!used) return mat;
       movements.unshift({
-        id: uuid(), type: 'bahan_masuk', item_id: mat.id, item_name: mat.name,
+        id: uuid(), type: 'bahan_masuk', department_id: mat.department_id, item_id: mat.id, item_name: mat.name,
         amount: used.qty, reference: ref, created_at: wibNowISO()
       });
       return { ...mat, current_stock: mat.current_stock + used.qty };
@@ -855,6 +867,7 @@ class DataStore {
       movements.unshift({
         id: uuid(),
         type: 'barang_jadi_masuk',
+        department_id: product.department_id,
         item_id: product.id,
         item_name: product.name,
         amount: output.good_qty,
@@ -936,6 +949,7 @@ class DataStore {
         stockMovements.push({
           id: uuid(),
           type: 'bahan_keluar',
+          department_id: mat.department_id,
           item_id: mat.id,
           item_name: mat.name,
           amount: used.qty,
@@ -969,6 +983,7 @@ class DataStore {
         stockMovements.push({
           id: uuid(),
           type: 'barang_jadi_masuk',
+          department_id: p.department_id,
           item_id: p.id,
           item_name: p.name,
           amount: qty,
@@ -1089,6 +1104,7 @@ class DataStore {
       movements.unshift({
         id: uuid(),
         type: 'bahan_keluar',
+        department_id: mat.department_id,
         item_id: mat.id,
         item_name: mat.name,
         amount: used,
@@ -1128,6 +1144,7 @@ class DataStore {
     movements.unshift({
       id: uuid(),
       type: qtyChange < 0 ? 'barang_jadi_keluar' : 'barang_jadi_masuk',
+      department_id: product.department_id, // snapshot: divisi produk bisa berubah nanti
       item_id: product.id,
       item_name: product.name,
       amount: Math.abs(qtyChange),
@@ -1213,6 +1230,7 @@ class DataStore {
         movements.push({
           id: uuid(),
           type: 'barang_jadi_masuk',
+          department_id: p.department_id,
           item_id: p.id,
           item_name: p.name,
           amount: ret.qty,

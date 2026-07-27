@@ -599,6 +599,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
       currentMovements.unshift({
         id: Math.random().toString(36).substring(2, 9),
         type,
+        department_id: prod.department_id,
         item_id: prod.id,
         item_name: prod.name,
         amount: adjustQty,
@@ -625,6 +626,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
       currentMovements.unshift({
         id: Math.random().toString(36).substring(2, 9),
         type,
+        department_id: mat.department_id,
         item_id: mat.id,
         item_name: mat.name,
         amount: adjustQty,
@@ -703,6 +705,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
       movements.unshift({
         id: Math.random().toString(36).substring(2, 9),
         type: 'barang_jadi_masuk',
+        department_id: job.department_id,
         item_id: job.product_id,
         item_name: job.product_name,
         amount: job.qty,
@@ -821,6 +824,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
       movements.unshift({
         id: Math.random().toString(36).substring(2, 9),
         type: 'barang_jadi_keluar',
+        department_id: job.department_id,
         item_id: job.product_id,
         item_name: job.product_name,
         amount: job.qty,

@@ -69,17 +69,30 @@ export interface RawMaterial {
   current_stock: number;
 }
 
+export const DIVISIONS = [
+  { id: 'dept-eva-foam', label: 'Eva Foam' },
+  { id: 'dept-konveksi', label: 'Konveksi' },
+] as const;
+
+export type DivisionId = typeof DIVISIONS[number]['id'];
+
+/**
+ * Label divisi sebuah transaksi/barang. department_id kosong berarti tidak dimiliki
+ * satu divisi: untuk bahan baku artinya dipakai keduanya ("Umum"), untuk pengeluaran
+ * artinya biaya bersama ("Bersama") yang pembagiannya diurus di laporan.
+ */
+export const divisionLabel = (department_id?: string, sharedLabel = 'Umum'): string =>
+  DIVISIONS.find(d => d.id === department_id)?.label || sharedLabel;
+
 /** Label divisi pemakai bahan baku. Bahan tanpa department_id dipakai kedua divisi. */
-export const materialDivisionLabel = (material?: { department_id?: string }): 'Eva Foam' | 'Konveksi' | 'Umum' => {
-  if (material?.department_id === 'dept-eva-foam') return 'Eva Foam';
-  if (material?.department_id === 'dept-konveksi') return 'Konveksi';
-  return 'Umum';
-};
+export const materialDivisionLabel = (material?: { department_id?: string }): 'Eva Foam' | 'Konveksi' | 'Umum' =>
+  divisionLabel(material?.department_id) as 'Eva Foam' | 'Konveksi' | 'Umum';
 
 export type MovementType = 'bahan_masuk' | 'bahan_keluar' | 'barang_jadi_masuk' | 'barang_jadi_keluar';
 
 export interface StockMovement {
   id: string;
+  department_id?: string; // Snapshot divisi item saat mutasi terjadi
   type: MovementType;
   item_id: string; // can be raw_material_id or product_id
   item_name: string;
@@ -334,6 +347,7 @@ export type MarketplaceSaleStatus = 'diproses' | 'terkirim' | 'cancel' | 'retur'
 
 export interface MarketplaceItemSale {
   id: string;
+  department_id?: string; // Divisi pemilik omzet; diambil dari produk saat diposting
   product_id?: string; // Link opsional ke produk gudang; jika terisi, stok produk jadi dipotong otomatis
   status?: MarketplaceSaleStatus;
   retur_to_stock?: boolean; // khusus status retur: barang layak jual dikembalikan ke stok?
@@ -361,6 +375,7 @@ export interface PurchaseOrderItem {
 
 export interface Purchase {
   id: string;
+  department_id?: string; // Divisi yang memakai belanja ini; kosong = bersama
   po_number: string; // e.g. "08/TA/14/26"
   supplier: string; // e.g. "Toko anyar"
   date: string; // Tanggal transaksi
@@ -372,6 +387,7 @@ export interface Purchase {
 
 export interface DailyExpense {
   id: string;
+  department_id?: string; // Divisi yang menanggung biaya; kosong = biaya bersama
   date: string;
   category: string;
   description: string;
@@ -524,6 +540,7 @@ export interface ProductionHandoff {
 
 export interface OrderItem {
   id: string;
+  department_id?: string; // Snapshot divisi produk saat order dibuat
   product_id: string;
   product_name: string;
   variant: string;

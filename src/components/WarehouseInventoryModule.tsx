@@ -167,7 +167,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
         current_stock: newInitialStock
       };
       dataStore.setRawMaterials([...current, material]);
-      if (newInitialStock > 0) currentMovements.unshift({ id: `mov-${Math.random().toString(36).slice(2, 9)}`, type: 'bahan_masuk', item_id: id, item_name: material.name, amount: newInitialStock, reference: 'Stok awal master bahan baru', created_at: new Date().toISOString() });
+      if (newInitialStock > 0) currentMovements.unshift({ id: `mov-${Math.random().toString(36).slice(2, 9)}`, type: 'bahan_masuk', department_id: material.department_id, item_id: id, item_name: material.name, amount: newInitialStock, reference: 'Stok awal master bahan baru', created_at: new Date().toISOString() });
     } else {
       const current = dataStore.getProducts();
       if (current.some(item => item.id === id)) return alert(`ID produk "${id}" sudah digunakan.`);
@@ -184,7 +184,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
         stock: newInitialStock
       };
       dataStore.setProducts([...current, product]);
-      if (newInitialStock > 0) currentMovements.unshift({ id: `mov-${Math.random().toString(36).slice(2, 9)}`, type: 'barang_jadi_masuk', item_id: id, item_name: `${product.name} (${product.variant})`, amount: newInitialStock, reference: 'Stok awal master produk baru', created_at: new Date().toISOString() });
+      if (newInitialStock > 0) currentMovements.unshift({ id: `mov-${Math.random().toString(36).slice(2, 9)}`, type: 'barang_jadi_masuk', department_id: product.department_id, item_id: id, item_name: `${product.name} (${product.variant})`, amount: newInitialStock, reference: 'Stok awal master produk baru', created_at: new Date().toISOString() });
     }
     if (newInitialStock > 0) dataStore.setStockMovements(currentMovements);
     setShowCreateModal(false);
@@ -324,6 +324,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
       currentMovements.unshift({
         id: 'mov-' + Math.random().toString(36).substring(2, 9),
         type,
+        department_id: prod.department_id,
         item_id: prod.id,
         item_name: prod.name + ` (${prod.variant})`,
         amount: adjustQty,
@@ -350,6 +351,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
       currentMovements.unshift({
         id: 'mov-' + Math.random().toString(36).substring(2, 9),
         type,
+        department_id: mat.department_id,
         item_id: mat.id,
         item_name: mat.name,
         amount: adjustQty,
