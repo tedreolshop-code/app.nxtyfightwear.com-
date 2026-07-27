@@ -7,6 +7,21 @@ export interface Department {
 
 export type EmployeeRole = 'karyawan' | 'leader';
 
+export type EmploymentStatus = 'training' | 'karyawan';
+
+export const EMPLOYMENT_STATUSES: Array<{ id: EmploymentStatus; label: string }> = [
+  { id: 'training', label: 'Training' },
+  { id: 'karyawan', label: 'Karyawan' },
+];
+
+/** Status kepegawaian efektif; data lama tanpa status dianggap sudah karyawan. */
+export const employmentStatusOf = (employee?: { employment_status?: EmploymentStatus }): EmploymentStatus =>
+  employee?.employment_status || 'karyawan';
+
+/** Bonus kehadiran bulanan hanya hak karyawan, bukan yang masih training. */
+export const isEligibleForAttendanceBonus = (employee?: { employment_status?: EmploymentStatus }): boolean =>
+  employmentStatusOf(employee) === 'karyawan';
+
 export interface Employee {
   id: string;
   username?: string; // Username login (unik, huruf kecil); diisi otomatis dari nama bila kosong
@@ -19,6 +34,8 @@ export interface Employee {
   default_attendance_bonus?: number;
   default_weekly_cash_advance_deduction?: number;
   status_aktif: boolean;
+  // Status kepegawaian. Kosong dianggap 'karyawan' agar data lama tidak berubah haknya.
+  employment_status?: EmploymentStatus;
   phone_number: string;
   pin: string; // Stored securely (can be simulated hash)
   pin_hashed?: boolean; // Flags that PIN is stored as simulated SHA-256

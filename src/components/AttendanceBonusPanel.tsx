@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AttendanceBonusPayout, Employee } from '../types';
+import { AttendanceBonusPayout, Employee, isEligibleForAttendanceBonus } from '../types';
 import { dataStore, wibNowISO, wibTodayStr } from '../dataStore';
 import { Award, CalendarCheck2, CheckCircle2, XCircle, Gift, History, AlertTriangle } from 'lucide-react';
 
@@ -56,7 +56,11 @@ export const AttendanceBonusBalanceCard: React.FC<{ employee: Employee }> = ({ e
       ) : (
         <p className="text-xs text-rose-700">
           {result.reasons.join(' · ')}
-          <span className="block text-[11px] text-rose-500 mt-0.5">Kesempatan baru mulai bulan depan.</span>
+          <span className="block text-[11px] text-rose-500 mt-0.5">
+            {isEligibleForAttendanceBonus(employee)
+              ? 'Kesempatan baru mulai bulan depan.'
+              : 'Bonus mulai berlaku setelah status berubah menjadi Karyawan.'}
+          </span>
         </p>
       )}
     </div>
@@ -207,7 +211,7 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
               <CalendarCheck2 className="w-4 h-4 text-[var(--color-evergreen)]" /> Bonus Kehadiran Bulanan
             </h3>
             <p className="text-xs text-gray-400 mt-0.5">
-              Dinilai 100% dari data absensi — gugur bila ada telat, tidak hadir, atau setengah hari (Minggu tidak dihitung). Dibayarkan setiap tanggal 1.
+              Hanya untuk yang berstatus <b>Karyawan</b>; yang masih training tetap dinilai tapi belum berhak cair. Dinilai 100% dari data absensi — gugur bila ada telat, tidak hadir, atau setengah hari (Minggu tidak dihitung). Dibayarkan setiap tanggal 1.
             </p>
           </div>
           <div className="flex items-end gap-2">
@@ -275,7 +279,14 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
                 <tr><td colSpan={7} className="py-8 text-center text-gray-400 italic">Tidak ada karyawan aktif.</td></tr>
               ) : evaluations.map(({ emp, result }) => (
                 <tr key={emp.id} className="hover:bg-gray-50/50">
-                  <td className="py-2.5 px-3 font-bold text-gray-800">{emp.name}</td>
+                  <td className="py-2.5 px-3 font-bold text-gray-800">
+                    {emp.name}
+                    {!isEligibleForAttendanceBonus(emp) && (
+                      <span className="ml-1.5 px-1.5 py-0.5 rounded bg-violet-100 text-violet-800 text-[9px] font-bold uppercase align-middle">
+                        Training
+                      </span>
+                    )}
+                  </td>
                   <td className="py-2.5 px-3 text-center font-mono text-gray-600">{result.presentDays}/{result.workingDays}</td>
                   <td className={`py-2.5 px-3 text-center font-mono ${result.lateMinutesNet > 0 ? 'text-rose-600 font-bold' : 'text-gray-500'}`}>
                     {result.lateMinutesNet > 0 ? `${result.lateMinutesNet} mnt` : '—'}

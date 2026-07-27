@@ -32,8 +32,7 @@ import {
   ,PackingTask
   ,AttendanceAdjustment
   ,CashAdvanceTransaction
-  ,AttendanceBonusPayout
-} from './types';
+  ,AttendanceBonusPayout, isEligibleForAttendanceBonus } from './types';
 import { pushKeyToCloud, pushAttendanceToCloud, clearAttendanceInCloud } from './cloudSync';
 
 // Helper to generate UUIDs
@@ -536,6 +535,9 @@ class DataStore {
 
     const fmtShort = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
     const reasons: string[] = [];
+    // Bonus kehadiran adalah hak karyawan; yang masih training tetap dinilai absensinya
+    // supaya rekapnya terlihat, tapi slipnya terbit sebagai gugur dengan alasan jelas.
+    if (!isEligibleForAttendanceBonus(employee)) reasons.push('Masih berstatus training');
     if (lateMinutesNet > 0) reasons.push(`Telat ${lateMinutesNet} menit`);
     if (absentDates.length > 0) reasons.push(`Tidak hadir ${absentDates.length} hari (${absentDates.slice(0, 3).map(fmtShort).join(', ')}${absentDates.length > 3 ? ', …' : ''})`);
     if (halfDayDates.length > 0) reasons.push(`Setengah hari ${halfDayDates.length}x (${halfDayDates.slice(0, 3).map(fmtShort).join(', ')}${halfDayDates.length > 3 ? ', …' : ''})`);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Employee, Department, PayrollWeekly, CashAdvance, Attendance, UserRole } from '../types';
+import { Employee, Department, PayrollWeekly, CashAdvance, Attendance, UserRole, EmploymentStatus, EMPLOYMENT_STATUSES, employmentStatusOf, isEligibleForAttendanceBonus } from '../types';
 import { dataStore, hashPin, currentWeeklyPayrollPeriod } from '../dataStore';
 import { QRCodeSVG } from 'qrcode.react';
 import { Users, Plus, ShieldCheck, Key, Lock, LogIn, LogOut, Check, Save, DollarSign, X, Calendar, Clock, Printer, Trash2, History, Calculator, QrCode } from 'lucide-react';
@@ -27,6 +27,8 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [filterDeptId, setFilterDeptId] = useState('');
   const [showResigned, setShowResigned] = useState(false);
+  // Dipakai visibleEmployees di bawah, jadi harus dideklarasikan sebelum itu
+  const [filterEmploymentStatus, setFilterEmploymentStatus] = useState<'' | EmploymentStatus>('');
 
   // Warna badge departemen: deterministik dari id agar konsisten antar render/sesi
   const deptBadgePalette = [
@@ -51,6 +53,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
     .filter(emp => {
       if (!showResigned && !emp.status_aktif) return false;
       if (filterDeptId && emp.department_id !== filterDeptId) return false;
+      if (filterEmploymentStatus && employmentStatusOf(emp) !== filterEmploymentStatus) return false;
       const q = searchQuery.trim().toLowerCase();
       if (q && !`${emp.name} ${emp.username || ''}`.toLowerCase().includes(q)) return false;
       return true;
@@ -85,6 +88,8 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
   // Mode edit: id karyawan yang sedang diedit (null = form tambah baru)
   const [editEmpId, setEditEmpId] = useState<string | null>(null);
   const [statusAktif, setStatusAktif] = useState(true);
+  // Status kepegawaian: yang training belum berhak bonus kehadiran
+  const [employmentStatus, setEmploymentStatus] = useState<EmploymentStatus>('karyawan');
 
   const accessRoleOptions: Array<{ value: '' | UserRole; label: string; description: string }> = [
     { value: '', label: 'Karyawan', description: 'Menu kerja pribadi karyawan.' },
@@ -406,6 +411,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
     setAllowedTabs(defaultTabsForAccessRole(''));
     setAccessRole('');
     setStatusAktif(true);
+    setEmploymentStatus('karyawan');
     setEditEmpId(null);
     setShowAddForm(false);
   };
@@ -427,6 +433,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
     setAccessRole(emp.access_role || '');
     setAllowedTabs(emp.allowed_tabs?.length ? emp.allowed_tabs : defaultTabsForAccessRole(emp.access_role || ''));
     setStatusAktif(emp.status_aktif);
+    setEmploymentStatus(employmentStatusOf(emp));
     setShowAddForm(true);
   };
 
@@ -474,6 +481,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
           default_weekly_cash_advance_deduction: defaultWeeklyKasbonDeduction,
           phone_number: phoneNumber,
           status_aktif: statusAktif,
+          employment_status: employmentStatus,
           allowed_tabs: allowedTabs,
           access_role: (accessRole || undefined) as Employee['access_role'],
           ...(pin ? { pin: hashPin(pin), pin_hashed: true } : {})
@@ -494,6 +502,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
         default_attendance_bonus: defaultAttendanceBonus,
         default_weekly_cash_advance_deduction: defaultWeeklyKasbonDeduction,
         status_aktif: true,
+        employment_status: employmentStatus,
         phone_number: phoneNumber,
         pin: hashPin(pin),
         pin_hashed: true,
@@ -757,6 +766,22 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                   </div>
 
                   <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Status Kepegawaian</label>
+                    <select
+                      value={employmentStatus}
+                      onChange={(e) => setEmploymentStatus(e.target.value as EmploymentStatus)}
+                      className="w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-xs text-gray-800 focus:outline-none focus:border-emerald-600"
+                    >
+                      {EMPLOYMENT_STATUSES.map(status => <option key={status.id} value={status.id}>{status.label}</option>)}
+                    </select>
+                    <p className="text-[10px] text-gray-400 mt-1">
+                      {employmentStatus === 'training'
+                        ? 'Selama training, bonus kehadiran tidak cair — slipnya tetap terbit sebagai gugur beralasan.'
+                        : 'Berhak menerima bonus kehadiran bulanan bila absensinya bersih.'}
+                    </p>
+                  </div>
+
+                  <div>
                     <label className="block text-xs font-semibold text-gray-600 mb-1">Akses Sistem (Menu Saat Login)</label>
                     <select
                       value={accessRole}
@@ -955,6 +980,14 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
               <option value="">Semua Departemen</option>
               {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
+            <select
+              value={filterEmploymentStatus}
+              onChange={(e) => setFilterEmploymentStatus(e.target.value as '' | EmploymentStatus)}
+              className="bg-white border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-800 focus:outline-none focus:border-emerald-600 cursor-pointer"
+            >
+              <option value="">Semua Status Kerja</option>
+              {EMPLOYMENT_STATUSES.map(status => <option key={status.id} value={status.id}>{status.label}</option>)}
+            </select>
             <label className="flex items-center gap-1.5 text-[10px] font-bold text-gray-500 cursor-pointer select-none">
               <input
                 type="checkbox"
@@ -974,6 +1007,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                 <th className="p-3">Nama Karyawan</th>
                 <th className="p-3">Departemen</th>
                 <th className="p-3 text-center">Peran / Role</th>
+                <th className="p-3 text-center">Status Kerja</th>
                 <th className="p-3 text-right">Tarif Honor Harian</th>
                 <th className="p-3 text-right">Uang Lembur / Jam</th>
                 <th className="p-3 text-center">PIN Login</th>
@@ -984,7 +1018,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
             <tbody>
               {visibleEmployees.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="p-6 text-center text-xs text-gray-400">
+                  <td colSpan={9} className="p-6 text-center text-xs text-gray-400">
                     Tidak ada karyawan yang cocok dengan pencarian / filter.
                   </td>
                 </tr>
@@ -1018,6 +1052,18 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                         emp.role === 'leader' ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-gray-100 text-gray-600 border-gray-200'
                       }`}>
                         {emp.role}
+                      </span>
+                    </td>
+                    <td className="p-3 text-center">
+                      <span
+                        title={isEligibleForAttendanceBonus(emp) ? 'Berhak bonus kehadiran' : 'Belum berhak bonus kehadiran'}
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                          employmentStatusOf(emp) === 'training'
+                            ? 'bg-violet-100 text-violet-800 border-violet-200'
+                            : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                        }`}
+                      >
+                        {employmentStatusOf(emp) === 'training' ? 'Training' : 'Karyawan'}
                       </span>
                     </td>
                     <td className="p-3 text-right font-mono text-gray-700 font-bold">{formatIDR(emp.rate_harian)}</td>
