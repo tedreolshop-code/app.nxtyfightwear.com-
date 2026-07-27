@@ -59,3 +59,30 @@ test('pengeluaran bisa difilter per divisi, biaya bersama punya ember sendiri', 
   await expect(page.getByText('Listrik pabrik')).toBeVisible();
   await expect(page.getByText('Makan lembur cetak')).toHaveCount(0);
 });
+
+test('penjualan marketplace bisa difilter per divisi', async ({ page }) => {
+  await isolateAsOwner(page);
+  await page.addInitScript((div) => {
+    localStorage.setItem('nxty_marketplace_item_sales', JSON.stringify([
+      { id: 's1', date: '2026-07-20', order_number: 'MP/1', marketplace_ref: 'Shopee', description: 'Matras Eva', qty: 1, price: 100000, subtotal: 100000, admin_fee: 0, total: 100000, admin_staff: 'Admin', department_id: div.EVA },
+      { id: 's2', date: '2026-07-21', order_number: 'MP/2', marketplace_ref: 'Shopee', description: 'Samsak Konveksi', qty: 1, price: 200000, subtotal: 200000, admin_fee: 0, total: 200000, admin_staff: 'Admin', department_id: div.KONVEKSI },
+      { id: 's3', date: '2026-07-22', order_number: 'MP/3', marketplace_ref: 'Shopee', description: 'Barang custom', qty: 1, price: 50000, subtotal: 50000, admin_fee: 0, total: 50000, admin_staff: 'Admin' },
+    ]));
+  }, { EVA, KONVEKSI });
+  await page.goto('/');
+  await page.locator('#nav-tab-penjualan').click();
+
+  // Nama barang juga muncul di kartu ringkasan, jadi cek khusus sel tabelnya
+  const sel = (nama: string) => page.getByRole('cell', { name: nama, exact: true });
+  await expect(sel('Matras Eva')).toBeVisible();
+  await expect(sel('Samsak Konveksi')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Eva Foam', exact: true }).click();
+  await expect(sel('Matras Eva')).toBeVisible();
+  await expect(sel('Samsak Konveksi')).toHaveCount(0);
+
+  // Baris tanpa divisi (deskripsi bebas) punya embernya sendiri, bukan ikut divisi mana pun
+  await page.getByRole('button', { name: 'Belum diisi', exact: true }).click();
+  await expect(sel('Barang custom')).toBeVisible();
+  await expect(sel('Matras Eva')).toHaveCount(0);
+});

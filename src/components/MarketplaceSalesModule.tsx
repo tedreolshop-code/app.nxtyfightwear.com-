@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { MarketplaceSale, MarketplaceItemSale, MarketplaceSaleStatus, Product } from '../types';
+import { MarketplaceSale, MarketplaceItemSale, MarketplaceSaleStatus, Product, divisionLabel, DIVISIONS } from '../types';
+import { DivisionFilter, matchesDivision } from './DivisionFilter';
 import { dataStore, wibNowISO } from '../dataStore';
 import { brandName, brandLegalName } from '../brand';
 import { 
@@ -64,6 +65,7 @@ export const MarketplaceSalesModule: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<'newest' | 'oldest'>('newest');
+  const [divFilter, setDivFilter] = useState('');
 
   // Pop-up ubah status (baris yang sedang diubah + pilihan retur)
   const [statusModalItem, setStatusModalItem] = useState<MarketplaceItemSale | null>(null);
@@ -82,9 +84,10 @@ export const MarketplaceSalesModule: React.FC = () => {
     qty: 1,
     price: 0,
     adminFee: 0,
+    departmentId: '', // hanya dipakai baris tanpa produk (deskripsi bebas)
   });
-  const [saleItemRows, setSaleItemRows] = useState<Array<{ key: string; selectedProductId: string; customDescription: string; qty: number; price: number; adminFee: number }>>([newEmptyItemRow()]);
-  const updateItemRow = (index: number, patch: Partial<{ selectedProductId: string; customDescription: string; qty: number; price: number; adminFee: number }>) => {
+  const [saleItemRows, setSaleItemRows] = useState<Array<{ key: string; selectedProductId: string; customDescription: string; departmentId?: string; qty: number; price: number; adminFee: number }>>([newEmptyItemRow()]);
+  const updateItemRow = (index: number, patch: Partial<{ selectedProductId: string; customDescription: string; departmentId: string; qty: number; price: number; adminFee: number }>) => {
     setSaleItemRows(prev => prev.map((row, i) => i === index ? { ...row, ...patch } : row));
   };
   const addItemRow = () => setSaleItemRows(prev => [...prev, newEmptyItemRow()]);
@@ -202,6 +205,7 @@ export const MarketplaceSalesModule: React.FC = () => {
           // Barang baru yang ditambahkan saat edit ikut status pesanannya
           status: old?.status || oldItems[0]?.status || inputStatus,
           product_id: linkedProductId,
+          department_id: divisionOfRow(row),
           date: inputDate,
           order_number: finalOrderNumber,
           marketplace_ref: finalMarketplaceRef,
@@ -247,6 +251,7 @@ export const MarketplaceSalesModule: React.FC = () => {
         const newDetailedSale: MarketplaceItemSale = {
           id: Math.random().toString(36).substring(2, 11),
           product_id: linkedProductId,
+          department_id: divisionOfRow(row),
           status: inputStatus,
           date: inputDate,
           created_at: wibNowISO(),
@@ -458,6 +463,18 @@ export const MarketplaceSalesModule: React.FC = () => {
   };
 
   // FILTERING LOGIC for Detailed Sales
+  // Divisi omzet mengikuti produk yang ditautkan. Baris deskripsi bebas tidak punya
+  // produk, jadi divisinya dibiarkan kosong dan bisa dipilih manual per baris.
+  const divisionOfRow = (row: { selectedProductId: string; departmentId?: string }) =>
+    (row.selectedProductId && row.selectedProductId !== 'custom'
+      ? products.find(p => p.id === row.selectedProductId)?.department_id
+      : row.departmentId) || undefined;
+
+  const divisionBadgeClass = (departmentId?: string) =>
+    departmentId === 'dept-eva-foam' ? 'bg-emerald-100 text-emerald-800'
+      : departmentId === 'dept-konveksi' ? 'bg-sky-100 text-sky-800'
+      : 'bg-gray-100 text-gray-500';
+
   const filteredItemSales = itemSales.filter(item => {
     // Date filter
     const itemDate = item.date;
@@ -477,7 +494,8 @@ export const MarketplaceSalesModule: React.FC = () => {
       item.admin_staff.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
-    return isWithinDate && isMarketplaceMatch && isStatusMatch && matchesSearch;
+    return isWithinDate && isMarketplaceMatch && isStatusMatch && matchesSearch
+      && matchesDivision(item.department_id, divFilter);
   }).sort((a, b) => {
     // Urut waktu input; data lama tanpa created_at pakai tanggal transaksi
     const ka = a.created_at || a.date;
@@ -897,6 +915,16 @@ export const MarketplaceSalesModule: React.FC = () => {
                                   className="w-full bg-white border border-gray-200 rounded px-3 py-2 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-evergreen"
                                   required
                                 />
+                                <label className="block text-[10px] text-gray-400 font-bold uppercase pt-1">Divisi</label>
+                                <select
+                                  value={row.departmentId || ''}
+                                  onChange={(e) => updateItemRow(idx, { departmentId: e.target.value })}
+                                  className="w-full bg-white border border-gray-200 rounded px-3 py-2 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-evergreen"
+                                >
+                                  <option value="">Belum ditentukan</option>
+                                  {DIVISIONS.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
+                                </select>
+                                <p className="text-[10px] text-gray-400">Barang dari daftar produk divisinya ikut produk; baris custom perlu dipilih di sini.</p>
                               </div>
                             )}
                           </div>
@@ -1030,6 +1058,14 @@ export const MarketplaceSalesModule: React.FC = () => {
                     </select>
                   </div>
 
+                  {/* Divisi Filter — omzet mengikuti divisi produk yang terjual.
+                      Ambil satu baris penuh: 4 tombol tidak muat di satu kolom grid dan
+                      akan meluber menimpa filter sebelahnya sehingga tak bisa diklik. */}
+                  <div className="md:col-span-5">
+                    <label className="block text-[10px] text-gray-400 font-bold mb-1 uppercase">Divisi</label>
+                    <DivisionFilter value={divFilter} onChange={setDivFilter} sharedLabel="Belum diisi" />
+                  </div>
+
                   {/* Status Filter */}
                   <div>
                     <label className="block text-[10px] text-gray-400 font-bold mb-1 uppercase">Status</label>
@@ -1105,6 +1141,7 @@ export const MarketplaceSalesModule: React.FC = () => {
                         <th className="p-3 border-r border-white/30 text-left w-[86px]">Ref</th>
                         <th className="p-3 border-r border-white/30 text-center w-[78px]">Status</th>
                         <th className="p-3 border-r border-white/30 text-left">Deskripsi</th>
+                        <th className="p-3 border-r border-white/30 text-center w-[86px]">Divisi</th>
                         <th className="p-3 border-r border-white/30 text-center w-10">QTY</th>
                         <th className="p-3 border-r border-white/30 text-right w-[82px]">Harga</th>
                         <th className="p-3 border-r border-white/30 text-right w-[92px]">Subtotal</th>
@@ -1116,7 +1153,7 @@ export const MarketplaceSalesModule: React.FC = () => {
                     <tbody className="divide-y divide-emerald-200 font-mono bg-white">
                       {filteredItemSales.length === 0 ? (
                         <tr>
-                          <td colSpan={12} className="p-8 text-center text-xs text-gray-400 italic font-sans">
+                          <td colSpan={13} className="p-8 text-center text-xs text-gray-400 italic font-sans">
                             Tidak ada rincian data penjualan yang sesuai filter.
                           </td>
                         </tr>
@@ -1162,6 +1199,11 @@ export const MarketplaceSalesModule: React.FC = () => {
                               </td>
                               <td className="p-3 text-gray-900 font-bold font-sans truncate border-r border-emerald-300" title={item.description}>
                                 {item.description}
+                              </td>
+                              <td className="p-3 text-center border-r border-emerald-300">
+                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase font-sans ${divisionBadgeClass(item.department_id)}`}>
+                                  {divisionLabel(item.department_id, 'Belum diisi')}
+                                </span>
                               </td>
                               <td className="p-3 text-center font-bold text-gray-950 border-r border-emerald-300">{item.qty}</td>
                               <td className="p-3 text-right text-gray-700 border-r border-emerald-300 font-semibold">{formatIDR(item.price)}</td>

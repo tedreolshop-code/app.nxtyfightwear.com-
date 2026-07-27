@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Product, RawMaterial, StockMovement, ProductionLog, ProductionJob, Employee, RejectedGood, ProductionTaskLog, PackingTask, materialDivisionLabel } from '../types';
+import { Product, RawMaterial, StockMovement, ProductionLog, ProductionJob, Employee, RejectedGood, ProductionTaskLog, PackingTask, materialDivisionLabel, divisionLabel } from '../types';
 import { ProductionHandoffPanel } from './ProductionHandoffPanel';
 import { dataStore, RECIPES, wibNowISO, wibTodayStr, stagesForProduct, DEFAULT_PRODUCTION_STAGES } from '../dataStore';
 import { brandName, brandLegalName } from '../brand';
@@ -42,8 +42,8 @@ interface ProductionInventoryModuleProps {
 
 type ProductionDepartmentId = ProductionJob['department_id'];
 
-type DivisionFilter = 'all' | 'Eva Foam' | 'Konveksi';
-const departmentIdOf = (division: Exclude<DivisionFilter, 'all'>) =>
+type DivisionFilterValue = 'all' | 'Eva Foam' | 'Konveksi';
+const departmentIdOf = (division: Exclude<DivisionFilterValue, 'all'>) =>
   division === 'Eva Foam' ? 'dept-eva-foam' : 'dept-konveksi';
 
 // Baris mutasi terbaru yang ditampilkan di tabel Riwayat Mutasi
@@ -76,11 +76,12 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
   const [manualStep, setManualStep] = useState<1 | 2 | 3>(1);
   // Filter divisi untuk tabel Stok Bahan Baku dan Stok Barang Jadi di Riwayat & Stok.
   // Khusus bahan baku, yang berdivisi Umum selalu ikut tampil karena dipakai keduanya.
-  const [historyDivFilter, setHistoryDivFilter] = useState<DivisionFilter>('all');
+  const [historyDivFilter, setHistoryDivFilter] = useState<DivisionFilterValue>('all');
   // Filter divisi tabel Pengaturan Alur (terpisah dari Riwayat & Stok)
-  const [stageDivFilter, setStageDivFilter] = useState<DivisionFilter>('all');
+  const [stageDivFilter, setStageDivFilter] = useState<DivisionFilterValue>('all');
   // Filter jenis item tabel Riwayat Mutasi
   const [movementFilter, setMovementFilter] = useState<'all' | 'material' | 'product'>('all');
+  const [movementDivFilter, setMovementDivFilter] = useState<DivisionFilterValue>('all');
 
   // Pengaturan Alur Produksi — pindahan dari menu Gudang, atur tahapan kerja per produk barang jadi
   const [stageEditProduct, setStageEditProduct] = useState<Product | null>(null);
@@ -267,8 +268,11 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
   // Tabel Riwayat Mutasi: ikut filter jenis item, urut terbaru, dibatasi agar tabel tidak
   // membengkak (data mutasi terus bertambah dan tidak pernah dihapus per baris)
   const visibleMovements = movements
-    .filter(mov => movementFilter === 'all'
+    .filter(mov => (movementFilter === 'all'
       || (movementFilter === 'product') === mov.type.includes('barang_jadi'))
+      // Mutasi lama belum punya divisi; jangan disembunyikan saat filter divisi aktif
+      && (movementDivFilter === 'all' || !mov.department_id
+        || mov.department_id === departmentIdOf(movementDivFilter)))
     .slice(0, MOVEMENT_LIMIT);
 
   // Packing selesai yang belum ada fotonya, terbaru dulu
@@ -282,7 +286,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
     .sort((a, b) => a.name.localeCompare(b.name, 'id') || a.variant.localeCompare(b.variant, 'id'));
 
   // Dipakai tabel Stok Bahan Baku, Stok Barang Jadi, dan Pengaturan Alur
-  const renderDivisionFilter = (active: DivisionFilter, onChange: (value: DivisionFilter) => void) => (
+  const renderDivisionFilter = (active: DivisionFilterValue, onChange: (value: DivisionFilterValue) => void) => (
     <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200 text-[10px] font-black w-fit shrink-0">
       {([['all', 'Semua Divisi'], ['Eva Foam', 'Eva Foam'], ['Konveksi', 'Konveksi']] as const).map(([value, label]) => (
         <button
@@ -2593,7 +2597,10 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                 </p>
               </div>
 
-              {/* Mutasi tidak punya divisi, jadi filternya per jenis item */}
+              <div className="flex flex-wrap items-center gap-2">
+              {renderDivisionFilter(movementDivFilter, setMovementDivFilter)}
+
+              {/* Filter jenis item; divisi diambil dari snapshot saat mutasi terjadi */}
               <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200 text-[10px] font-black w-fit shrink-0">
                 {([['all', 'Semua'], ['material', 'Bahan Baku'], ['product', 'Barang Jadi']] as const).map(([value, label]) => (
                   <button
@@ -2607,6 +2614,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                   </button>
                 ))}
               </div>
+              </div>
             </div>
 
             {/* Satu tabel, bentuknya sama dengan Stok Bahan Baku & Stok Barang Jadi */}
@@ -2618,6 +2626,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                     <th className="p-2 w-36">Waktu</th>
                     <th className="p-2">Nama Item</th>
                     <th className="p-2 w-28">Jenis</th>
+                    <th className="p-2 w-28">Divisi</th>
                     <th className="p-2 w-24 text-right">Jumlah</th>
                     <th className="p-2">Referensi</th>
                   </tr>
@@ -2625,7 +2634,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                 <tbody>
                   {visibleMovements.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="p-6 text-center text-gray-400 italic">
+                      <td colSpan={7} className="p-6 text-center text-gray-400 italic">
                         {movements.length === 0 ? 'Belum ada mutasi stok tercatat.' : `Tidak ada mutasi untuk jenis ${movementFilter === 'material' ? 'bahan baku' : 'barang jadi'}.`}
                       </td>
                     </tr>
@@ -2647,6 +2656,15 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                               isProduct ? 'bg-sky-100 text-sky-800' : 'bg-emerald-100 text-emerald-800'
                             }`}>
                               {isProduct ? 'Barang Jadi' : 'Bahan Baku'}
+                            </span>
+                          </td>
+                          <td className="p-2">
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
+                              mov.department_id === 'dept-eva-foam' ? 'bg-emerald-100 text-emerald-800'
+                                : mov.department_id === 'dept-konveksi' ? 'bg-sky-100 text-sky-800'
+                                : 'bg-gray-100 text-gray-500'
+                            }`}>
+                              {divisionLabel(mov.department_id, '—')}
                             </span>
                           </td>
                           <td className={`p-2 text-right font-mono font-bold whitespace-nowrap ${isIncoming ? 'text-[var(--color-evergreen)]' : 'text-rose-700'}`}>

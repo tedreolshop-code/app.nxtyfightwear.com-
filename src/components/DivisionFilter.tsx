@@ -18,7 +18,7 @@ export const DivisionFilter: React.FC<{
     ...(sharedLabel ? [[sharedValue, sharedLabel] as [string, string]] : []),
   ];
   return (
-    <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200 text-[10px] font-black w-fit shrink-0">
+    <div className="flex flex-wrap bg-gray-100 p-1 rounded-lg border border-gray-200 text-[10px] font-black w-fit max-w-full shrink-0">
       {options.map(([optionValue, label]) => (
         <button
           key={optionValue || 'all'}

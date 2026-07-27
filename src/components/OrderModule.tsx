@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Order, OrderItem, Product, Employee, orderRemaining, orderPaymentStatus } from '../types';
+import { Order, OrderItem, Product, Employee, orderRemaining, orderPaymentStatus, divisionLabel } from '../types';
+import { DivisionFilter } from './DivisionFilter';
 import { dataStore } from '../dataStore';
 import { ShoppingBag, Plus, User, Phone, CheckCircle2, Trash2, PackageCheck, Truck, Printer, X } from 'lucide-react';
 
@@ -15,6 +16,7 @@ export const OrderModule: React.FC = () => {
   // Filter & pencarian daftar pesanan ('active' = semua kecuali dibatalkan)
   const [filterStatus, setFilterStatus] = useState<'active' | 'all' | Order['status']>('active');
   const [orderSearch, setOrderSearch] = useState('');
+  const [orderDivFilter, setOrderDivFilter] = useState('');
   const [packingEmployeeId, setPackingEmployeeId] = useState('');
   const [shipExpedition, setShipExpedition] = useState('');
   const [shipTracking, setShipTracking] = useState('');
@@ -82,6 +84,7 @@ export const OrderModule: React.FC = () => {
       const newItem: OrderItem = {
         id: Math.random().toString(36).substring(2, 9),
         product_id: prod.id,
+        department_id: prod.department_id, // snapshot: dipakai laporan per divisi
         product_name: prod.name,
         variant: prod.variant,
         qty: currentQty,
@@ -512,6 +515,8 @@ export const OrderModule: React.FC = () => {
     }
     const q = orderSearch.trim().toLowerCase();
     if (q && !`${ord.order_number} ${ord.customer_name} ${ord.customer_phone}`.toLowerCase().includes(q)) return false;
+    // Satu order bisa berisi barang dari dua divisi, jadi cukup salah satu barang cocok
+    if (orderDivFilter && !ord.items.some(item => (item.department_id || '') === orderDivFilter)) return false;
     return true;
   });
 
@@ -877,6 +882,7 @@ export const OrderModule: React.FC = () => {
               placeholder="Cari no. order / pelanggan..."
               className="bg-white border border-gray-200 rounded px-3 py-1.5 text-xs text-gray-800 focus:outline-none focus:border-emerald-600 w-48"
             />
+            <DivisionFilter value={orderDivFilter} onChange={setOrderDivFilter} />
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value as typeof filterStatus)}
@@ -929,8 +935,13 @@ export const OrderModule: React.FC = () => {
                     <td className="p-3">{getSourceBadge(ord)}</td>
                     <td className="p-3 space-y-1">
                       {ord.items.map((item, i) => (
-                        <div key={i} className="bg-gray-100/60 px-2 py-0.5 rounded text-[10px] text-gray-600 border border-gray-100 w-fit">
-                          <span className="font-bold">{item.qty}x</span> {item.product_name} <span className="opacity-75">({item.variant})</span>
+                        <div key={i} className="bg-gray-100/60 px-2 py-0.5 rounded text-[10px] text-gray-600 border border-gray-100 w-fit flex items-center gap-1.5">
+                          <span><span className="font-bold">{item.qty}x</span> {item.product_name} <span className="opacity-75">({item.variant})</span></span>
+                          {item.department_id && (
+                            <span className={`px-1 rounded text-[8px] font-bold uppercase ${
+                              item.department_id === 'dept-eva-foam' ? 'bg-emerald-100 text-emerald-800' : 'bg-sky-100 text-sky-800'
+                            }`}>{divisionLabel(item.department_id)}</span>
+                          )}
                         </div>
                       ))}
                       {ord.notes && (
