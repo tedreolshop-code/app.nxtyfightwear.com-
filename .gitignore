@@ -8,3 +8,5 @@ coverage/
 !.env.example
 .vercel
 graphify-out/
+test-results/
+playwright-report/
