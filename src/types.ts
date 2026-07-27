@@ -69,6 +69,13 @@ export interface RawMaterial {
   current_stock: number;
 }
 
+/** Label divisi pemakai bahan baku. Bahan tanpa department_id dipakai kedua divisi. */
+export const materialDivisionLabel = (material?: { department_id?: string }): 'Eva Foam' | 'Konveksi' | 'Umum' => {
+  if (material?.department_id === 'dept-eva-foam') return 'Eva Foam';
+  if (material?.department_id === 'dept-konveksi') return 'Konveksi';
+  return 'Umum';
+};
+
 export type MovementType = 'bahan_masuk' | 'bahan_keluar' | 'barang_jadi_masuk' | 'barang_jadi_keluar';
 
 export interface StockMovement {

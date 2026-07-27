@@ -186,11 +186,13 @@ const INITIAL_PRODUCTS: Product[] = [
 ];
 
 const INITIAL_RAW_MATERIALS: RawMaterial[] = [
-  { id: 'mat-foam-2cm', name: 'Eva Foam Sheet 2cm Raw', unit: 'Lembar', stock_minimum: 100, current_stock: 250 },
-  { id: 'mat-foam-3cm', name: 'Eva Foam Sheet 3cm Raw', unit: 'Lembar', stock_minimum: 80, current_stock: 35 }, // Below threshold!
-  { id: 'mat-fabric-nylon', name: 'Nylon Fabric Heavy', unit: 'Meter', stock_minimum: 200, current_stock: 450 },
-  { id: 'mat-leather-pu', name: 'Synthetic Leather (PU)', unit: 'Meter', stock_minimum: 150, current_stock: 180 },
-  { id: 'mat-dakron', name: 'Isian Dakron/Busa', unit: 'Kg', stock_minimum: 50, current_stock: 40 }, // Below threshold!
+  // department_id menentukan divisi pemakai bahan. Dibiarkan kosong = bahan Umum,
+  // artinya dipakai kedua divisi dan ikut tampil di daftar Eva Foam maupun Konveksi.
+  { id: 'mat-foam-2cm', name: 'Eva Foam Sheet 2cm Raw', department_id: 'dept-eva-foam', unit: 'Lembar', stock_minimum: 100, current_stock: 250 },
+  { id: 'mat-foam-3cm', name: 'Eva Foam Sheet 3cm Raw', department_id: 'dept-eva-foam', unit: 'Lembar', stock_minimum: 80, current_stock: 35 }, // Below threshold!
+  { id: 'mat-fabric-nylon', name: 'Nylon Fabric Heavy', department_id: 'dept-konveksi', unit: 'Meter', stock_minimum: 200, current_stock: 450 },
+  { id: 'mat-leather-pu', name: 'Synthetic Leather (PU)', department_id: 'dept-konveksi', unit: 'Meter', stock_minimum: 150, current_stock: 180 },
+  { id: 'mat-dakron', name: 'Isian Dakron/Busa', department_id: 'dept-konveksi', unit: 'Kg', stock_minimum: 50, current_stock: 40 }, // Below threshold!
 ];
 
 const INITIAL_CUSTOMERS: Customer[] = [

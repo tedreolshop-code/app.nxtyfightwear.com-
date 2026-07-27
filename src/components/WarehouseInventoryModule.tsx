@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Product, RawMaterial, StockMovement } from '../types';
+import { Product, RawMaterial, StockMovement, materialDivisionLabel } from '../types';
 import { dataStore, stagesForProduct } from '../dataStore';
 import TabButton from './TabButton';
 import {
@@ -109,15 +109,17 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
     }
   };
 
-  // Check if a material is Eva Foam or Konveksi
-  const getMaterialDivision = (materialId: string) => {
-    const material = rawMaterials.find(item => item.id === materialId);
-    if (material?.department_id === 'dept-eva-foam') return 'Eva Foam';
-    if (material?.department_id === 'dept-konveksi') return 'Konveksi';
-    if (materialId.includes('foam')) {
-      return 'Eva Foam';
-    }
-    return 'Konveksi';
+  // Divisi bahan diambil dari department_id yang dipilih saat bahan dibuat.
+  // Bahan tanpa divisi = "Umum" (dipakai kedua divisi) — bukan ditebak dari namanya.
+  const getMaterialDivision = (materialId: string) =>
+    materialDivisionLabel(rawMaterials.find(item => item.id === materialId));
+
+  // Bahan Umum tetap muncul saat filter divisi aktif, karena memang dipakai keduanya
+  const materialMatchesDept = (mat: RawMaterial) => {
+    if (selectedDept === 'all') return true;
+    const div = materialDivisionLabel(mat);
+    if (div === 'Umum') return true;
+    return selectedDept === 'eva' ? div === 'Eva Foam' : div === 'Konveksi';
   };
 
   const makeItemId = (type: 'material' | 'product', name: string) => {
@@ -130,7 +132,12 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
     setNewItemType(type);
     setNewItemId('');
     setNewItemName('');
-    setNewDepartmentId(selectedDept === 'konveksi' ? 'dept-konveksi' : 'dept-eva-foam');
+    // Bahan baku default Umum saat filter "Semua Divisi"; barang jadi wajib punya divisi
+    setNewDepartmentId(
+      selectedDept === 'konveksi' ? 'dept-konveksi'
+        : selectedDept === 'eva' ? 'dept-eva-foam'
+        : type === 'material' ? '' : 'dept-eva-foam'
+    );
     setNewUnit('Kg');
     setNewMinimumStock(0);
     setNewInitialStock(0);
@@ -154,7 +161,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
       const material: RawMaterial = {
         id,
         name: newItemName.trim(),
-        department_id: newDepartmentId,
+        department_id: newDepartmentId || undefined, // kosong = Umum, dipakai kedua divisi
         unit: newUnit.trim() || 'Unit',
         stock_minimum: newMinimumStock,
         current_stock: newInitialStock
@@ -168,7 +175,8 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
       // atur alur khusus lewat menu Produksi > Pengaturan Alur setelah produk dibuat.
       const product: Product = {
         id,
-        department_id: newDepartmentId,
+        // Barang jadi tidak punya opsi Umum: alur produksinya bergantung divisi
+        department_id: newDepartmentId || 'dept-eva-foam',
         name: newItemName.trim(),
         category: newCategory.trim() || 'Umum',
         variant: newVariant.trim() || 'Standar',
@@ -187,7 +195,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
   const openEditMaterial = (mat: RawMaterial) => {
     setEditTarget({ type: 'material', item: mat });
     setEditName(mat.name);
-    setEditDepartmentId(mat.department_id);
+    setEditDepartmentId(mat.department_id || ''); // '' = Umum
     setEditUnit(mat.unit);
     setEditMinimumStock(mat.stock_minimum);
   };
@@ -208,12 +216,12 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
     if (editTarget.type === 'material') {
       if (editMinimumStock < 0) return alert('Batas minimum tidak boleh negatif.');
       dataStore.setRawMaterials(dataStore.getRawMaterials().map(m => m.id === editTarget.item.id
-        ? { ...m, name: editName.trim(), department_id: editDepartmentId, unit: editUnit.trim() || 'Unit', stock_minimum: editMinimumStock }
+        ? { ...m, name: editName.trim(), department_id: editDepartmentId || undefined, unit: editUnit.trim() || 'Unit', stock_minimum: editMinimumStock }
         : m));
     } else {
       if (editPrice < 0) return alert('Harga jual tidak boleh negatif.');
       dataStore.setProducts(dataStore.getProducts().map(p => p.id === editTarget.item.id
-        ? { ...p, name: editName.trim(), department_id: editDepartmentId, category: editCategory.trim() || 'Umum', variant: editVariant.trim() || 'Standar', harga_jual: editPrice }
+        ? { ...p, name: editName.trim(), department_id: editDepartmentId || 'dept-eva-foam', category: editCategory.trim() || 'Umum', variant: editVariant.trim() || 'Standar', harga_jual: editPrice }
         : p));
     }
     setEditTarget(null);
@@ -267,12 +275,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
   // Filter Materials
   const filteredMaterials = rawMaterials.filter(mat => {
     const matchesSearch = mat.name.toLowerCase().includes(searchQuery.toLowerCase());
-    const div = getMaterialDivision(mat.id);
-    const matchesDept = 
-      selectedDept === 'all' || 
-      (selectedDept === 'eva' && div === 'Eva Foam') || 
-      (selectedDept === 'konveksi' && div === 'Konveksi');
-    return matchesSearch && matchesDept;
+    return matchesSearch && materialMatchesDept(mat);
   }).sort((a, b) => a.name.localeCompare(b.name));
 
   // Filter Finished Products
@@ -564,9 +567,14 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
                         <td className="p-3 text-gray-400 border-r border-emerald-100/30 font-semibold">{mat.id}</td>
                         <td className="p-3 font-bold text-gray-800 font-sans border-r border-emerald-100/30">{mat.name}</td>
                         <td className="p-3 text-center border-r border-emerald-100/30">
-                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider font-sans ${
-                            div === 'Eva Foam' ? 'bg-emerald-100 text-emerald-800' : 'bg-sky-100 text-sky-800'
-                          }`}>
+                          <span
+                            title={div === 'Umum' ? 'Dipakai kedua divisi' : `Khusus divisi ${div}`}
+                            className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider font-sans ${
+                              div === 'Eva Foam' ? 'bg-emerald-100 text-emerald-800'
+                                : div === 'Konveksi' ? 'bg-sky-100 text-sky-800'
+                                : 'bg-gray-100 text-gray-600'
+                            }`}
+                          >
                             {div}
                           </span>
                         </td>
@@ -818,7 +826,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
               <div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => { setNewItemType('material'); setNewItemId(''); }} className={`py-2.5 rounded-xl border text-xs font-bold cursor-pointer ${newItemType === 'material' ? 'bg-[var(--color-evergreen)] text-white border-[var(--color-evergreen)]' : 'border-gray-200 text-gray-600'}`}>Bahan Baku</button><button type="button" onClick={() => { setNewItemType('product'); setNewItemId(''); }} className={`py-2.5 rounded-xl border text-xs font-bold cursor-pointer ${newItemType === 'product' ? 'bg-[var(--color-evergreen)] text-white border-[var(--color-evergreen)]' : 'border-gray-200 text-gray-600'}`}>Barang Jadi</button></div>
               <div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Nama Barang</label><input value={newItemName} onChange={e => setNewItemName(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-emerald-600" placeholder={newItemType === 'material' ? 'Contoh: Kain Parasut' : 'Contoh: Body Protector'} required /></div>
               <div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">ID Barang <span className="normal-case font-normal text-gray-400">(opsional, otomatis jika kosong)</span></label><input value={newItemId} onChange={e => setNewItemId(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:border-emerald-600" placeholder={makeItemId(newItemType, newItemName || 'nama-barang')} /></div>
-              <div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Divisi</label><select value={newDepartmentId} onChange={e => setNewDepartmentId(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs bg-white"><option value="dept-eva-foam">Eva Foam</option><option value="dept-konveksi">Konveksi</option></select></div>
+              <div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Divisi</label><select value={newDepartmentId} onChange={e => setNewDepartmentId(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs bg-white"><option value="dept-eva-foam">Eva Foam</option><option value="dept-konveksi">Konveksi</option>{newItemType === 'material' && <option value="">Umum (dipakai kedua divisi)</option>}</select>{newItemType === 'material' && <p className="text-[10px] text-gray-400 mt-1">Pilih divisi pemakai bahan ini. <b>Umum</b> untuk bahan bersama seperti lem, benang, atau plastik packing — stoknya satu dan muncul di kedua divisi.</p>}</div>
               {newItemType === 'material' ? <div className="grid grid-cols-2 gap-3"><div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Satuan</label><input value={newUnit} onChange={e => setNewUnit(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" placeholder="Kg, Meter, Lembar" required /></div><div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Batas Minimum</label><input type="number" min="0" value={newMinimumStock || ''} onChange={e => setNewMinimumStock(Number(e.target.value))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" /></div></div> : <><div className="grid grid-cols-2 gap-3"><div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Kategori</label><input value={newCategory} onChange={e => setNewCategory(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" /></div><div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Varian</label><input value={newVariant} onChange={e => setNewVariant(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" /></div></div><div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Harga Jual</label><input type="number" min="0" value={newPrice || ''} onChange={e => setNewPrice(Number(e.target.value))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" /></div><p className="text-[10px] text-gray-400">Alur tahapan produksi memakai bawaan divisi. Atur alur khusus lewat menu <b>Produksi &gt; Pengaturan Alur</b> setelah barang ini dibuat.</p></>}
               <div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Stok Awal</label><input type="number" min="0" value={newInitialStock || ''} onChange={e => setNewInitialStock(Number(e.target.value))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" /><p className="text-[10px] text-gray-400 mt-1">Jika lebih dari nol, sistem otomatis membuat mutasi stok masuk.</p></div>
               <div className="flex gap-3 pt-2"><button type="button" onClick={() => setShowCreateModal(false)} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-xs font-bold text-gray-600 cursor-pointer">Batal</button><button type="submit" className="flex-1 py-2.5 bg-[var(--color-evergreen)] text-white rounded-xl text-xs font-bold cursor-pointer">Simpan Barang Baru</button></div>
@@ -842,7 +850,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
             </div>
             <form onSubmit={handleSaveEdit} className="space-y-4">
               <div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Nama Barang</label><input value={editName} onChange={e => setEditName(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-emerald-600" required /></div>
-              <div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Divisi</label><select value={editDepartmentId} onChange={e => setEditDepartmentId(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs bg-white"><option value="dept-eva-foam">Eva Foam</option><option value="dept-konveksi">Konveksi</option></select></div>
+              <div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Divisi</label><select value={editDepartmentId} onChange={e => setEditDepartmentId(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs bg-white"><option value="dept-eva-foam">Eva Foam</option><option value="dept-konveksi">Konveksi</option>{editTarget.type === 'material' && <option value="">Umum (dipakai kedua divisi)</option>}</select></div>
               {editTarget.type === 'material' ? (
                 <div className="grid grid-cols-2 gap-3">
                   <div><label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Satuan</label><input value={editUnit} onChange={e => setEditUnit(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" placeholder="Kg, Meter, Lembar" required /></div>
@@ -919,9 +927,13 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
                   {adjustType === 'product' ? (
                     products.map(p => <option key={p.id} value={p.id}>{p.name} ({p.variant}) [Aktif: {p.stock} Unit]</option>)
                   ) : (
-                    rawMaterials.map(m => <option key={m.id} value={m.id}>{m.name} [Aktif: {m.current_stock} {m.unit}]</option>)
+                    // Ikut filter divisi yang aktif supaya daftar bahan tidak campur antar divisi
+                    rawMaterials.filter(materialMatchesDept).map(m => <option key={m.id} value={m.id}>{m.name} [{materialDivisionLabel(m)}] [Aktif: {m.current_stock} {m.unit}]</option>)
                   )}
                 </select>
+                {adjustType === 'material' && selectedDept !== 'all' && (
+                  <p className="text-[10px] text-gray-400 mt-1">Daftar dibatasi divisi <b>{selectedDept === 'eva' ? 'Eva Foam' : 'Konveksi'}</b> (termasuk bahan Umum). Pilih "Semua Divisi" di atas untuk melihat seluruh bahan.</p>
+                )}
               </div>
 
               <div className="grid grid-cols-3 gap-3">

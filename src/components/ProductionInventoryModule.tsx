@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Product, RawMaterial, StockMovement, ProductionLog, ProductionJob, Employee, RejectedGood, ProductionTaskLog, PackingTask } from '../types';
+import { Product, RawMaterial, StockMovement, ProductionLog, ProductionJob, Employee, RejectedGood, ProductionTaskLog, PackingTask, materialDivisionLabel } from '../types';
 import { ProductionHandoffPanel } from './ProductionHandoffPanel';
 import { dataStore, RECIPES, wibNowISO, wibTodayStr, stagesForProduct, DEFAULT_PRODUCTION_STAGES } from '../dataStore';
 import { brandName, brandLegalName } from '../brand';
@@ -2327,33 +2327,60 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
               <p className="text-xs text-gray-400">Monitoring sisa bahan baku di pabrik {brandName()}</p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {[...rawMaterials].sort((a, b) => a.name.localeCompare(b.name, 'id')).map((mat) => {
-                const isCritical = mat.current_stock <= mat.stock_minimum;
-                return (
-                  <div
-                    key={mat.id}
-                    className={`p-3 rounded-lg border text-xs flex justify-between items-center transition-all ${
-                      isCritical ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-100'
-                    }`}
-                  >
-                    <div>
-                      <p className="font-bold text-gray-800 font-sans">{mat.name}</p>
-                      <p className="text-[10px] text-gray-400 mt-0.5">Min: {mat.stock_minimum} {mat.unit}</p>
-                    </div>
-
-                    <div className="text-right">
-                      <span className={`font-mono font-bold text-xs ${isCritical ? 'text-amber-700' : 'text-[var(--color-evergreen)]'}`}>
-                        {mat.current_stock} {mat.unit}
-                      </span>
-                      {isCritical && (
-                        <span className="block text-[8px] font-black text-amber-700 uppercase mt-0.5 tracking-wider">stok kritis!</span>
-                      )}
-                    </div>
+            {/* Dipisah per divisi pemakai bahan; "Umum" = bahan bersama kedua divisi */}
+            {(['Eva Foam', 'Konveksi', 'Umum'] as const).map(division => {
+              const group = rawMaterials
+                .filter(mat => materialDivisionLabel(mat) === division)
+                .sort((a, b) => a.name.localeCompare(b.name, 'id'));
+              if (group.length === 0) return null;
+              return (
+                <div key={division} className="space-y-2">
+                  <div className="flex items-center gap-2 border-b border-gray-100 pb-1.5">
+                    <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${
+                      division === 'Eva Foam' ? 'bg-emerald-100 text-emerald-800'
+                        : division === 'Konveksi' ? 'bg-sky-100 text-sky-800'
+                        : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {division}
+                    </span>
+                    <span className="text-[10px] text-gray-400">
+                      {group.length} jenis{division === 'Umum' ? ' · dipakai kedua divisi' : ''}
+                    </span>
                   </div>
-                );
-              })}
-            </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {group.map((mat) => {
+                      const isCritical = mat.current_stock <= mat.stock_minimum;
+                      return (
+                        <div
+                          key={mat.id}
+                          className={`p-3 rounded-lg border text-xs flex justify-between items-center transition-all ${
+                            isCritical ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-100'
+                          }`}
+                        >
+                          <div>
+                            <p className="font-bold text-gray-800 font-sans">{mat.name}</p>
+                            <p className="text-[10px] text-gray-400 mt-0.5">Min: {mat.stock_minimum} {mat.unit}</p>
+                          </div>
+
+                          <div className="text-right">
+                            <span className={`font-mono font-bold text-xs ${isCritical ? 'text-amber-700' : 'text-[var(--color-evergreen)]'}`}>
+                              {mat.current_stock} {mat.unit}
+                            </span>
+                            {isCritical && (
+                              <span className="block text-[8px] font-black text-amber-700 uppercase mt-0.5 tracking-wider">stok kritis!</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+            {rawMaterials.length === 0 && (
+              <p className="text-xs text-gray-400 italic">Belum ada bahan baku terdaftar.</p>
+            )}
           </div>}
 
           {historyView === 'products' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-xs">
