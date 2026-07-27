@@ -1,15 +1,9 @@
 import { test, expect, Page } from '@playwright/test';
+import { isolateAsOwner } from './isolate';
 
-// Sesi owner disuntik langsung supaya tes tidak bergantung pada UI PIN.
-// Bentuknya harus sama dengan Session di src/App.tsx (nxty_session).
-const seedOwnerSession = (page: Page) =>
-  page.addInitScript(() => {
-    localStorage.setItem('nxty_session', JSON.stringify({
-      role: 'owner',
-      name: 'H. Ari Gunawan',
-      employeeId: 'emp-owner',
-    }));
-  });
+// Sesi owner disuntik langsung supaya tes tidak bergantung pada UI PIN,
+// dan Supabase diblokir supaya tes tidak menyentuh data produksi.
+const seedOwnerSession = isolateAsOwner;
 
 /**
  * Area scroll utama: <div class="flex-1 min-h-0 overflow-y-auto"> di dalam <main>.

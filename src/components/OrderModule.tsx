@@ -239,10 +239,41 @@ export const OrderModule: React.FC = () => {
     loadData();
   };
 
-  // Hapus permanen hanya untuk order yang belum menyentuh stok (pending) atau sudah dibatalkan
+  // Status awal saat order dibuka kembali: pre-order kalau memang ada janji barang siap
+  const reopenStatusFor = (order: Order): Order['status'] => (order.ready_date ? 'preorder' : 'pending');
+
+  /**
+   * Batalkan penyelesaian order: stok gudang yang tadi dipotong dikembalikan,
+   * status kembali ke Pending/Pre-Order sehingga bisa diedit atau dihapus lagi.
+   */
+  const handleReopenOrder = (order: Order) => {
+    if (order.status !== 'completed') return;
+    const itemList = order.items.map(item => `${item.qty}x ${item.product_name} (${item.variant})`).join('\n- ');
+    if (!window.confirm(`Batalkan penyelesaian order ${order.order_number}?\n\nStok gudang akan dikembalikan:\n- ${itemList}\n\nStatus kembali menjadi ${order.ready_date ? 'Pre-Order' : 'Pending'} dan order bisa diedit atau dihapus lagi.`)) return;
+
+    order.items.forEach(item => {
+      dataStore.adjustProductStock(item.product_id, item.qty, `Batal selesai - Order ${order.order_number}`);
+    });
+    dataStore.setOrders(dataStore.getOrders().map(o =>
+      o.id === order.id ? { ...o, status: reopenStatusFor(order) } : o));
+    alert(`Penyelesaian order ${order.order_number} dibatalkan. Stok gudang sudah dikembalikan.`);
+    loadData();
+  };
+
+  /** Aktifkan kembali order yang dibatalkan. Stok tidak tersentuh saat pembatalan, jadi tidak ada koreksi stok. */
+  const handleReactivateOrder = (order: Order) => {
+    if (order.status !== 'cancelled') return;
+    if (!window.confirm(`Aktifkan kembali order ${order.order_number}?\n\nStatus menjadi ${order.ready_date ? 'Pre-Order' : 'Pending'}. Stok gudang baru dipotong saat order diselesaikan.`)) return;
+    dataStore.setOrders(dataStore.getOrders().map(o =>
+      o.id === order.id ? { ...o, status: reopenStatusFor(order) } : o));
+    alert(`Order ${order.order_number} aktif kembali.`);
+    loadData();
+  };
+
+  // Hapus permanen hanya untuk order yang belum menyentuh stok (pending/pre-order) atau sudah dibatalkan
   const handleDeleteOrder = (order: Order) => {
-    if (order.status !== 'pending' && order.status !== 'cancelled') {
-      alert('Hanya order Pending atau Dibatalkan yang boleh dihapus, agar jejak stok tetap utuh.');
+    if (!isEditableStatus(order.status) && order.status !== 'cancelled') {
+      alert('Order yang sudah Selesai tidak bisa langsung dihapus. Klik "Batalkan Penyelesaian" dulu agar stok gudang dikembalikan.');
       return;
     }
     if (!window.confirm(`Hapus PERMANEN order ${order.order_number} (${order.customer_name})?\n\nTindakan ini tidak bisa dibatalkan.`)) return;
@@ -818,6 +849,7 @@ export const OrderModule: React.FC = () => {
           <div>
             <span className="text-xs font-bold text-gray-700 block">Daftar Pesanan</span>
             <span className="text-[10px] text-gray-400 font-mono">Menampilkan {visibleOrders.length} dari {orders.length} orderan</span>
+            <span className="text-[10px] text-gray-400 block">Status diubah lewat tombol di kolom <b>Aksi</b> paling kanan: Selesaikan, Batalkan, atau Batalkan Penyelesaian.</span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded px-2 py-1" title="Kalibrasi offset printer nota (mm). Setelan sama dengan slip gaji.">
@@ -956,9 +988,27 @@ export const OrderModule: React.FC = () => {
                       )}
 
                       {ord.status === 'completed' && (
-                        <span className="text-[10px] text-emerald-600 font-semibold flex items-center justify-center gap-0.5">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-500" /> Selesai Dikirim
-                        </span>
+                        <>
+                          <span className="text-[10px] text-emerald-600 font-semibold flex items-center justify-center gap-0.5">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-500" /> Selesai Dikirim
+                          </span>
+                          <button
+                            onClick={() => handleReopenOrder(ord)}
+                            title="Kembalikan ke Pending/Pre-Order dan pulihkan stok gudang, supaya bisa diedit atau dihapus"
+                            className="bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[10px] font-bold px-2 py-1 rounded block w-full"
+                          >
+                            Batalkan Penyelesaian (Stok Kembali)
+                          </button>
+                        </>
+                      )}
+
+                      {ord.status === 'cancelled' && (
+                        <button
+                          onClick={() => handleReactivateOrder(ord)}
+                          className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-[10px] font-bold px-2 py-1 rounded block w-full"
+                        >
+                          Aktifkan Kembali
+                        </button>
                       )}
 
                       {isEditableStatus(ord.status) && (
