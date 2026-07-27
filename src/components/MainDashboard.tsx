@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { UserRole } from '../types';
+import { UserRole, orderRevenue } from '../types';
 import { dataStore, wibTodayStr } from '../dataStore';
 import {
   ShoppingBag, Hammer, Archive, AlertTriangle, Wallet,
@@ -69,7 +69,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName }) 
 
   // === Hitung dari data nyata ===
   const orders = dataStore.getOrders();
-  const orderAktif = orders.filter(o => o.status === 'pending' || o.status === 'production');
+  const orderAktif = orders.filter(o => o.status === 'pending' || o.status === 'preorder' || o.status === 'production');
   const orderBaru = orders.filter(o => o.status === 'pending');
 
   // Penjualan per channel = detail item marketplace + rekap harian per channel + pesanan langsung
@@ -80,8 +80,9 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName }) 
     itemSales.filter(s => s.date === date && (s.status ?? 'terkirim') !== 'cancel' && (s.status ?? 'terkirim') !== 'retur')
       .forEach(s => { t[channelOf(s.marketplace_ref)] += s.total; });
     dailyRekap.filter(s => s.date === date).forEach(s => { t[channelOf(s.channel)] += s.revenue; });
+    // Ongkir dikeluarkan: itu uang titipan untuk ekspedisi, bukan pendapatan penjualan
     orders.filter(o => o.date === date && o.status !== 'cancelled')
-      .forEach(o => { t[channelOf(o.source === 'online' ? o.marketplace_name : undefined)] += o.total; });
+      .forEach(o => { t[channelOf(o.source === 'online' ? o.marketplace_name : undefined)] += orderRevenue(o); });
     return t;
   };
   const sumChannels = (t: ChannelTotals) => CHANNELS.reduce((sum, c) => sum + t[c.key], 0);

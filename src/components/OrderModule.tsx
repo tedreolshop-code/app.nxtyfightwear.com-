@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Order, OrderItem, Product, Employee } from '../types';
+import { Order, OrderItem, Product, Employee, orderRemaining, orderPaymentStatus } from '../types';
 import { dataStore } from '../dataStore';
 import { ShoppingBag, Plus, User, Phone, CheckCircle2, Trash2, PackageCheck, Truck, Printer, X } from 'lucide-react';
 
@@ -33,6 +33,10 @@ export const OrderModule: React.FC = () => {
   const [currentQty, setCurrentQty] = useState(1);
   const [shippingFee, setShippingFee] = useState(0);
   const [discount, setDiscount] = useState(0);
+  const [dp, setDp] = useState(0);
+  // Pre-order: barang belum ada, dijanjikan siap pada readyDate
+  const [isPreorder, setIsPreorder] = useState(false);
+  const [readyDate, setReadyDate] = useState('');
 
   // Nota yang sedang dicetak (dirender di container .print-only)
   const [printOrder, setPrintOrder] = useState<Order | null>(null);
@@ -105,14 +109,19 @@ export const OrderModule: React.FC = () => {
     setCurrentQty(1);
     setShippingFee(0);
     setDiscount(0);
+    setDp(0);
+    setIsPreorder(false);
+    setReadyDate('');
     setEditOrderId(null);
     setIsModalOpen(false);
   };
 
-  // Edit hanya untuk order pending — setelah selesai, stok gudang sudah terpotong
+  // Edit hanya untuk order yang stok gudangnya belum dipotong (Pending / Pre-Order)
+  const isEditableStatus = (status: Order['status']) => status === 'pending' || status === 'preorder';
+
   const startEditOrder = (order: Order) => {
-    if (order.status !== 'pending') {
-      alert('Hanya order berstatus Pending yang bisa diedit.');
+    if (!isEditableStatus(order.status)) {
+      alert('Hanya order berstatus Pending atau Pre-Order yang bisa diedit.');
       return;
     }
     setEditOrderId(order.id);
@@ -124,6 +133,9 @@ export const OrderModule: React.FC = () => {
     setSelectedItems(order.items.map(item => ({ ...item })));
     setShippingFee(order.shipping_fee || 0);
     setDiscount(order.discount || 0);
+    setDp(order.dp || 0);
+    setIsPreorder(order.status === 'preorder');
+    setReadyDate(order.ready_date || '');
     setIsModalOpen(true);
   };
 
@@ -143,6 +155,9 @@ export const OrderModule: React.FC = () => {
   const cleanDiscount = Math.min(Math.max(0, discount || 0), itemsSubtotal);
   const cleanShippingFee = Math.max(0, shippingFee || 0);
   const formTotal = itemsSubtotal - cleanDiscount + cleanShippingFee;
+  // DP tidak boleh melebihi tagihan; kalau sama dengan tagihan berarti lunas di muka
+  const cleanDp = Math.min(Math.max(0, dp || 0), formTotal);
+  const formRemaining = formTotal - cleanDp;
 
   const handleCreateOrder = (e: React.FormEvent) => {
     e.preventDefault();
@@ -150,11 +165,15 @@ export const OrderModule: React.FC = () => {
       alert('Pilih minimal satu produk untuk dipesan!');
       return;
     }
+    if (isPreorder && !readyDate) {
+      alert('Order pre-order wajib punya tanggal janji barang siap.');
+      return;
+    }
 
     if (editOrderId) {
       const currentOrders = dataStore.getOrders();
       const existing = currentOrders.find(o => o.id === editOrderId);
-      if (!existing || existing.status !== 'pending') {
+      if (!existing || !isEditableStatus(existing.status)) {
         alert('Order ini sudah tidak bisa diedit (status berubah).');
         resetOrderForm();
         loadData();
@@ -170,6 +189,10 @@ export const OrderModule: React.FC = () => {
         shipping_fee: cleanShippingFee,
         discount: cleanDiscount,
         total: formTotal,
+        dp: cleanDp,
+        // Pindah Pre-Order <-> Pending boleh saat edit; stok belum dipotong di dua status itu
+        status: (isPreorder ? 'preorder' : 'pending') as Order['status'],
+        ready_date: isPreorder ? readyDate : undefined,
         notes
       } : o);
       dataStore.setOrders(updatedOrders);
@@ -188,11 +211,15 @@ export const OrderModule: React.FC = () => {
         shipping_fee: cleanShippingFee,
         discount: cleanDiscount,
         total: formTotal,
-        status: 'pending',
+        dp: cleanDp,
+        status: isPreorder ? 'preorder' : 'pending',
+        ready_date: isPreorder ? readyDate : undefined,
         notes
       };
       dataStore.setOrders([newOrder, ...dataStore.getOrders()]);
-      alert(`Order ${orderNumber} berhasil dicatat! Selesaikan order untuk memotong stok gudang.`);
+      alert(isPreorder
+        ? `Pre-order ${orderNumber} tercatat, dijanjikan siap ${readyDate}. Stok gudang baru dipotong saat order diselesaikan.`
+        : `Order ${orderNumber} berhasil dicatat! Selesaikan order untuk memotong stok gudang.`);
     }
 
     resetOrderForm();
@@ -235,11 +262,19 @@ export const OrderModule: React.FC = () => {
       .filter(item => (currentProducts.find(p => p.id === item.product_id)?.stock ?? 0) < item.qty)
       .map(item => `${item.product_name} (${item.variant}): butuh ${item.qty}, stok gudang ${currentProducts.find(p => p.id === item.product_id)?.stock ?? 0}`);
     if (shortages.length > 0) {
-      alert(`Order ${order.order_number} belum bisa diselesaikan.\n\nStok gudang kurang:\n- ${shortages.join('\n- ')}\n\nTambah stok produk jadi di menu Gudang terlebih dahulu.`);
+      const prefix = order.status === 'preorder'
+        ? `Pre-order ${order.order_number} belum bisa diselesaikan — barangnya belum tersedia.`
+        : `Order ${order.order_number} belum bisa diselesaikan.`;
+      alert(`${prefix}\n\nStok gudang kurang:\n- ${shortages.join('\n- ')}\n\nTambah stok produk jadi di menu Gudang terlebih dahulu.`);
       return;
     }
 
-    if (!window.confirm(`Selesaikan order ${order.order_number}?\n\nStok produk jadi di gudang akan langsung dipotong dan tidak bisa di-undo.`)) return;
+    // Sisa tagihan diingatkan, tapi tidak memblokir: barang boleh keluar dulu bila itu keputusan owner
+    const remaining = orderRemaining(order);
+    const paymentNote = remaining > 0
+      ? `\n\nPerhatian: sisa tagihan belum lunas ${formatIDR(remaining)} (DP ${formatIDR(order.dp || 0)} dari ${formatIDR(order.total)}).`
+      : '';
+    if (!window.confirm(`Selesaikan order ${order.order_number}?\n\nStok produk jadi di gudang akan langsung dipotong dan tidak bisa di-undo.${paymentNote}`)) return;
 
     order.items.forEach(item => {
       dataStore.adjustProductStock(item.product_id, -item.qty, `Terjual - Order ${order.order_number}`);
@@ -311,6 +346,8 @@ export const OrderModule: React.FC = () => {
 
   const getStatusBadge = (status: Order['status']) => {
     switch (status) {
+      case 'preorder':
+        return <span className="px-2 py-0.5 bg-violet-100 text-violet-800 text-[10px] rounded font-semibold border border-violet-200">Pre-Order</span>;
       case 'pending':
         return <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] rounded font-semibold border border-amber-200">Pending</span>;
       case 'production':
@@ -320,6 +357,17 @@ export const OrderModule: React.FC = () => {
       case 'cancelled':
         return <span className="px-2 py-0.5 bg-rose-100 text-rose-800 text-[10px] rounded font-semibold border border-rose-200">Dibatalkan</span>;
     }
+  };
+
+  const getPaymentBadge = (order: Order) => {
+    const status = orderPaymentStatus(order);
+    if (status === 'lunas') {
+      return <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] rounded font-semibold border border-emerald-200">Lunas</span>;
+    }
+    if (status === 'dp') {
+      return <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] rounded font-semibold border border-amber-200">DP</span>;
+    }
+    return <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-[10px] rounded font-semibold border border-gray-200">Belum Bayar</span>;
   };
 
   const getShippingBadge = (order: Order) => {
@@ -357,6 +405,9 @@ export const OrderModule: React.FC = () => {
           <div className="text-right">
             <p className="font-black uppercase">{order.customer_name}</p>
             {order.customer_phone && <p>{order.customer_phone}</p>}
+            {order.status === 'preorder' && (
+              <p className="font-bold">PRE-ORDER · siap {order.ready_date || '-'}</p>
+            )}
           </div>
         </div>
 
@@ -395,6 +446,15 @@ export const OrderModule: React.FC = () => {
             <span>TOTAL</span>
             <span>{formatIDRCompact(order.total)}</span>
           </div>
+          {(order.dp ?? 0) > 0 && (
+            <>
+              <div className="flex justify-between"><span>DP Dibayar</span><span className="font-bold">-{formatIDRCompact(order.dp!)}</span></div>
+              <div className="flex justify-between font-black">
+                <span>{orderRemaining(order) > 0 ? 'SISA TAGIHAN' : 'LUNAS'}</span>
+                <span>{formatIDRCompact(orderRemaining(order))}</span>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Catatan & footer */}
@@ -496,6 +556,46 @@ export const OrderModule: React.FC = () => {
                     />
                   </div>
                 </div>
+              </div>
+
+              {/* Ketersediaan barang: ready = potong stok saat diselesaikan, pre-order = barang belum ada */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-gray-500 font-semibold mb-1">Ketersediaan Barang</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setIsPreorder(false); setReadyDate(''); }}
+                      className={`py-2 rounded border text-xs font-bold cursor-pointer ${
+                        !isPreorder ? 'bg-[var(--color-evergreen)] text-white border-[var(--color-evergreen)]' : 'bg-white border-gray-200 text-gray-600'
+                      }`}
+                    >
+                      Barang Ready
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsPreorder(true)}
+                      className={`py-2 rounded border text-xs font-bold cursor-pointer ${
+                        isPreorder ? 'bg-violet-600 text-white border-violet-600' : 'bg-white border-gray-200 text-gray-600'
+                      }`}
+                    >
+                      Pre-Order
+                    </button>
+                  </div>
+                </div>
+                {isPreorder && (
+                  <div>
+                    <label className="block text-gray-500 font-semibold mb-1">Janji Barang Siap</label>
+                    <input
+                      type="date"
+                      value={readyDate}
+                      onChange={(e) => setReadyDate(e.target.value)}
+                      className="w-full bg-gray-50 border border-gray-200 rounded px-3 py-2 text-xs"
+                      required
+                    />
+                    <p className="text-[10px] text-gray-400 mt-1">Stok gudang baru dipotong saat order diselesaikan.</p>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -609,8 +709,8 @@ export const OrderModule: React.FC = () => {
                 </table>
               </div>
 
-              {/* Diskon & Ongkir */}
-              <div className="grid grid-cols-2 gap-3">
+              {/* Diskon, Ongkir & DP */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-[10px] text-gray-400 font-semibold uppercase mb-1">Diskon (IDR)</label>
                   <div className="relative">
@@ -639,6 +739,21 @@ export const OrderModule: React.FC = () => {
                     />
                   </div>
                 </div>
+                <div>
+                  <label className="block text-[10px] text-gray-400 font-semibold uppercase mb-1">DP / Uang Muka (IDR)</label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400 text-xs font-mono">Rp</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={dp || ''}
+                      onChange={(e) => setDp(Number(e.target.value))}
+                      placeholder="0 jika belum bayar"
+                      className="w-full bg-white border border-gray-200 rounded pl-8 pr-3 py-2 text-xs font-mono font-bold"
+                    />
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-1">Isi sama dengan total bila langsung lunas.</p>
+                </div>
               </div>
 
               <div>
@@ -662,6 +777,19 @@ export const OrderModule: React.FC = () => {
                   <div className="text-gray-500 font-semibold">Ongkir: <span className="font-mono ml-1">+{formatIDR(cleanShippingFee)}</span></div>
                 )}
                 <div>Total Tagihan: <span className="text-lg font-black text-[var(--color-evergreen)] font-mono ml-1">{formatIDR(formTotal)}</span></div>
+                {cleanDp > 0 && (
+                  <>
+                    <div className="text-gray-500 font-semibold">DP Dibayar: <span className="font-mono ml-1">{formatIDR(cleanDp)}</span></div>
+                    <div className={formRemaining > 0 ? 'text-amber-700' : 'text-emerald-700'}>
+                      {formRemaining > 0
+                        ? <>Sisa Tagihan: <span className="font-mono ml-1">{formatIDR(formRemaining)}</span></>
+                        : 'Lunas'}
+                    </div>
+                  </>
+                )}
+                {cleanShippingFee > 0 && (
+                  <p className="text-[10px] font-normal text-gray-400">Ongkir tidak dihitung sebagai pendapatan penjualan.</p>
+                )}
               </div>
 
               <div className="flex gap-3 pt-1">
@@ -723,6 +851,7 @@ export const OrderModule: React.FC = () => {
               className="bg-white border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-800 focus:outline-none focus:border-emerald-600 cursor-pointer"
             >
               <option value="active">Aktif (tanpa dibatalkan)</option>
+              <option value="preorder">Pre-Order</option>
               <option value="pending">Pending</option>
               <option value="production">Di Produksi</option>
               <option value="completed">Selesai</option>
@@ -742,6 +871,7 @@ export const OrderModule: React.FC = () => {
                 <th className="p-3">Kanal/Sumber</th>
                 <th className="p-3">Daftar Barang</th>
                 <th className="p-3 text-right">Total Tagihan</th>
+                <th className="p-3 text-center">Bayar</th>
                 <th className="p-3 text-center">Status</th>
                 <th className="p-3 text-center">Kirim</th>
                 <th className="p-3 text-center">Aksi</th>
@@ -750,7 +880,7 @@ export const OrderModule: React.FC = () => {
             <tbody>
               {visibleOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="p-6 text-center text-gray-400 italic">
+                  <td colSpan={10} className="p-6 text-center text-gray-400 italic">
                     {orders.length === 0 ? 'Belum ada data pesanan tercatat.' : 'Tidak ada pesanan yang cocok dengan pencarian / filter.'}
                   </td>
                 </tr>
@@ -786,7 +916,20 @@ export const OrderModule: React.FC = () => {
                         <p className="text-[10px] text-gray-400 font-normal whitespace-nowrap">incl. ongkir {formatIDR(ord.shipping_fee!)}</p>
                       )}
                     </td>
-                    <td className="p-3 text-center">{getStatusBadge(ord.status)}</td>
+                    <td className="p-3 text-center space-y-1">
+                      {getPaymentBadge(ord)}
+                      {orderPaymentStatus(ord) === 'dp' && (
+                        <p className="text-[10px] font-mono text-gray-500 whitespace-nowrap">
+                          bayar {formatIDR(ord.dp!)}<br />sisa {formatIDR(orderRemaining(ord))}
+                        </p>
+                      )}
+                    </td>
+                    <td className="p-3 text-center space-y-1">
+                      {getStatusBadge(ord.status)}
+                      {ord.status === 'preorder' && ord.ready_date && (
+                        <p className="text-[10px] font-mono text-violet-700 whitespace-nowrap">siap {ord.ready_date}</p>
+                      )}
+                    </td>
                     <td className="p-3 text-center space-y-1">{getShippingBadge(ord)}{ord.tracking_number && <p className="text-[10px] font-mono text-gray-500">{ord.tracking_number}</p>}</td>
                     <td className="p-3 text-center space-y-1">
                       <button onClick={() => openOrderPanel(ord)} className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-[10px] font-bold px-2 py-1 rounded flex items-center gap-1 mx-auto">
@@ -802,8 +945,8 @@ export const OrderModule: React.FC = () => {
                         </button>
                       )}
 
-                      {/* Pending & legacy 'production': selesaikan dengan potong stok gudang */}
-                      {(ord.status === 'pending' || ord.status === 'production') && (
+                      {/* Pre-order, pending & legacy 'production': selesaikan dengan potong stok gudang */}
+                      {(ord.status === 'pending' || ord.status === 'preorder' || ord.status === 'production') && (
                         <button
                           onClick={() => handleCompleteOrder(ord.id)}
                           className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-2 py-1 rounded block w-full shadow-xs"
@@ -818,7 +961,7 @@ export const OrderModule: React.FC = () => {
                         </span>
                       )}
 
-                      {ord.status === 'pending' && (
+                      {isEditableStatus(ord.status) && (
                         <>
                           <button
                             onClick={() => startEditOrder(ord)}
@@ -834,7 +977,7 @@ export const OrderModule: React.FC = () => {
                           </button>
                         </>
                       )}
-                      {(ord.status === 'pending' || ord.status === 'cancelled') && (
+                      {(isEditableStatus(ord.status) || ord.status === 'cancelled') && (
                         <button
                           onClick={() => handleDeleteOrder(ord)}
                           className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[10px] font-bold px-2 py-1 rounded flex items-center justify-center gap-1 w-full"
@@ -846,7 +989,7 @@ export const OrderModule: React.FC = () => {
                   </tr>
                   {expandedOrderId === ord.id && (
                     <tr className="bg-gray-50/60 border-b border-gray-100">
-                      <td colSpan={9} className="p-4">
+                      <td colSpan={10} className="p-4">
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                           <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
                             <div><h4 className="font-black text-xs text-gray-800 flex items-center gap-1"><PackageCheck className="w-4 h-4 text-[var(--color-evergreen)]" /> Tugas Packing</h4><p className="text-[10px] text-gray-400">Assign ke karyawan, nanti muncul di Daftar Kerjaan.</p></div>

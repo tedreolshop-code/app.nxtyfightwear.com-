@@ -543,8 +543,11 @@ export interface Order {
   items: OrderItem[];
   shipping_fee?: number; // Ongkir untuk order langsung/non-marketplace (masuk ke total)
   discount?: number; // Potongan harga (dikurangkan dari subtotal sebelum ongkir)
-  total: number;
-  status: 'pending' | 'production' | 'completed' | 'cancelled';
+  total: number; // Tagihan ke pelanggan: subtotal - diskon + ongkir
+  dp?: number; // Uang muka yang sudah dibayar; sisa tagihan = total - dp
+  ready_date?: string; // Tanggal janji barang siap, khusus order preorder
+  // preorder = barang belum tersedia, sudah dijanjikan ke pelanggan
+  status: 'preorder' | 'pending' | 'production' | 'completed' | 'cancelled';
   notes?: string;
   shipping_expedition?: string;
   tracking_number?: string;
@@ -554,6 +557,24 @@ export interface Order {
   packing_employee_id?: string;
   packing_employee_name?: string;
 }
+
+/** Sisa tagihan order setelah DP. */
+export const orderRemaining = (order: Pick<Order, 'total' | 'dp'>): number =>
+  Math.max(0, order.total - (order.dp || 0));
+
+/** Status bayar order: belum bayar / DP sebagian / lunas. */
+export const orderPaymentStatus = (order: Pick<Order, 'total' | 'dp'>): 'belum_bayar' | 'dp' | 'lunas' => {
+  const dp = order.dp || 0;
+  if (dp <= 0) return 'belum_bayar';
+  return dp >= order.total ? 'lunas' : 'dp';
+};
+
+/**
+ * Nilai penjualan sebuah order. Ongkir dikeluarkan karena itu uang titipan
+ * untuk ekspedisi, bukan pendapatan penjualan.
+ */
+export const orderRevenue = (order: Pick<Order, 'total' | 'shipping_fee'>): number =>
+  order.total - (order.shipping_fee || 0);
 
 export interface Asset {
   id: string;
