@@ -1,7 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AttendanceBonusPayout, Employee, isEligibleForAttendanceBonus } from '../types';
+import { AttendanceBonusPayout, Employee, isEligibleForAttendanceBonus, workingDaysInMonth } from '../types';
 import { dataStore, wibNowISO, wibTodayStr } from '../dataStore';
 import { Award, CalendarCheck2, CheckCircle2, XCircle, Gift, History, AlertTriangle } from 'lucide-react';
+
+/** Tanggal hari ini dalam bahasa Indonesia, mis. "27 Juli 2026". */
+const todayLabel = () => new Date(`${wibTodayStr()}T00:00:00`).toLocaleDateString('id-ID', {
+  day: 'numeric', month: 'long', year: 'numeric',
+});
+
+/** Nilai bonus yang dipertaruhkan karyawan ini bulan ini (dipakai saat statusnya gugur). */
+const bonusOf = (employee: Employee) =>
+  employee.default_attendance_bonus ?? dataStore.getWorkSettings().monthly_bonus_amount;
 
 const formatIDR = (val: number) =>
   new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(val);
@@ -152,9 +161,20 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
   // Rekap bonus BERJALAN (bulan ini) — selalu tampil, tanpa perlu ganti pilihan bulan.
   // Angkanya posisi sementara: hari ini & sisa bulan belum dinilai.
   const running = useMemo(() => {
-    const rows = employees.map(emp => dataStore.evaluateAttendanceBonus(emp.id, currentMonth));
-    const aman = rows.filter(r => r.status === 'aman');
-    return { amanCount: aman.length, total: aman.reduce((sum, r) => sum + r.amount, 0), employeeCount: rows.length };
+    const rows = employees.map(emp => ({ emp, result: dataStore.evaluateAttendanceBonus(emp.id, currentMonth) }))
+      .sort((a, b) => a.emp.name.localeCompare(b.emp.name, 'id'));
+    const aman = rows.filter(r => r.result.status === 'aman');
+    // Hari kerja yang sudah dinilai hanya sampai kemarin, jadi sisanya termasuk hari ini
+    const totalWorkingDays = workingDaysInMonth(currentMonth);
+    const assessedDays = rows[0]?.result.workingDays ?? 0;
+    return {
+      rows,
+      amanCount: aman.length,
+      total: aman.reduce((sum, r) => sum + r.result.amount, 0),
+      employeeCount: rows.length,
+      totalWorkingDays,
+      remainingDays: Math.max(0, totalWorkingDays - assessedDays),
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [employees, currentMonth, payouts]);
 
@@ -247,11 +267,81 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
           <span className="text-[11px] text-emerald-800">
             <b className="uppercase tracking-wide">Bonus berjalan {monthLabel(currentMonth)}</b>
             <span className="block text-emerald-600 mt-0.5">
-              {running.amanCount} dari {running.employeeCount} karyawan masih aman · posisi sementara s/d kemarin
+              {running.amanCount} dari {running.employeeCount} karyawan masih aman · dinilai s/d kemarin ·
+              {' '}sisa {running.remainingDays} hari kerja lagi bulan ini
             </span>
           </span>
           <span className="font-mono font-black text-emerald-800 text-lg">{formatIDR(running.total)}</span>
         </button>
+
+        {/* Posisi hari ini per karyawan — supaya tidak perlu menunggu awal bulan.
+            Angka bonus di sini bukan uang yang sudah pasti: satu telat atau absen
+            menggugurkan bonus sebulan penuh, jadi baris bisa berubah kapan saja. */}
+        <details open className="border border-gray-200 rounded-lg overflow-hidden">
+          <summary className="cursor-pointer select-none bg-gray-50 px-3 py-2 text-[11px] font-bold text-gray-700 flex items-center gap-1.5">
+            <CalendarCheck2 className="w-3.5 h-3.5 text-[var(--color-evergreen)]" />
+            Posisi hari ini · {todayLabel()}
+            <span className="font-normal text-gray-400">
+              ({running.amanCount}/{running.employeeCount} aman · sisa {running.remainingDays} hari kerja)
+            </span>
+          </summary>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-evergreen/90 text-white font-bold uppercase tracking-wider text-[10px]">
+                  <th className="py-2 px-3">Karyawan</th>
+                  <th className="py-2 px-3 text-center w-24">Hadir</th>
+                  <th className="py-2 px-3 text-center w-24">Telat</th>
+                  <th className="py-2 px-3 text-center w-24">Status</th>
+                  <th className="py-2 px-3 text-right w-32">Bonus</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-emerald-100">
+                {running.rows.length === 0 ? (
+                  <tr><td colSpan={5} className="py-6 text-center text-gray-400 italic">Tidak ada karyawan aktif.</td></tr>
+                ) : running.rows.map(({ emp, result }) => (
+                  <tr key={emp.id} className="hover:bg-gray-50/50">
+                    <td className="py-2 px-3 font-bold text-gray-800">
+                      {emp.name}
+                      {!isEligibleForAttendanceBonus(emp) && (
+                        <span className="ml-1.5 px-1.5 py-0.5 rounded bg-violet-100 text-violet-800 text-[9px] font-bold uppercase align-middle">
+                          Training
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-2 px-3 text-center font-mono text-gray-600">{result.presentDays}/{result.workingDays}</td>
+                    <td className={`py-2 px-3 text-center font-mono ${result.lateMinutesNet > 0 ? 'text-rose-600 font-bold' : 'text-gray-400'}`}>
+                      {result.lateMinutesNet > 0 ? `${result.lateMinutesNet} mnt` : '—'}
+                    </td>
+                    <td className="py-2 px-3 text-center">
+                      {result.status === 'aman' ? (
+                        <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                          <CheckCircle2 className="w-3 h-3" /> AMAN
+                        </span>
+                      ) : (
+                        <span
+                          title={result.reasons.join(' · ')}
+                          className="inline-flex items-center gap-1 bg-rose-100 text-rose-700 text-[10px] font-bold px-2 py-0.5 rounded-full"
+                        >
+                          <XCircle className="w-3 h-3" /> GUGUR
+                        </span>
+                      )}
+                    </td>
+                    <td className={`py-2 px-3 text-right font-mono font-black ${result.status === 'aman' ? 'text-emerald-700' : 'text-rose-300 line-through'}`}>
+                      {formatIDR(result.status === 'aman' ? result.amount : bonusOf(emp))}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="px-3 py-2 text-[10px] text-gray-400 bg-gray-50/70 border-t border-gray-100">
+            Posisi sementara, dinilai sampai kemarin. Bonus bersifat penuh atau gugur — satu kali telat
+            atau tidak hadir menggugurkan bonus sebulan, jadi angka di atas belum tentu cair.
+          </p>
+        </details>
 
         {isFutureOrCurrent && (
           <div className="flex items-start gap-2 text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">

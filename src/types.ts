@@ -18,6 +18,21 @@ export const EMPLOYMENT_STATUSES: Array<{ id: EmploymentStatus; label: string }>
 export const employmentStatusOf = (employee?: { employment_status?: EmploymentStatus }): EmploymentStatus =>
   employee?.employment_status || 'karyawan';
 
+/**
+ * Jumlah hari kerja dalam satu bulan 'YYYY-MM' (Minggu libur, sama seperti penilaian
+ * bonus kehadiran). Dipakai untuk menghitung sisa hari kerja bulan berjalan.
+ */
+export const workingDaysInMonth = (month: string): number => {
+  const [year, mon] = month.split('-').map(Number);
+  const daysInMonth = new Date(year, mon, 0).getDate();
+  let count = 0;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${month}-${String(d).padStart(2, '0')}`;
+    if (new Date(`${dateStr}T00:00:00Z`).getUTCDay() !== 0) count++;
+  }
+  return count;
+};
+
 /** Bonus kehadiran bulanan hanya hak karyawan, bukan yang masih training. */
 export const isEligibleForAttendanceBonus = (employee?: { employment_status?: EmploymentStatus }): boolean =>
   employmentStatusOf(employee) === 'karyawan';

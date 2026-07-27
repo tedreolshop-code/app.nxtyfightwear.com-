@@ -43,11 +43,13 @@ test('bonus kehadiran gugur untuk karyawan training, cair untuk karyawan', async
   await page.getByRole('button', { name: 'Payroll & Slip Gaji' }).click();
   await page.getByRole('button', { name: 'Bonus Kehadiran' }).click();
 
-  const barisTraining = page.getByRole('row').filter({ hasText: 'Cici Training' });
+  // Ada dua tabel: ringkasan harian di dalam <details>, dan tabel bulan penilaian.
+  // Yang dicek di sini tabel bulan penilaian (paling bawah).
+  const barisTraining = page.getByRole('row').filter({ hasText: 'Cici Training' }).last();
   await expect(barisTraining).toContainText('Masih berstatus training');
   await expect(barisTraining).toContainText('GUGUR');
 
   // Rekan yang absensinya sama tapi sudah karyawan tetap aman
-  const barisTetap = page.getByRole('row').filter({ hasText: 'Budi Tetap' });
+  const barisTetap = page.getByRole('row').filter({ hasText: 'Budi Tetap' }).last();
   await expect(barisTetap).not.toContainText('Masih berstatus training');
 });
