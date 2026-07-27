@@ -104,8 +104,9 @@ export const MarketplaceSalesModule: React.FC = () => {
   // Biaya admin marketplace dibebankan sekali per PESANAN (bukan per barang), diinput manual
   const [orderAdminFee, setOrderAdminFee] = useState<number>(0);
 
-  // Editing state
-  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  // Editing state — edit dilakukan per PESANAN (semua barang di dalamnya sekaligus),
+  // bukan per baris barang, supaya no pesanan/tanggal/admin tidak pernah terbagi.
+  const [editingOrderNumber, setEditingOrderNumber] = useState<string | null>(null);
   const [editingDailyId, setEditingDailyId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -154,6 +155,11 @@ export const MarketplaceSalesModule: React.FC = () => {
         ? row.customDescription.trim()
         : (products.find(p => p.id === row.selectedProductId)?.name || row.customDescription.trim());
 
+    if (saleItemRows.length === 0) {
+      alert('Pesanan harus berisi minimal 1 barang. Hapus pesanan lewat tombol Hapus bila ingin membatalkannya.');
+      return;
+    }
+
     for (const row of saleItemRows) {
       if (!resolveDescription(row)) {
         alert('Mohon masukkan deskripsi produk/barang di setiap item!');
@@ -168,57 +174,60 @@ export const MarketplaceSalesModule: React.FC = () => {
     const finalMarketplaceRef = marketplaceRef === 'Custom' ? customMarketplaceRef.trim() || 'Other' : marketplaceRef;
     const updatedItemSales = dataStore.getMarketplaceItemSales();
 
-    if (editingItemId) {
-      // Edit Mode — hanya 1 baris (item lama), kembalikan stok lama dulu lalu potong sesuai input baru.
-      // Baris cancel/retur-ke-stok dilewati: stoknya memang sudah kembali ke gudang.
-      const row = saleItemRows[0];
-      const finalDescription = resolveDescription(row);
-      const linkedProductId = row.selectedProductId && row.selectedProductId !== 'custom' ? row.selectedProductId : undefined;
-      const calculatedSubtotal = row.qty * row.price;
-      const rowFee = computeOrderFee(saleItemRows); // edit = 1 barang, jadi biaya pesanan = biaya barang ini
-      const finalTotal = calculatedSubtotal - rowFee;
+    if (editingOrderNumber) {
+      // Edit Mode — SATU pesanan diedit utuh (semua barangnya sekaligus).
+      // No pesanan, tanggal, marketplace, admin, dan biaya admin memang milik pesanan,
+      // jadi tidak mungkin terbagi antar barang.
+      const oldItems = updatedItemSales.filter(item => item.order_number === editingOrderNumber);
 
-      const oldItem = updatedItemSales.find(item => item.id === editingItemId);
-      const oldStockOut = oldItem ? !stockWasReturned(oldItem) : true;
-      if (oldItem?.product_id && oldStockOut) {
-        dataStore.adjustProductStock(oldItem.product_id, oldItem.qty, `Koreksi edit penjualan ${oldItem.order_number}`);
-      }
-      if (linkedProductId && oldItem && !stockWasReturned(oldItem)) {
-        dataStore.adjustProductStock(linkedProductId, -row.qty, `Terjual - ${marketplaceRef} ${orderNumber.trim() || editingItemId}`);
-      }
-
-      // No pesanan, tanggal, marketplace, dan admin bersifat per-PESANAN, bukan per-barang.
-      // Kalau hanya baris yang diedit yang diubah, 1 pesanan bisa punya 2 admin/tanggal berbeda
-      // (admin "terbagi"). Jadi field pesanan disamakan ke semua barang di pesanan yang sama.
-      const orderFields = {
-        date: inputDate,
-        order_number: orderNumber.trim() || oldItem?.order_number || '',
-        marketplace_ref: finalMarketplaceRef,
-        admin_staff: staffName,
-      };
-      const updated = updatedItemSales.map(item => {
-        if (item.id === editingItemId) {
-          return {
-            ...item,
-            ...orderFields,
-            product_id: linkedProductId,
-            description: finalDescription,
-            qty: row.qty,
-            price: row.price,
-            subtotal: calculatedSubtotal,
-            admin_fee: rowFee,
-            total: finalTotal,
-          };
+      // Kembalikan dulu stok semua barang lama (kecuali yang stoknya sudah kembali
+      // karena cancel/retur-ke-stok), lalu potong ulang sesuai isi form.
+      oldItems.forEach(old => {
+        if (old.product_id && !stockWasReturned(old)) {
+          dataStore.adjustProductStock(old.product_id, old.qty, `Koreksi edit penjualan ${old.order_number}`);
         }
-        if (oldItem && item.order_number === oldItem.order_number) {
-          return { ...item, ...orderFields };
+      });
+
+      const finalOrderNumber = orderNumber.trim() || editingOrderNumber;
+      const rowFees = distributeFee(saleItemRows, computeOrderFee(saleItemRows));
+      const rebuilt: MarketplaceItemSale[] = saleItemRows.map((row, rowIdx) => {
+        const old = oldItems.find(item => item.id === row.key); // key baris = id barang lama
+        const linkedProductId = row.selectedProductId && row.selectedProductId !== 'custom' ? row.selectedProductId : undefined;
+        const calculatedSubtotal = row.qty * row.price;
+        const rowFee = rowFees[rowIdx];
+        const item: MarketplaceItemSale = {
+          ...old,
+          id: old?.id || Math.random().toString(36).substring(2, 11),
+          created_at: old?.created_at || wibNowISO(),
+          // Barang baru yang ditambahkan saat edit ikut status pesanannya
+          status: old?.status || oldItems[0]?.status || inputStatus,
+          product_id: linkedProductId,
+          date: inputDate,
+          order_number: finalOrderNumber,
+          marketplace_ref: finalMarketplaceRef,
+          description: resolveDescription(row),
+          qty: row.qty,
+          price: row.price,
+          subtotal: calculatedSubtotal,
+          admin_fee: rowFee,
+          total: calculatedSubtotal - rowFee,
+          admin_staff: staffName,
+        };
+        if (linkedProductId && !stockWasReturned(item)) {
+          dataStore.adjustProductStock(linkedProductId, -row.qty, `Terjual - ${finalMarketplaceRef} ${finalOrderNumber}`);
         }
         return item;
       });
+
+      // Ganti seluruh baris pesanan lama dengan hasil rebuild, di posisi yang sama
+      const insertAt = updatedItemSales.findIndex(item => item.order_number === editingOrderNumber);
+      const updated = updatedItemSales.filter(item => item.order_number !== editingOrderNumber);
+      updated.splice(insertAt < 0 ? 0 : insertAt, 0, ...rebuilt);
+
       dataStore.setMarketplaceItemSales(updated);
       setItemSales(updated);
-      setEditingItemId(null);
-      alert('Detail penjualan produk berhasil diperbarui!');
+      handleCancelEditItem();
+      alert(`Pesanan ${finalOrderNumber} berhasil diperbarui (${rebuilt.length} barang).`);
     } else {
       // Create Mode — 1 order bisa terdiri dari beberapa baris item, semuanya berbagi No Pesanan yang sama
       const sharedOrderNumber = orderNumber.trim() || 'NP-' + Math.floor(100000 + Math.random() * 900000);
@@ -264,38 +273,43 @@ export const MarketplaceSalesModule: React.FC = () => {
     setOrderAdminFee(0);
   };
 
-  const handleStartEditItem = (item: MarketplaceItemSale) => {
-    setEditingItemId(item.id);
+  // Edit SATU pesanan sekaligus: semua barang di dalamnya dimuat sebagai baris form
+  const handleStartEditOrder = (items: MarketplaceItemSale[]) => {
+    const head = items[0];
+    setEditingOrderNumber(head.order_number);
     setIsModalOpen(true); // buka modal form — tanpa ini tombol Edit tidak menampilkan apa pun
-    setInputDate(item.date);
-    setOrderNumber(item.order_number);
-    
+    setInputDate(head.date);
+    setOrderNumber(head.order_number);
+
     const knownMarketplaces = ['Tokopedia', 'Shopee', 'TikTok Shop', 'Lazada'];
-    if (knownMarketplaces.includes(item.marketplace_ref)) {
-      setMarketplaceRef(item.marketplace_ref);
+    if (knownMarketplaces.includes(head.marketplace_ref)) {
+      setMarketplaceRef(head.marketplace_ref);
       setCustomMarketplaceRef('');
     } else {
       setMarketplaceRef('Custom');
-      setCustomMarketplaceRef(item.marketplace_ref);
+      setCustomMarketplaceRef(head.marketplace_ref);
     }
 
-    // Find matching product (utamakan tautan product_id yang tersimpan)
-    const matchingProduct = (item.product_id && products.find(p => p.id === item.product_id))
-      || products.find(p => p.name === item.description || (p.name + (p.variant ? ` - ${p.variant}` : '')) === item.description);
-    setOrderAdminFee(item.admin_fee);
-    setSaleItemRows([{
-      key: item.id,
-      selectedProductId: matchingProduct ? matchingProduct.id : 'custom',
-      customDescription: matchingProduct ? '' : item.description,
-      qty: item.qty,
-      price: item.price,
-      adminFee: item.admin_fee,
-    }]);
-    setStaffName(item.admin_staff);
+    // Biaya admin adalah milik pesanan: jumlahkan kembali sebaran per barang
+    setOrderAdminFee(items.reduce((sum, item) => sum + item.admin_fee, 0));
+    setSaleItemRows(items.map(item => {
+      // Utamakan tautan product_id yang tersimpan, baru cocokkan berdasarkan nama
+      const matchingProduct = (item.product_id && products.find(p => p.id === item.product_id))
+        || products.find(p => p.name === item.description || (p.name + (p.variant ? ` - ${p.variant}` : '')) === item.description);
+      return {
+        key: item.id, // dipakai saat simpan untuk mengenali barang lama
+        selectedProductId: matchingProduct ? matchingProduct.id : 'custom',
+        customDescription: matchingProduct ? '' : item.description,
+        qty: item.qty,
+        price: item.price,
+        adminFee: item.admin_fee,
+      };
+    }));
+    setStaffName(head.admin_staff);
   };
 
   const handleCancelEditItem = () => {
-    setEditingItemId(null);
+    setEditingOrderNumber(null);
     setOrderNumber('');
     setSaleItemRows([newEmptyItemRow()]);
     setOrderAdminFee(0);
@@ -389,9 +403,10 @@ export const MarketplaceSalesModule: React.FC = () => {
       item.id);
   };
 
-  // Delete Detailed Sale Entry
-  const handleDeleteDetailedSale = (id: string) => {
-    setDeleteDetailedItemId(id);
+  // Hapus SATU pesanan beserta seluruh barangnya (sejalan dengan edit yang juga per-pesanan).
+  // Mau membuang 1 barang saja? Edit pesanannya lalu hapus baris barang itu.
+  const handleDeleteDetailedSale = (orderNumber: string) => {
+    setDeleteDetailedItemId(orderNumber);
   };
 
   const confirmDeleteDetailedSale = () => {
@@ -399,11 +414,14 @@ export const MarketplaceSalesModule: React.FC = () => {
       const current = dataStore.getMarketplaceItemSales();
       // Kembalikan stok produk jadi bila penjualan ini terhubung ke produk gudang
       // (kecuali stoknya sudah kembali karena status cancel/retur-ke-stok)
-      const target = current.find(sale => sale.id === deleteDetailedItemId);
-      if (target?.product_id && !stockWasReturned(target)) {
-        dataStore.adjustProductStock(target.product_id, target.qty, `Hapus penjualan ${target.order_number}`);
-      }
-      const updated = current.filter(sale => sale.id !== deleteDetailedItemId);
+      current
+        .filter(sale => sale.order_number === deleteDetailedItemId)
+        .forEach(target => {
+          if (target.product_id && !stockWasReturned(target)) {
+            dataStore.adjustProductStock(target.product_id, target.qty, `Hapus penjualan ${target.order_number}`);
+          }
+        });
+      const updated = current.filter(sale => sale.order_number !== deleteDetailedItemId);
       dataStore.setMarketplaceItemSales(updated);
       setItemSales(updated);
       setDeleteDetailedItemId(null);
@@ -720,14 +738,14 @@ export const MarketplaceSalesModule: React.FC = () => {
             {isModalOpen && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => { setIsModalOpen(false); handleCancelEditItem(); }}>
                 <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[90dvh] overflow-y-auto overscroll-contain" onClick={(e) => e.stopPropagation()}>
-                  <div className={`border-b pb-3 flex items-center justify-between gap-2 ${editingItemId ? 'border-amber-100 bg-amber-50/50 -mx-6 -mt-6 p-6 rounded-t-2xl mb-4' : 'border-gray-50 mb-4'}`}>
+                  <div className={`border-b pb-3 flex items-center justify-between gap-2 ${editingOrderNumber ? 'border-amber-100 bg-amber-50/50 -mx-6 -mt-6 p-6 rounded-t-2xl mb-4' : 'border-gray-50 mb-4'}`}>
                     <div className="flex items-center gap-2">
-                      <span className={`p-1.5 rounded-md ${editingItemId ? 'bg-amber-100 text-amber-600' : 'bg-blue-50 text-blue-600'}`}>
-                        {editingItemId ? <Edit className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                      <span className={`p-1.5 rounded-md ${editingOrderNumber ? 'bg-amber-100 text-amber-600' : 'bg-blue-50 text-blue-600'}`}>
+                        {editingOrderNumber ? <Edit className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
                       </span>
                       <div>
                         <h3 className="font-bold text-sm text-gray-800">
-                          {editingItemId ? 'Edit Rincian Item' : 'Catat Rincian Item Terjual'}
+                          {editingOrderNumber ? `Edit Pesanan ${editingOrderNumber}` : 'Catat Rincian Item Terjual'}
                         </h3>
                       </div>
                     </div>
@@ -758,7 +776,7 @@ export const MarketplaceSalesModule: React.FC = () => {
                     </div>
 
                     {/* Status awal order (khusus entri baru; ubah selanjutnya lewat badge di tabel) */}
-                    {!editingItemId && (
+                    {!editingOrderNumber && (
                       <div>
                         <label className="block text-gray-500 font-semibold mb-1">Status Order</label>
                         <div className="grid grid-cols-2 gap-2">
@@ -832,15 +850,14 @@ export const MarketplaceSalesModule: React.FC = () => {
                           {saleItemRows.length > 1 && (
                             <div className="flex items-center justify-between">
                               <span className="text-[10px] text-gray-400 font-bold uppercase">Item #{idx + 1}</span>
-                              {!editingItemId && (
-                                <button
-                                  type="button"
-                                  onClick={() => removeItemRow(idx)}
-                                  className="text-rose-400 hover:text-rose-600 p-0.5"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              )}
+                              <button
+                                type="button"
+                                onClick={() => removeItemRow(idx)}
+                                className="text-rose-400 hover:text-rose-600 p-0.5"
+                                title="Hapus barang ini dari pesanan"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             </div>
                           )}
 
@@ -913,15 +930,13 @@ export const MarketplaceSalesModule: React.FC = () => {
                         </div>
                       ))}
 
-                      {!editingItemId && (
-                        <button
-                          type="button"
-                          onClick={addItemRow}
-                          className="w-full flex items-center justify-center gap-1.5 text-xs font-bold text-evergreen border border-dashed border-evergreen/40 rounded-lg py-2 hover:bg-evergreen/5"
-                        >
-                          <Plus className="w-3.5 h-3.5" /> Tambah Item Lain (1 Pesanan)
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={addItemRow}
+                        className="w-full flex items-center justify-center gap-1.5 text-xs font-bold text-evergreen border border-dashed border-evergreen/40 rounded-lg py-2 hover:bg-evergreen/5"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Tambah Item Lain (1 Pesanan)
+                      </button>
                     </div>
 
                     {/* Biaya Potongan Admin — diinput manual sekali per PESANAN (angka asli marketplace) */}
@@ -947,7 +962,7 @@ export const MarketplaceSalesModule: React.FC = () => {
                       type="submit"
                       className="w-full bg-evergreen text-white font-bold py-2.5 rounded shadow-sm text-xs transition-colors hover:bg-opacity-90 flex items-center justify-center gap-1.5"
                     >
-                      {editingItemId ? 'Simpan Perubahan' : 'Simpan & Posting Detail'}
+                      {editingOrderNumber ? 'Simpan Perubahan' : 'Simpan & Posting Detail'}
                     </button>
                   </form>
                 </div>
@@ -1159,24 +1174,26 @@ export const MarketplaceSalesModule: React.FC = () => {
                               {itemIdx === 0 && (
                                 <td rowSpan={span} className={`p-3 text-right font-black border-r border-emerald-300 text-[12px] align-middle ${group.anyCounted ? 'text-evergreen' : 'text-gray-400 line-through'}`}>{formatIDR(group.total)}</td>
                               )}
-                              <td className="p-3 text-center whitespace-nowrap">
-                                <div className="flex items-center justify-center gap-1.5">
-                                  <button
-                                    onClick={() => handleStartEditItem(item)}
-                                    className="p-1 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded transition-colors"
-                                    title="Edit catatan"
-                                  >
-                                    <Edit className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeleteDetailedSale(item.id)}
-                                    className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
-                                    title="Hapus catatan"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              </td>
+                              {itemIdx === 0 && (
+                                <td rowSpan={span} className="p-3 text-center whitespace-nowrap align-middle">
+                                  <div className="flex items-center justify-center gap-1.5">
+                                    <button
+                                      onClick={() => handleStartEditOrder(group.items)}
+                                      className="p-1 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded transition-colors"
+                                      title={span > 1 ? `Edit pesanan ini (${span} barang sekaligus)` : 'Edit pesanan ini'}
+                                    >
+                                      <Edit className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteDetailedSale(group.order_number)}
+                                      className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
+                                      title={span > 1 ? `Hapus pesanan ini (${span} barang sekaligus)` : 'Hapus pesanan ini'}
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </td>
+                              )}
                             </tr>
                           ));
                         })
@@ -1531,9 +1548,10 @@ export const MarketplaceSalesModule: React.FC = () => {
             <div className="bg-red-50 text-red-600 p-3 rounded-full mx-auto w-fit mb-4">
               <Trash2 className="w-6 h-6" />
             </div>
-            <h3 className="text-base font-bold text-gray-900 mb-2">Hapus Data Penjualan?</h3>
+            <h3 className="text-base font-bold text-gray-900 mb-2">Hapus Pesanan {deleteDetailedItemId}?</h3>
             <p className="text-xs text-gray-500 mb-6 leading-relaxed">
-              Apakah Anda yakin ingin menghapus data penjualan barang ini dari laporan? Tindakan ini tidak dapat dibatalkan.
+              Seluruh barang dalam pesanan ini ({itemSales.filter(s => s.order_number === deleteDetailedItemId).length} barang) akan dihapus dari laporan dan stoknya dikembalikan. Tindakan ini tidak dapat dibatalkan.
+              <span className="block mt-1.5 text-gray-400">Mau membuang 1 barang saja? Batal, lalu Edit pesanan ini dan hapus baris barangnya.</span>
             </p>
             <div className="flex gap-3">
               <button
