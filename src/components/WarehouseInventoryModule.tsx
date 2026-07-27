@@ -925,10 +925,15 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
                 >
                   <option value="">-- Pilih Item --</option>
                   {adjustType === 'product' ? (
-                    products.map(p => <option key={p.id} value={p.id}>{p.name} ({p.variant}) [Aktif: {p.stock} Unit]</option>)
+                    [...products]
+                      .sort((a, b) => a.name.localeCompare(b.name, 'id') || a.variant.localeCompare(b.variant, 'id'))
+                      .map(p => <option key={p.id} value={p.id}>{p.name} ({p.variant}) [Aktif: {p.stock} Unit]</option>)
                   ) : (
                     // Ikut filter divisi yang aktif supaya daftar bahan tidak campur antar divisi
-                    rawMaterials.filter(materialMatchesDept).map(m => <option key={m.id} value={m.id}>{m.name} [{materialDivisionLabel(m)}] [Aktif: {m.current_stock} {m.unit}]</option>)
+                    rawMaterials
+                      .filter(materialMatchesDept)
+                      .sort((a, b) => a.name.localeCompare(b.name, 'id'))
+                      .map(m => <option key={m.id} value={m.id}>{m.name} [{materialDivisionLabel(m)}] [Aktif: {m.current_stock} {m.unit}]</option>)
                   )}
                 </select>
                 {adjustType === 'material' && selectedDept !== 'all' && (
