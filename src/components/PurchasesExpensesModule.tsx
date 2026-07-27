@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Purchase, PurchaseOrderItem, DailyExpense, RawMaterial } from '../types';
+import { Purchase, PurchaseOrderItem, DailyExpense, RawMaterial, DIVISIONS, divisionLabel } from '../types';
+import { DivisionFilter, matchesDivision } from './DivisionFilter';
 import { dataStore } from '../dataStore';
 import { brandName, brandLegalName } from '../brand';
 import { 
@@ -43,6 +44,8 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
   const [poDate, setPoDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [poStatus, setPoStatus] = useState<'pending' | 'completed' | 'cancelled'>('completed');
   const [poStaff, setPoStaff] = useState('Admin Keuangan');
+  // Divisi pemakai belanja; '' = bersama (dipakai kedua divisi)
+  const [poDepartmentId, setPoDepartmentId] = useState('');
   const [editingPurchaseId, setEditingPurchaseId] = useState<string | null>(null);
 
   // PO Item Drafting states
@@ -62,6 +65,8 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
   const [expenseQty, setExpenseQty] = useState<number>(1);
   const [expensePrice, setExpensePrice] = useState<number>(0);
   const [expenseStaff, setExpenseStaff] = useState('Admin Keuangan');
+  // Divisi penanggung biaya; '' = biaya bersama, dibagi di laporan
+  const [expenseDepartmentId, setExpenseDepartmentId] = useState('');
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
   const [expenseCategories, setExpenseCategories] = useState<string[]>([]);
   const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
@@ -81,11 +86,13 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
   const [poSupplierFilter, setPoSupplierFilter] = useState('All');
   const [poMonthFilter, setPoMonthFilter] = useState('All');
   const [poSortOrder, setPoSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [poDivFilter, setPoDivFilter] = useState('');
 
   const [expenseSearch, setExpenseSearch] = useState('');
   const [expenseCategoryFilter, setExpenseCategoryFilter] = useState('All');
   const [expenseMonthFilter, setExpenseMonthFilter] = useState('All');
   const [expenseSortOrder, setExpenseSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [expenseDivFilter, setExpenseDivFilter] = useState('');
 
   useEffect(() => {
     loadData();
@@ -253,6 +260,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
             date: poDate,
             status: poStatus,
             admin_staff: poStaff,
+        department_id: poDepartmentId || undefined, // kosong = belanja bersama
             total_price: calculatedTotal,
             items: draftItems.map(item => ({
               id: Math.random().toString(36).substring(2, 9),
@@ -281,6 +289,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
         date: poDate,
         status: poStatus,
         admin_staff: poStaff,
+        department_id: poDepartmentId || undefined, // kosong = belanja bersama
         total_price: calculatedTotal,
         items: draftItems.map(item => ({
           id: Math.random().toString(36).substring(2, 9),
@@ -318,6 +327,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
     setPoDate(po.date);
     setPoStatus(po.status);
     setPoStaff(po.admin_staff || 'Admin Keuangan');
+    setPoDepartmentId(po.department_id || '');
     setDraftItems(po.items.map(item => ({
       description: item.description,
       qty: item.qty,
@@ -328,6 +338,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
 
   const handleCancelEditPurchase = () => {
     setEditingPurchaseId(null);
+    setPoDepartmentId('');
     setPoSupplier('');
     setPoNumber('');
     setPoDate(new Date().toISOString().split('T')[0]);
@@ -383,7 +394,8 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
             amount: computedSubtotal,
             qty: expenseQty,
             price: expensePrice,
-            admin_name: expenseStaff
+            admin_name: expenseStaff,
+            department_id: expenseDepartmentId || undefined // kosong = biaya bersama
           };
         }
         return item;
@@ -400,7 +412,8 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
         amount: computedSubtotal,
         qty: expenseQty,
         price: expensePrice,
-        admin_name: expenseStaff
+        admin_name: expenseStaff,
+        department_id: expenseDepartmentId || undefined // kosong = biaya bersama
       };
       currentExpenses.unshift(newExpense);
       dataStore.setDailyExpenses(currentExpenses);
@@ -443,10 +456,12 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
     setExpenseQty(e.qty || 1);
     setExpensePrice(e.price || e.amount);
     setExpenseStaff(e.admin_name);
+    setExpenseDepartmentId(e.department_id || '');
   };
 
   const handleCancelEditExpense = () => {
     setEditingExpenseId(null);
+    setExpenseDepartmentId('');
     setExpenseDesc('');
     setExpenseQty(1);
     setExpensePrice(0);
@@ -484,13 +499,19 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
   };
 
   // Dynamic PO Calculation & Filtering
+  // Warna badge divisi seragam dengan modul Gudang & Produksi
+  const divisionBadgeClass = (departmentId?: string) =>
+    departmentId === 'dept-eva-foam' ? 'bg-emerald-100 text-emerald-800'
+      : departmentId === 'dept-konveksi' ? 'bg-sky-100 text-sky-800'
+      : 'bg-gray-100 text-gray-600';
+
   const filteredPurchases = purchases.filter(p => {
     const matchesSearch = p.supplier.toLowerCase().includes(poSearch.toLowerCase()) || 
                           p.po_number.toLowerCase().includes(poSearch.toLowerCase()) ||
                           p.items.some(item => item.description.toLowerCase().includes(poSearch.toLowerCase()));
     const matchesSupplier = poSupplierFilter === 'All' || p.supplier === poSupplierFilter;
     const matchesMonth = poMonthFilter === 'All' || p.date.startsWith(poMonthFilter);
-    return matchesSearch && matchesSupplier && matchesMonth;
+    return matchesSearch && matchesSupplier && matchesMonth && matchesDivision(p.department_id, poDivFilter);
   });
 
   const sortedPurchases = [...filteredPurchases].sort((a, b) => {
@@ -505,6 +526,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
     date: string;
     status: string;
     adminStaff: string;
+    departmentId?: string;
     totalPOPrice: number;
     itemIdx: number;
     itemId: string;
@@ -524,6 +546,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
         date: po.date,
         status: po.status,
         adminStaff: po.admin_staff || 'Admin',
+        departmentId: po.department_id,
         totalPOPrice: po.total_price,
         itemIdx: idx,
         itemId: item.id,
@@ -542,7 +565,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                           e.admin_name.toLowerCase().includes(expenseSearch.toLowerCase());
     const matchesCategory = expenseCategoryFilter === 'All' || e.category === expenseCategoryFilter;
     const matchesMonth = expenseMonthFilter === 'All' || e.date.startsWith(expenseMonthFilter);
-    return matchesSearch && matchesCategory && matchesMonth;
+    return matchesSearch && matchesCategory && matchesMonth && matchesDivision(e.department_id, expenseDivFilter);
   });
 
   const sortedExpenses = [...filteredExpenses].sort((a, b) => {
@@ -809,6 +832,18 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                     />
                   </div>
 
+                  <div>
+                    <label className="block text-[10px] font-bold text-emerald-800 uppercase tracking-wider mb-1">Divisi Pemakai</label>
+                    <select
+                      value={poDepartmentId}
+                      onChange={(e) => setPoDepartmentId(e.target.value)}
+                      className="w-full bg-emerald-50/15 border border-emerald-800/25 rounded-lg px-3 py-2 focus:bg-white focus:border-emerald-700 focus:outline-none text-emerald-950 font-semibold"
+                    >
+                      <option value="">Bersama (dipakai kedua divisi)</option>
+                      {DIVISIONS.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
+                    </select>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-[10px] font-bold text-emerald-800 uppercase tracking-wider mb-1">Tanggal Transaksi *</label>
@@ -1000,6 +1035,14 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                   </div>
                   {showNewCategoryInput && <div className="col-span-2 bg-emerald-50/30 border border-emerald-800/15 rounded-xl p-3"><label className="block text-[10px] font-bold text-emerald-800 uppercase tracking-wider mb-1">Kategori Baru</label><div className="flex gap-2"><input value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddExpenseCategory(); } }} placeholder="Contoh: ATK & Perlengkapan Kantor" className="min-w-0 flex-1 bg-white border border-emerald-800/25 rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-700 font-semibold text-emerald-950" autoFocus /><button type="button" onClick={handleAddExpenseCategory} className="bg-emerald-800 text-white px-4 rounded-lg font-bold cursor-pointer">Tambah</button></div></div>}
                   <div className="col-span-2">
+                    <label className="block text-[10px] font-bold text-emerald-800 uppercase tracking-wider mb-1">Divisi Penanggung Biaya</label>
+                    <select value={expenseDepartmentId} onChange={(e) => setExpenseDepartmentId(e.target.value)} className="w-full bg-emerald-50/15 border border-emerald-800/25 rounded-lg px-3 py-2 font-semibold text-emerald-950 focus:bg-white focus:border-emerald-700 focus:outline-none">
+                      <option value="">Bersama (dibagi di laporan)</option>
+                      {DIVISIONS.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
+                    </select>
+                    <p className="text-[10px] text-emerald-800/50 mt-1">Biaya seperti listrik, sewa, atau gaji admin biarkan <b>Bersama</b> — pembagiannya diurus di laporan, bukan ditebak di sini.</p>
+                  </div>
+                  <div className="col-span-2">
                     <label className="block text-[10px] font-bold text-emerald-800 uppercase tracking-wider mb-1">Nama Barang / Pengeluaran</label>
                     <input type="text" value={expenseDesc} onChange={(e) => setExpenseDesc(e.target.value)} placeholder="Contoh: Galon air" className="w-full bg-emerald-50/15 border border-emerald-800/25 rounded-lg px-3 py-2 focus:bg-white focus:border-emerald-700 focus:outline-none font-semibold text-emerald-950" required />
                   </div>
@@ -1044,6 +1087,8 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                       className="pl-8 pr-3 py-1.5 w-full bg-emerald-50/15 border border-emerald-800/20 rounded-lg text-xs focus:bg-white focus:outline-none focus:border-emerald-700 text-emerald-950 font-semibold transition-colors"
                     />
                   </div>
+
+                  <DivisionFilter value={poDivFilter} onChange={setPoDivFilter} sharedLabel="Bersama" />
 
                   {/* Supplier filter */}
                   <select
@@ -1143,6 +1188,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                           <th className="p-3 border-r border-white/30 w-28">TANGGAL</th>
                           <th className="p-3 border-r border-white/30 w-28 text-left">NO PO</th>
                           <th className="p-3 border-r border-white/30 text-left">SUPPLIER</th>
+                          <th className="p-3 border-r border-white/30 w-28 text-center">DIVISI</th>
                           <th className="p-3 border-r border-white/30 text-left">DESCRIPTION / BARANG</th>
                           <th className="p-3 border-r border-white/30 w-16 text-center">QTY</th>
                           <th className="p-3 border-r border-white/30 w-32 text-right">HARGA (SATUAN)</th>
@@ -1154,7 +1200,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                       <tbody>
                         {spreadsheetRows.length === 0 ? (
                           <tr>
-                            <td colSpan={10} className="p-10 text-center text-emerald-800/60 italic bg-emerald-50/10">
+                            <td colSpan={11} className="p-10 text-center text-emerald-800/60 italic bg-emerald-50/10">
                               Tidak ada data Purchase Order terdaftar untuk filter ini.
                             </td>
                           </tr>
@@ -1203,6 +1249,15 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                                       </span>
                                       <span className="text-[9px] text-emerald-800/60 font-normal">Staff: {row.adminStaff}</span>
                                     </div>
+                                  </td>
+                                ) : null}
+
+                                {/* DIVISI — milik PO, jadi ikut digabung seperti supplier */}
+                                {isFirstItem ? (
+                                  <td rowSpan={itemsCount} className="p-2.5 border-r border-emerald-100/70 text-center align-middle">
+                                    <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${divisionBadgeClass(row.departmentId)}`}>
+                                      {divisionLabel(row.departmentId, 'Bersama')}
+                                    </span>
                                   </td>
                                 ) : null}
 
@@ -1510,6 +1565,8 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                     />
                   </div>
 
+                  <DivisionFilter value={expenseDivFilter} onChange={setExpenseDivFilter} sharedLabel="Bersama" />
+
                   {/* Category Filter */}
                   <select
                     value={expenseCategoryFilter}
@@ -1563,6 +1620,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                       <th className="p-3 border-r border-white/30 w-24">Tanggal</th>
                       <th className="p-3 border-r border-white/30 text-left">Nama Barang / Pengeluaran</th>
                       <th className="p-3 border-r border-white/30 text-left">Kategori</th>
+                      <th className="p-3 border-r border-white/30 w-28 text-center">Divisi</th>
                       <th className="p-3 border-r border-white/30 w-12">Qty</th>
                       <th className="p-3 border-r border-white/30 w-28 text-right">Harga</th>
                       <th className="p-3 border-r border-white/30 w-28 text-right">Subtotal</th>
@@ -1574,7 +1632,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                   <tbody>
                     {groupedExpensesList.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className="p-8 text-center text-emerald-800/40 italic bg-emerald-50/5">
+                        <td colSpan={10} className="p-8 text-center text-emerald-800/40 italic bg-emerald-50/5">
                           Tidak ada catatan pengeluaran harian yang ditemukan.
                         </td>
                       </tr>
@@ -1609,6 +1667,13 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                                 <span className="inline-flex items-center gap-1">
                                   <Tag className="w-2.5 h-2.5 text-emerald-700/50" />
                                   {item.category}
+                                </span>
+                              </td>
+
+                              {/* Divisi */}
+                              <td className="p-2.5 border-r border-emerald-800/15 text-center">
+                                <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${divisionBadgeClass(item.department_id)}`}>
+                                  {divisionLabel(item.department_id, 'Bersama')}
                                 </span>
                               </td>
 
