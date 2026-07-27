@@ -67,6 +67,8 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
   const [subTab, setSubTab] = useState<'order' | 'tracker' | 'finalize' | 'history' | 'packing-docs' | 'settings'>('order');
   const [historyView, setHistoryView] = useState<'materials' | 'products' | 'reject' | 'movements'>('materials');
   const [manualStep, setManualStep] = useState<1 | 2 | 3>(1);
+  // Filter divisi tabel Stok Bahan Baku; bahan Umum selalu ikut tampil
+  const [materialDivFilter, setMaterialDivFilter] = useState<'all' | 'Eva Foam' | 'Konveksi'>('all');
 
   // Pengaturan Alur Produksi — pindahan dari menu Gudang, atur tahapan kerja per produk barang jadi
   const [stageEditProduct, setStageEditProduct] = useState<Product | null>(null);
@@ -239,6 +241,15 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
   const manualAssignableEmployees = manualDepartmentId
     ? employees.filter(employee => employee.department_id === manualDepartmentId).sort((a, b) => a.name.localeCompare(b.name))
     : [];
+  // Tabel Stok Bahan Baku: ikut filter divisi, urut abjad. Bahan Umum selalu ikut.
+  const visibleMaterials = rawMaterials
+    .filter(mat => {
+      if (materialDivFilter === 'all') return true;
+      const div = materialDivisionLabel(mat);
+      return div === materialDivFilter || div === 'Umum';
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, 'id'));
+
   const manualFilteredMaterials = (manualDepartmentId
     ? rawMaterials.filter(material => !material.department_id || material.department_id === manualDepartmentId)
     : rawMaterials
@@ -2322,9 +2333,29 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
           </div>
 
           {historyView === 'materials' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-xs">
-            <div>
-              <h3 className="font-bold text-sm text-gray-800">Status Stok Bahan Baku</h3>
-              <p className="text-xs text-gray-400">Monitoring sisa bahan baku di pabrik {brandName()}</p>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-sm text-gray-800">Status Stok Bahan Baku</h3>
+                <p className="text-xs text-gray-400">
+                  Monitoring sisa bahan baku di pabrik {brandName()}
+                  {materialDivFilter !== 'all' && <span className="text-gray-400"> · {visibleMaterials.length} jenis, termasuk bahan Umum</span>}
+                </p>
+              </div>
+
+              {/* Filter divisi — bahan Umum ikut tampil di kedua divisi karena dipakai keduanya */}
+              <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200 text-[10px] font-black w-fit shrink-0">
+                {([['all', 'Semua Divisi'], ['Eva Foam', 'Eva Foam'], ['Konveksi', 'Konveksi']] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    onClick={() => setMaterialDivFilter(value)}
+                    className={`px-2.5 py-1 rounded-md uppercase transition-all cursor-pointer ${
+                      materialDivFilter === value ? 'bg-white text-evergreen shadow-xs' : 'text-gray-500'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Satu tabel urut abjad; divisi jadi kolom ("Umum" = dipakai kedua divisi) */}
@@ -2342,13 +2373,14 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                   </tr>
                 </thead>
                 <tbody>
-                  {rawMaterials.length === 0 ? (
+                  {visibleMaterials.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="p-6 text-center text-gray-400 italic">Belum ada bahan baku terdaftar.</td>
+                      <td colSpan={7} className="p-6 text-center text-gray-400 italic">
+                        {rawMaterials.length === 0 ? 'Belum ada bahan baku terdaftar.' : `Tidak ada bahan baku untuk divisi ${materialDivFilter}.`}
+                      </td>
                     </tr>
                   ) : (
-                    [...rawMaterials]
-                      .sort((a, b) => a.name.localeCompare(b.name, 'id'))
+                    visibleMaterials
                       .map((mat, index) => {
                         const isCritical = mat.current_stock <= mat.stock_minimum;
                         const division = materialDivisionLabel(mat);
