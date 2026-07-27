@@ -67,8 +67,9 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
   const [subTab, setSubTab] = useState<'order' | 'tracker' | 'finalize' | 'history' | 'packing-docs' | 'settings'>('order');
   const [historyView, setHistoryView] = useState<'materials' | 'products' | 'reject' | 'movements'>('materials');
   const [manualStep, setManualStep] = useState<1 | 2 | 3>(1);
-  // Filter divisi tabel Stok Bahan Baku; bahan Umum selalu ikut tampil
-  const [materialDivFilter, setMaterialDivFilter] = useState<'all' | 'Eva Foam' | 'Konveksi'>('all');
+  // Filter divisi untuk tabel Stok Bahan Baku dan Stok Barang Jadi di Riwayat & Stok.
+  // Khusus bahan baku, yang berdivisi Umum selalu ikut tampil karena dipakai keduanya.
+  const [historyDivFilter, setHistoryDivFilter] = useState<'all' | 'Eva Foam' | 'Konveksi'>('all');
 
   // Pengaturan Alur Produksi — pindahan dari menu Gudang, atur tahapan kerja per produk barang jadi
   const [stageEditProduct, setStageEditProduct] = useState<Product | null>(null);
@@ -244,11 +245,34 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
   // Tabel Stok Bahan Baku: ikut filter divisi, urut abjad. Bahan Umum selalu ikut.
   const visibleMaterials = rawMaterials
     .filter(mat => {
-      if (materialDivFilter === 'all') return true;
+      if (historyDivFilter === 'all') return true;
       const div = materialDivisionLabel(mat);
-      return div === materialDivFilter || div === 'Umum';
+      return div === historyDivFilter || div === 'Umum';
     })
     .sort((a, b) => a.name.localeCompare(b.name, 'id'));
+
+  // Tabel Stok Barang Jadi: ikut filter divisi, urut nama lalu varian
+  const visibleProducts = products
+    .filter(prod => historyDivFilter === 'all'
+      || prod.department_id === (historyDivFilter === 'Eva Foam' ? 'dept-eva-foam' : 'dept-konveksi'))
+    .sort((a, b) => a.name.localeCompare(b.name, 'id') || a.variant.localeCompare(b.variant, 'id'));
+
+  // Dipakai tabel Stok Bahan Baku dan Stok Barang Jadi
+  const divisionFilterButtons = (
+    <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200 text-[10px] font-black w-fit shrink-0">
+      {([['all', 'Semua Divisi'], ['Eva Foam', 'Eva Foam'], ['Konveksi', 'Konveksi']] as const).map(([value, label]) => (
+        <button
+          key={value}
+          onClick={() => setHistoryDivFilter(value)}
+          className={`px-2.5 py-1 rounded-md uppercase transition-all cursor-pointer ${
+            historyDivFilter === value ? 'bg-white text-evergreen shadow-xs' : 'text-gray-500'
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
 
   const manualFilteredMaterials = (manualDepartmentId
     ? rawMaterials.filter(material => !material.department_id || material.department_id === manualDepartmentId)
@@ -2338,24 +2362,11 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                 <h3 className="font-bold text-sm text-gray-800">Status Stok Bahan Baku</h3>
                 <p className="text-xs text-gray-400">
                   Monitoring sisa bahan baku di pabrik {brandName()}
-                  {materialDivFilter !== 'all' && <span className="text-gray-400"> · {visibleMaterials.length} jenis, termasuk bahan Umum</span>}
+                  {historyDivFilter !== 'all' && <span className="text-gray-400"> · {visibleMaterials.length} jenis, termasuk bahan Umum</span>}
                 </p>
               </div>
 
-              {/* Filter divisi — bahan Umum ikut tampil di kedua divisi karena dipakai keduanya */}
-              <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200 text-[10px] font-black w-fit shrink-0">
-                {([['all', 'Semua Divisi'], ['Eva Foam', 'Eva Foam'], ['Konveksi', 'Konveksi']] as const).map(([value, label]) => (
-                  <button
-                    key={value}
-                    onClick={() => setMaterialDivFilter(value)}
-                    className={`px-2.5 py-1 rounded-md uppercase transition-all cursor-pointer ${
-                      materialDivFilter === value ? 'bg-white text-evergreen shadow-xs' : 'text-gray-500'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+              {divisionFilterButtons}
             </div>
 
             {/* Satu tabel urut abjad; divisi jadi kolom ("Umum" = dipakai kedua divisi) */}
@@ -2376,7 +2387,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                   {visibleMaterials.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="p-6 text-center text-gray-400 italic">
-                        {rawMaterials.length === 0 ? 'Belum ada bahan baku terdaftar.' : `Tidak ada bahan baku untuk divisi ${materialDivFilter}.`}
+                        {rawMaterials.length === 0 ? 'Belum ada bahan baku terdaftar.' : `Tidak ada bahan baku untuk divisi ${historyDivFilter}.`}
                       </td>
                     </tr>
                   ) : (
@@ -2422,35 +2433,69 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
           </div>}
 
           {historyView === 'products' && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-xs">
-            <div>
-              <h3 className="font-bold text-sm text-gray-800 font-sans">Sisa Stok Barang Jadi</h3>
-              <p className="text-xs text-gray-400">Stok siap kirim hasil produksi gudang {brandName()}</p>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-sm text-gray-800 font-sans">Sisa Stok Barang Jadi</h3>
+                <p className="text-xs text-gray-400">
+                  Stok siap kirim hasil produksi gudang {brandName()}
+                  {historyDivFilter !== 'all' && <span> · {visibleProducts.length} produk</span>}
+                </p>
+              </div>
+
+              {divisionFilterButtons}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {[...products].sort((a, b) => a.name.localeCompare(b.name, 'id') || a.variant.localeCompare(b.variant, 'id')).map((p) => {
-                const isCritical = p.stock <= 15;
-                return (
-                  <div
-                    key={p.id}
-                    className={`p-3.5 rounded-lg border text-xs flex justify-between items-center transition-all ${
-                      isCritical ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-100'
-                    }`}
-                  >
-                    <div>
-                      <p className="font-bold text-gray-800 font-sans">{p.name}</p>
-                      <p className="text-[10px] text-gray-400 mt-0.5">{p.variant}</p>
-                    </div>
-
-                    <div className="text-right">
-                      <p className="font-mono font-bold text-sm text-gray-800">{p.stock} Unit</p>
-                      {isCritical && (
-                        <span className="text-[9px] font-black text-amber-700 uppercase tracking-wide block mt-0.5">Kritis</span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+            {/* Satu tabel urut nama lalu varian; ambang kritis 15 unit sama seperti sebelumnya */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left bg-evergreen text-white font-bold uppercase tracking-wider text-[10px]">
+                    <th className="p-2 w-10 text-center">No</th>
+                    <th className="p-2">Nama Barang</th>
+                    <th className="p-2 w-40">Varian</th>
+                    <th className="p-2 w-28">Divisi</th>
+                    <th className="p-2 w-28 text-right">Stok</th>
+                    <th className="p-2 w-28 text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleProducts.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="p-6 text-center text-gray-400 italic">
+                        {products.length === 0 ? 'Belum ada barang jadi terdaftar.' : `Tidak ada barang jadi untuk divisi ${historyDivFilter}.`}
+                      </td>
+                    </tr>
+                  ) : (
+                    visibleProducts.map((p, index) => {
+                      const isCritical = p.stock <= 15;
+                      return (
+                        <tr key={p.id} className={`border-b border-emerald-200 hover:bg-emerald-50/20 ${isCritical ? 'bg-amber-50/60' : ''}`}>
+                          <td className="p-2 text-center text-gray-400">{index + 1}</td>
+                          <td className="p-2 font-semibold text-gray-700">{p.name}</td>
+                          <td className="p-2 text-gray-500">{p.variant}</td>
+                          <td className="p-2">
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
+                              p.department_id === 'dept-eva-foam' ? 'bg-emerald-100 text-emerald-800' : 'bg-sky-100 text-sky-800'
+                            }`}>
+                              {PRODUCTION_DEPARTMENTS.find(d => d.id === p.department_id)?.label || p.department_id}
+                            </span>
+                          </td>
+                          <td className={`p-2 text-right font-mono font-bold ${isCritical ? 'text-amber-700' : 'text-[var(--color-evergreen)]'}`}>
+                            {p.stock} Unit
+                          </td>
+                          <td className="p-2 text-center">
+                            {isCritical ? (
+                              <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[9px] font-black uppercase tracking-wider">Kritis</span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[9px] font-black uppercase tracking-wider">Aman</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>}
 
