@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Employee, Department, PayrollWeekly, CashAdvance, Attendance, UserRole, EmploymentStatus, EMPLOYMENT_STATUSES, employmentStatusOf, isEligibleForAttendanceBonus } from '../types';
+import { Employee, Department, PayrollWeekly, CashAdvance, Attendance, UserRole, EmploymentStatus, EMPLOYMENT_STATUSES, employmentStatusOf, isEligibleForAttendanceBonus, divisionLabel } from '../types';
 import { dataStore, hashPin, currentWeeklyPayrollPeriod } from '../dataStore';
 import { employeeChangeLog, ChangeEntry } from '../employeeChangeLog';
 import { QRCodeSVG } from 'qrcode.react';
-import { Users, Plus, ShieldCheck, Key, Lock, LogIn, LogOut, Check, Save, DollarSign, X, Calendar, Clock, Printer, Trash2, History, Calculator, QrCode } from 'lucide-react';
+import { Users, Plus, ShieldCheck, Key, Lock, LogIn, LogOut, Check, Save, DollarSign, X, Calendar, Clock, Printer, Trash2, History, Calculator, QrCode, Pencil } from 'lucide-react';
 
 // Rapikan nama: tiap kata awalan kapital, sisanya kecil (mis. "BUDI santoso" -> "Budi Santoso")
 const toTitleCase = (s: string): string =>
@@ -1012,7 +1012,6 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                 <th className="p-3 text-center">Status Kerja</th>
                 <th className="p-3 text-right">Tarif Honor Harian</th>
                 <th className="p-3 text-right">Uang Lembur / Jam</th>
-                <th className="p-3 text-center">PIN Login</th>
                 <th className="p-3">Akses Sistem</th>
                 <th className="p-3 text-center">Aksi Manajemen</th>
               </tr>
@@ -1046,7 +1045,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                     </td>
                     <td className="p-3">
                       <span className={`px-2 py-0.5 border rounded text-[10px] font-bold ${deptBadgeClass(deptObj?.id)}`}>
-                        {deptObj ? deptObj.name : 'Umum / HQ'}
+                        {divisionLabel(deptObj?.id, 'Umum / HQ')}
                       </span>
                     </td>
                     <td className="p-3 text-center capitalize">
@@ -1070,7 +1069,6 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                     </td>
                     <td className="p-3 text-right font-mono text-gray-700 font-bold">{formatIDR(emp.rate_harian)}</td>
                     <td className="p-3 text-right font-mono text-gray-500">{formatIDR(emp.rate_lembur_per_jam)}</td>
-                    <td className="p-3 text-center font-mono font-semibold tracking-widest text-gray-400">••••</td>
                     <td className="p-3">
                       <select
                         value={emp.access_role || ''}
@@ -1085,9 +1083,10 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                       <div className="flex items-center justify-center gap-1.5">
                         <button
                           onClick={() => setQrEmployee(emp)}
-                          className="bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 font-bold text-[10px] px-2.5 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
+                          title="Kartu QR absensi"
+                          className="bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 p-1.5 rounded-lg cursor-pointer transition-colors"
                         >
-                          <QrCode className="w-3 h-3" /> QR
+                          <QrCode className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => handleOpenProfileModal(emp)}
@@ -1097,15 +1096,17 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                         </button>
                         <button
                           onClick={() => startEditEmployee(emp)}
-                          className="bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-bold text-[10px] px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors"
+                          title="Edit data karyawan"
+                          className="bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 p-1.5 rounded-lg cursor-pointer transition-colors"
                         >
-                          Edit
+                          <Pencil className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => handleDeleteEmployee(emp)}
-                          className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[10px] px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors"
+                          title="Hapus karyawan"
+                          className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 p-1.5 rounded-lg cursor-pointer transition-colors"
                         >
-                          Hapus
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </td>
