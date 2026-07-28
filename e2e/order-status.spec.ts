@@ -24,7 +24,7 @@ const stokMatras = (page: Page) => page.evaluate(() => {
 // Semua confirm/alert diterima otomatis
 const autoAcceptDialogs = (page: Page) => page.on('dialog', d => d.accept());
 
-const badgeStatus = (page: Page) => page.getByRole('table').locator('tbody tr td').nth(7);
+const badgeStatus = (page: Page) => page.getByRole('table').locator('tbody tr td').nth(6);
 
 const bukaDaftarOrder = async (page: Page) => {
   autoAcceptDialogs(page);
@@ -39,18 +39,18 @@ test('order Selesai bisa dibuka kembali dan stok gudang dipulihkan', async ({ pa
   await bukaDaftarOrder(page);
 
   // Order Selesai: belum ada Edit/Hapus, tapi ada jalan keluar lewat Batalkan Penyelesaian
-  await expect(page.getByRole('button', { name: 'Edit Order' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /^Hapus$/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Edit order' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Hapus order' })).toHaveCount(0);
 
   const stokAwal = (await stokMatras(page)) ?? 85;
 
-  await page.getByRole('button', { name: /Batalkan Penyelesaian/ }).click();
+  await page.getByRole('button', { name: /Batalkan penyelesaian/ }).click();
 
   // Stok kembali 2 unit dan status jadi Pending, jadi Edit/Hapus muncul lagi
   await expect(badgeStatus(page)).toHaveText('Pending');
   expect(await stokMatras(page)).toBe(stokAwal + 2);
-  await expect(page.getByRole('button', { name: 'Edit Order' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /^Hapus$/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Edit order' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Hapus order' })).toBeVisible();
 });
 
 test('order dibatalkan bisa diaktifkan kembali tanpa mengubah stok', async ({ page }) => {
@@ -58,9 +58,9 @@ test('order dibatalkan bisa diaktifkan kembali tanpa mengubah stok', async ({ pa
   await bukaDaftarOrder(page);
 
   // Selesai -> Pending dulu, baru dibatalkan
-  await page.getByRole('button', { name: /Batalkan Penyelesaian/ }).click();
-  await expect(page.getByRole('button', { name: 'Batalkan Order' })).toBeVisible();
-  await page.getByRole('button', { name: 'Batalkan Order' }).click();
+  await page.getByRole('button', { name: /Batalkan penyelesaian/ }).click();
+  await expect(page.getByRole('button', { name: 'Batalkan order' })).toBeVisible();
+  await page.getByRole('button', { name: 'Batalkan order' }).click();
 
   // Dibatalkan hilang dari filter Aktif, muncul lagi saat filter diganti
   await expect(page.getByText('ORD/2026/07/001')).toHaveCount(0);
@@ -68,7 +68,7 @@ test('order dibatalkan bisa diaktifkan kembali tanpa mengubah stok', async ({ pa
   await expect(page.getByText('ORD/2026/07/001')).toBeVisible();
 
   const stokSebelum = await stokMatras(page);
-  await page.getByRole('button', { name: 'Aktifkan Kembali' }).click();
+  await page.getByRole('button', { name: 'Aktifkan kembali' }).click();
 
   // Sudah bukan Dibatalkan lagi, jadi hilang dari filter itu dan muncul sebagai Pending di filter Aktif
   await expect(page.getByText('ORD/2026/07/001')).toHaveCount(0);

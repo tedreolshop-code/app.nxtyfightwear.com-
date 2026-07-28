@@ -6,7 +6,8 @@ import { dataStore, wibTodayStr } from '../dataStore';
 import { ShoppingBag, Plus, User, Phone, CheckCircle2, Trash2, PackageCheck, Truck, Printer, X, Pencil, Ban, RotateCcw } from 'lucide-react';
 
 // Tombol aksi ikon 24x24 — dipakai berulang di kolom Aksi
-const iconBtn = 'w-6 h-6 flex items-center justify-center rounded border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 cursor-pointer';
+const iconBtn = 'w-6 h-6 flex items-center justify-center rounded border cursor-pointer';
+const iconBtnPlain = `${iconBtn} border-gray-200 bg-white hover:bg-gray-50 text-gray-700`;
 
 export const OrderModule: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -967,18 +968,18 @@ export const OrderModule: React.FC = () => {
 
         <div className="overflow-x-auto">
           {/* Gaya tabel disamakan dengan Penjualan Marketplace: header evergreen, garis emerald, body mono */}
-          <table className="w-full table-fixed text-left border-collapse text-[11px] border-2 border-evergreen/60 [&_th]:px-2 [&_th]:py-1.5 [&_td]:px-2 [&_td]:py-2">
+          <table className="w-full table-fixed text-left border-collapse text-[11px] border-2 border-evergreen/60 [&_th]:px-2 [&_th]:py-1.5 [&_td]:px-2 [&_td]:py-2 [&_td]:overflow-hidden">
             <thead>
               <tr className="bg-evergreen border-b border-evergreen-dark text-white font-bold uppercase tracking-wider text-[10px] text-center">
-                <th className="border-r border-white/30 text-left w-[96px]">No. Order</th>
+                <th className="border-r border-white/30 text-left w-[120px]">No. Order</th>
                 <th className="border-r border-white/30 text-left w-[76px]">Tanggal</th>
                 <th className="border-r border-white/30 text-left w-[150px]">Pelanggan</th>
                 <th className="border-r border-white/30 text-left">Daftar Barang</th>
-                <th className="border-r border-white/30 text-right w-[104px]">Total Tagihan</th>
-                <th className="border-r border-white/30 text-center w-[96px]">Bayar</th>
-                <th className="border-r border-white/30 text-center w-[88px]">Status</th>
+                <th className="border-r border-white/30 text-right w-[124px]">Total Tagihan</th>
+                <th className="border-r border-white/30 text-center w-[108px]">Bayar</th>
+                <th className="border-r border-white/30 text-center w-[92px]">Status</th>
                 <th className="border-r border-white/30 text-center w-[92px]">Kirim</th>
-                <th className="text-center w-[92px]">Aksi</th>
+                <th className="text-center w-[112px]">Aksi</th>
               </tr>
             </thead>
             <tbody className="font-mono bg-white [&_td]:border-r [&_td]:border-emerald-300 [&_td:last-child]:border-r-0">
@@ -1019,10 +1020,10 @@ export const OrderModule: React.FC = () => {
                     <td className="text-right font-mono font-bold text-gray-800">
                       {formatIDR(ord.total)}
                       {(ord.discount ?? 0) > 0 && (
-                        <p className="text-[10px] text-rose-500 font-normal whitespace-nowrap">disc {formatIDR(ord.discount!)}</p>
+                        <p className="text-[10px] text-rose-500 font-normal whitespace-nowrap">-{formatIDR(ord.discount!)} disc</p>
                       )}
                       {(ord.shipping_fee ?? 0) > 0 && (
-                        <p className="text-[10px] text-gray-400 font-normal whitespace-nowrap">incl. ongkir {formatIDR(ord.shipping_fee!)}</p>
+                        <p className="text-[10px] text-gray-400 font-normal whitespace-nowrap">+{formatIDR(ord.shipping_fee!)} ongkir</p>
                       )}
                     </td>
                     <td className="text-center space-y-1">
@@ -1036,19 +1037,19 @@ export const OrderModule: React.FC = () => {
                     <td className="text-center space-y-1">
                       {getStatusBadge(ord.status)}
                       {ord.status === 'preorder' && ord.ready_date && (
-                        <p className="text-[10px] font-mono text-violet-700 whitespace-nowrap">siap {ord.ready_date}</p>
+                        <p className="text-[10px] font-mono text-violet-700">siap {ord.ready_date}</p>
                       )}
                     </td>
                     <td className="text-center space-y-1">{getShippingBadge(ord)}{ord.tracking_number && <p className="text-[10px] font-mono text-gray-500">{ord.tracking_number}</p>}</td>
                     {/* Aksi dipadatkan jadi ikon; label tetap ada di tooltip biar kolom nggak melebar */}
                     <td className="text-center">
                       <div className="flex flex-wrap justify-center gap-1">
-                        <button onClick={() => openOrderPanel(ord)} title="Packing / Resi" className={iconBtn}>
+                        <button onClick={() => openOrderPanel(ord)} title="Packing / Resi" className={iconBtnPlain}>
                           <PackageCheck className="w-3.5 h-3.5" />
                         </button>
 
                         {ord.status !== 'cancelled' && (
-                          <button onClick={() => handlePrintNota(ord)} title="Cetak Nota" className={iconBtn}>
+                          <button onClick={() => handlePrintNota(ord)} title="Cetak Nota" className={iconBtnPlain}>
                             <Printer className="w-3.5 h-3.5" />
                           </button>
                         )}
@@ -1075,7 +1076,7 @@ export const OrderModule: React.FC = () => {
                         )}
 
                         {ord.status === 'cancelled' && (
-                          <button onClick={() => handleReactivateOrder(ord)} title="Aktifkan kembali" className={iconBtn}>
+                          <button onClick={() => handleReactivateOrder(ord)} title="Aktifkan kembali" className={iconBtnPlain}>
                             <RotateCcw className="w-3.5 h-3.5" />
                           </button>
                         )}
@@ -1092,7 +1093,7 @@ export const OrderModule: React.FC = () => {
                             <button
                               onClick={() => handleCancelOrder(ord.id)}
                               title="Batalkan order"
-                              className={`${iconBtn} text-rose-600 hover:bg-rose-50`}
+                              className={`${iconBtn} border-gray-200 bg-white text-rose-600 hover:bg-rose-50`}
                             >
                               <Ban className="w-3.5 h-3.5" />
                             </button>
