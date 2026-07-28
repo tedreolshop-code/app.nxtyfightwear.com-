@@ -184,6 +184,25 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
       .sort((a, b) => a.emp.name.localeCompare(b.emp.name, 'id'));
     const aman = rows.filter(r => r.result.status === 'aman');
     const assessedDays = rows[0]?.result.workingDays ?? 0;
+    // Diagnosa "kenapa saldonya nol", supaya tidak perlu menebak:
+    // (a) karyawan yang nilai bonusnya belum diatur, (b) hari kerja yang tidak punya
+    // absensi sama sekali — tanda absensi belum dipakai pada hari-hari itu.
+    const zeroBonus = rows.filter(r => bonusOf(r.emp) <= 0).length;
+    const effectiveFrom = dataStore.getWorkSettings().attendance_effective_from;
+    const scannedDates = new Set(
+      dataStore.getAttendance()
+        .filter(a => a.timestamp.startsWith(currentMonth))
+        .map(a => a.timestamp.slice(0, 10))
+    );
+    let emptyDays = 0;
+    for (let d = 1; d <= 31; d++) {
+      const dateStr = `${currentMonth}-${String(d).padStart(2, '0')}`;
+      if (!dateStr.startsWith(currentMonth) || dateStr.slice(8) > '31') break;
+      if (new Date(`${dateStr}T00:00:00Z`).getUTCDay() === 0) continue;
+      if (dateStr >= wibTodayStr()) continue;
+      if (effectiveFrom && dateStr < effectiveFrom) continue;
+      if (!scannedDates.has(dateStr)) emptyDays++;
+    }
     return {
       rows,
       amanCount: aman.length,
@@ -195,6 +214,9 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
       totalWorkingDays,
       assessedDays,
       remainingDays: Math.max(0, totalWorkingDays - assessedDays),
+      zeroBonus,
+      emptyDays,
+      effectiveFrom,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [employees, currentMonth, payouts]);
@@ -300,6 +322,29 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
             </span>
           </span>
         </button>
+
+        {(running.zeroBonus > 0 || running.emptyDays > 0) && (
+          <div className="space-y-1.5 text-[11px] text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+            <p className="font-bold flex items-center gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> Kenapa saldonya nol?
+            </p>
+            {running.emptyDays > 0 && (
+              <p>
+                <b>{running.emptyDays} hari kerja</b> bulan ini tidak punya absensi dari siapa pun, jadi
+                dihitung tidak hadir dan menggugurkan bonus. Kalau itu masa sebelum absensi dipakai,
+                isi <b>Absensi Mulai Berlaku</b> di Absensi → Jam Kerja & QR Lokasi
+                {running.effectiveFrom ? ` (sekarang ${running.effectiveFrom})` : ' (sekarang masih kosong)'}.
+              </p>
+            )}
+            {running.zeroBonus > 0 && (
+              <p>
+                <b>{running.zeroBonus} dari {running.employeeCount} karyawan</b> nilai bonusnya masih Rp0,
+                jadi saldonya nol walau kehadirannya aman. Atur <b>Bonus Rajin Bulanan</b> di Jam Kerja,
+                atau nilai per orang di Data Karyawan → Profil &amp; Gaji.
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Posisi hari ini per karyawan — supaya tidak perlu menunggu awal bulan.
             Angka bonus di sini bukan uang yang sudah pasti: satu telat atau absen

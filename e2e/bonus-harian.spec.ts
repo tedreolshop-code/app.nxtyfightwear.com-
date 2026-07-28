@@ -94,3 +94,30 @@ test('tanggal mulai berlaku absensi menyelamatkan bonus dari hari sebelum sistem
   await expect(page.getByText(/Saldo bonus berjalan/)).toBeVisible();
   await expect(page.getByText(/penuh bulan ini Rp/)).toBeVisible();
 });
+
+test('panel menjelaskan sendiri kenapa saldo berjalan nol', async ({ page }) => {
+  await isolateAsOwner(page);
+  await page.addInitScript(() => {
+    const base = {
+      department_id: 'dept-eva-foam', role: 'karyawan', rate_harian: 100000, rate_lembur_per_jam: 10000,
+      status_aktif: true, phone_number: '08', pin: 'x', pin_hashed: false,
+    };
+    localStorage.setItem('nxty_employees', JSON.stringify([
+      // Nilai bonus 0 → saldo nol walau kehadirannya bersih
+      { ...base, id: 'emp-owner', username: 'ari', name: 'H. Ari Gunawan', access_role: 'owner', default_attendance_bonus: 0 },
+    ]));
+    localStorage.setItem('nxty_attendance', JSON.stringify([])); // tidak ada absensi sama sekali
+    const settings = JSON.parse(localStorage.getItem('nxty_work_settings') || '{}');
+    localStorage.setItem('nxty_work_settings', JSON.stringify({ ...settings, monthly_bonus_amount: 0 }));
+  });
+
+  await page.goto('/');
+  await page.locator('#nav-tab-karyawan').click();
+  await page.getByRole('button', { name: 'Payroll & Slip Gaji' }).click();
+  await page.getByRole('button', { name: 'Bonus Kehadiran' }).click();
+
+  const diagnosa = page.getByText('Kenapa saldonya nol?').locator('..');
+  await expect(diagnosa).toContainText('hari kerja');
+  await expect(diagnosa).toContainText('Absensi Mulai Berlaku');
+  await expect(diagnosa).toContainText('nilai bonusnya masih Rp0');
+});
