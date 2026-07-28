@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Employee, Department, PayrollWeekly, CashAdvance, Attendance, UserRole, EmploymentStatus, EMPLOYMENT_STATUSES, employmentStatusOf, isEligibleForAttendanceBonus } from '../types';
 import { dataStore, hashPin, currentWeeklyPayrollPeriod } from '../dataStore';
+import { employeeChangeLog, ChangeEntry } from '../employeeChangeLog';
 import { QRCodeSVG } from 'qrcode.react';
 import { Users, Plus, ShieldCheck, Key, Lock, LogIn, LogOut, Check, Save, DollarSign, X, Calendar, Clock, Printer, Trash2, History, Calculator, QrCode } from 'lucide-react';
 
@@ -151,7 +152,9 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
 
   // Consolidated Profil & Gaji Modal States
   const [profileModalEmp, setProfileModalEmp] = useState<Employee | null>(null);
-  const [activeModalTab, setActiveModalTab] = useState<'profile' | 'attendance' | 'payroll'>('payroll');
+  const [activeModalTab, setActiveModalTab] = useState<'profile' | 'attendance' | 'payroll' | 'riwayat'>('payroll');
+  // Jejak perubahan gaji, dibaca dari audit log (tidak ada data baru yang disimpan)
+  const [changeLog, setChangeLog] = useState<ChangeEntry[]>([]);
   
   const [modalPeriodStart, setModalPeriodStart] = useState(currentWeeklyPayrollPeriod().start);
   const [modalPeriodEnd, setModalPeriodEnd] = useState(currentWeeklyPayrollPeriod().end);
@@ -207,6 +210,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
 
     setEmployeePayrolls(pWeekly);
     setEmployeeAttendance(attList);
+    setChangeLog(employeeChangeLog(dataStore.getAuditLogs(), emp.id));
     setModalOutstandingKasbon(totalOutstanding);
 
     // Reset default inputs for new slip
@@ -562,6 +566,9 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
     onLoginEmployee(null);
     showNotification('Log out berhasil. Anda kembali ke mode Administrator/Owner.', 'info');
   };
+
+  const formatChangeDate = (iso: string) =>
+    new Date(iso).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
   const formatIDR = (val: number) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(val);
@@ -1184,11 +1191,65 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
               >
                 <Users className="w-4 h-4" /> Informasi Profil &amp; Tarif
               </button>
+              <button
+                type="button"
+                onClick={() => { setActiveModalTab('riwayat'); setEditingPayroll(null); }}
+                className={`py-3.5 text-xs font-bold transition-all border-b-2 flex items-center gap-1.5 cursor-pointer ${
+                  activeModalTab === 'riwayat'
+                    ? 'border-[var(--color-evergreen)] text-[var(--color-evergreen)]'
+                    : 'border-transparent text-gray-500 hover:text-gray-800'
+                }`}
+              >
+                <History className="w-4 h-4" /> Riwayat Perubahan Gaji ({changeLog.length})
+              </button>
             </div>
 
             {/* Modal Scrollable Content Container */}
             <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 space-y-6">
               
+              {/* TAB 4: JEJAK PERUBAHAN GAJI — turunan audit log, jadi tidak bisa diedit siapa pun */}
+              {activeModalTab === 'riwayat' && (
+                <div className="space-y-4 animate-fadeIn">
+                  <div className="border-b border-gray-100 pb-3">
+                    <h4 className="text-sm font-bold text-[var(--color-evergreen)] flex items-center gap-1.5">
+                      <History className="w-4 h-4" /> Riwayat Perubahan Gaji &amp; Tarif
+                    </h4>
+                    <p className="text-[10px] text-gray-400">
+                      Tercatat otomatis tiap data karyawan disimpan. Catatan ini tidak bisa diubah atau dihapus.
+                      Perubahan tarif berlaku sejak disimpan — slip gaji yang sudah terbit tidak ikut berubah.
+                    </p>
+                  </div>
+
+                  {changeLog.length === 0 ? (
+                    <p className="text-xs text-gray-400 italic bg-gray-50 border border-gray-100 rounded-xl p-6 text-center">
+                      Belum ada perubahan gaji tercatat untuk {profileModalEmp.name}.
+                    </p>
+                  ) : (
+                    <ol className="relative border-l-2 border-emerald-100 ml-2 space-y-5">
+                      {changeLog.map(entry => (
+                        <li key={entry.id} className="ml-5">
+                          <span className="absolute -left-[7px] w-3 h-3 rounded-full bg-[var(--color-evergreen)] border-2 border-white" />
+                          <div className="flex flex-wrap items-baseline gap-x-2">
+                            <time className="text-xs font-bold text-gray-800 font-mono">{formatChangeDate(entry.timestamp)}</time>
+                            <span className="text-[10px] text-gray-400">oleh {entry.actor_name}</span>
+                          </div>
+                          <div className="mt-1.5 bg-gray-50 border border-gray-100 rounded-lg divide-y divide-gray-100">
+                            {entry.changes.map(change => (
+                              <div key={change.field} className="flex flex-wrap items-center gap-x-2 px-3 py-1.5 text-[11px]">
+                                <span className="text-gray-500 min-w-[150px]">{change.label}</span>
+                                <span className="font-mono text-gray-400 line-through">{change.from}</span>
+                                <span className="text-gray-300">&rarr;</span>
+                                <span className="font-mono font-bold text-[var(--color-evergreen)]">{change.to}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
+              )}
+
               {/* TAB 1: PROFILE DETAILS */}
               {activeModalTab === 'profile' && (
                 <div className="space-y-6 animate-fadeIn">
