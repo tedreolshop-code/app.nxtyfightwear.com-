@@ -51,6 +51,9 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
   const [adjustQty, setAdjustQty] = useState(0);
   const [adjustDirection, setAdjustDirection] = useState<'in' | 'out'>('in');
   const [adjustRef, setAdjustRef] = useState('Hasil Stock Opname');
+  // Divisi yang sedang di-opname. Dipilih di dalam form, tidak lagi menumpang filter
+  // halaman di belakang modal yang tidak kelihatan hubungannya.
+  const [adjustDeptId, setAdjustDeptId] = useState('');
 
   // Form master item baru
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -118,6 +121,15 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
 
   // Bahan Umum tetap muncul saat filter divisi aktif, karena memang dipakai keduanya
   const materialMatchesDept = (mat: RawMaterial) => matchesDivision(mat.department_id, selectedDept, 'match-all');
+
+  // Item yang boleh di-opname: ikut divisi yang dipilih di form.
+  // Bahan Umum ikut muncul karena dipakai kedua divisi; barang jadi cocok-persis.
+  const opnameMaterials = rawMaterials
+    .filter(mat => matchesDivision(mat.department_id, adjustDeptId, 'match-all'))
+    .sort((a, b) => a.name.localeCompare(b.name, 'id'));
+  const opnameProducts = products
+    .filter(prod => matchesDivision(prod.department_id, adjustDeptId))
+    .sort((a, b) => a.name.localeCompare(b.name, 'id') || a.variant.localeCompare(b.variant, 'id'));
 
   const makeItemId = (type: 'material' | 'product', name: string) => {
     const slug = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 36) || Date.now().toString();
@@ -386,6 +398,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
               setAdjustItemId('');
               setAdjustQty(0);
               setAdjustRef('Hasil Stock Opname');
+              setAdjustDeptId(selectedDept); // nilai awal ikut filter halaman, tetap bisa diubah
               setShowAdjustModal(true);
             }}
             className="bg-warning-orange hover:bg-warning-orange/90 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
@@ -888,7 +901,25 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider">Pilih Barang / Bahan</label>
+                <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider">Divisi yang Di-opname</label>
+                <DivisionFilter
+                  value={adjustDeptId}
+                  onChange={(id) => { setAdjustDeptId(id); setAdjustItemId(''); }}
+                />
+                <p className="text-[10px] text-gray-500 mt-1">
+                  {adjustDeptId
+                    ? <>Daftar di bawah hanya berisi {adjustType === 'material' ? 'bahan' : 'barang'} divisi <b>{divisionLabel(adjustDeptId)}</b>{adjustType === 'material' ? ', termasuk bahan Umum yang dipakai kedua divisi' : ''}.</>
+                    : <>Pilih divisi supaya daftarnya tidak tercampur. <b>Semua Divisi</b> menampilkan seluruh {adjustType === 'material' ? 'bahan' : 'barang'}.</>}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider">
+                  Pilih Barang / Bahan
+                  <span className="ml-1 font-normal normal-case text-gray-400">
+                    ({adjustType === 'material' ? opnameMaterials.length : opnameProducts.length} pilihan)
+                  </span>
+                </label>
                 <select
                   value={adjustItemId}
                   onChange={(e) => setAdjustItemId(e.target.value)}
@@ -896,21 +927,18 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
                   required
                 >
                   <option value="">-- Pilih Item --</option>
-                  {adjustType === 'product' ? (
-                    [...products]
-                      .sort((a, b) => a.name.localeCompare(b.name, 'id') || a.variant.localeCompare(b.variant, 'id'))
-                      .map(p => <option key={p.id} value={p.id}>{p.name} ({p.variant}) [Aktif: {p.stock} Unit]</option>)
-                  ) : (
-                    // Ikut filter divisi yang aktif supaya daftar bahan tidak campur antar divisi
-                    rawMaterials
-                      .filter(materialMatchesDept)
-                      .sort((a, b) => a.name.localeCompare(b.name, 'id'))
-                      .map(m => <option key={m.id} value={m.id}>{m.name} [{materialDivisionLabel(m)}] [Aktif: {m.current_stock} {m.unit}]</option>)
-                  )}
+                  {adjustType === 'product'
+                    ? opnameProducts.map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} ({p.variant}) [{divisionLabel(p.department_id)}] [Aktif: {p.stock} Unit]
+                        </option>
+                      ))
+                    : opnameMaterials.map(m => (
+                        <option key={m.id} value={m.id}>
+                          {m.name} [{materialDivisionLabel(m)}] [Aktif: {m.current_stock} {m.unit}]
+                        </option>
+                      ))}
                 </select>
-                {adjustType === 'material' && selectedDept && (
-                  <p className="text-[10px] text-gray-400 mt-1">Daftar dibatasi divisi <b>{divisionLabel(selectedDept)}</b> (termasuk bahan Umum). Pilih "Semua Divisi" di atas untuk melihat seluruh bahan.</p>
-                )}
               </div>
 
               <div className="grid grid-cols-3 gap-3">
