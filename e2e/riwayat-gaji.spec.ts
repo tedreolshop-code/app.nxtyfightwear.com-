@@ -68,3 +68,34 @@ test('karyawan tanpa perubahan gaji menampilkan pesan kosong', async ({ page }) 
 
   await expect(page.getByText('Belum ada perubahan gaji tercatat')).toBeVisible();
 });
+
+// Bukti alur nyata: edit gaji lewat UI harus langsung memunculkan entri riwayat
+test('edit tarif lewat form Karyawan langsung tercatat di riwayat hari itu juga', async ({ page }) => {
+  await isolateAsOwner(page); // audit ditulis ke localStorage tes, bukan ke Supabase
+  page.on('dialog', d => d.accept());
+  await page.goto('/');
+  await page.locator('#nav-tab-karyawan').click();
+
+  // Sebelum diedit: belum ada jejak sama sekali
+  await page.getByRole('row', { name: /Asep Saputra/ }).getByRole('button', { name: /Profil & Gaji/ }).click();
+  await expect(page.getByRole('button', { name: 'Riwayat Perubahan Gaji (0)' })).toBeVisible();
+  await page.getByRole('button', { name: 'Tutup Portal' }).click();
+
+  // Naikkan tarif harian 150.000 -> 165.000 lewat tombol Edit
+  await page.getByRole('row', { name: /Asep Saputra/ }).getByRole('button', { name: 'Edit data karyawan' }).click();
+  const tarif = page.locator('input[type="number"]').first();
+  await tarif.fill('165000');
+  await page.getByRole('button', { name: 'Simpan Perubahan' }).click();
+
+  // Jejaknya muncul seketika, bertanggal hari ini
+  await page.getByRole('row', { name: /Asep Saputra/ }).getByRole('button', { name: /Profil & Gaji/ }).click();
+  await page.getByRole('button', { name: 'Riwayat Perubahan Gaji (1)' }).click();
+
+  const hariIni = new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+  const entri = page.locator('ol > li');
+  await expect(entri).toContainText(hariIni);
+  await expect(entri).toContainText('oleh H. Ari Gunawan');
+  await expect(entri).toContainText('Rate harian');
+  await expect(entri).toContainText('Rp 150.000');
+  await expect(entri).toContainText('Rp 165.000');
+});
