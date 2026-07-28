@@ -48,6 +48,7 @@ export interface Employee {
   rate_harian: number;
   rate_lembur_per_jam: number;
   default_live_tiktok_bonus?: number;
+  // Tarif bonus kehadiran PER HARI layak (bukan per bulan). Saldo bulanan = hari layak x tarif.
   default_attendance_bonus?: number;
   default_weekly_cash_advance_deduction?: number;
   status_aktif: boolean;
@@ -210,6 +211,8 @@ export interface WorkSettings {
   timezone: 'Asia/Jakarta';
   half_day_max_hours: number;
   attendance_radius_meters: number;
+  // Tarif bonus kehadiran per hari bawaan, dipakai bila karyawan belum punya tarif sendiri.
+  // Namanya masih 'monthly' karena kunci penyimpanannya sudah dipakai data lama.
   monthly_bonus_amount: number;
   monthly_bonus_min_days: number;
   location_qr_token: string;

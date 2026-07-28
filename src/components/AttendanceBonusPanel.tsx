@@ -43,12 +43,9 @@ export const AttendanceBonusBalanceCard: React.FC<{ employee: Employee }> = ({ e
   const currentMonth = wibTodayStr().slice(0, 7);
   const result = dataStore.evaluateAttendanceBonus(employee.id, currentMonth);
   const aman = result.status === 'aman';
-  const full = bonusOf(employee);
-  // Saldo berjalan: bagian bonus sepadan hari kerja yang sudah dilewati dengan status aman
+  // Saldo = akumulasi hari layak x tarif harian; hari telat hanya kehilangan hari itu
+  const accrued = result.amount;
   const totalWorkingDays = workingDaysInMonth(currentMonth, dataStore.getWorkSettings().attendance_effective_from);
-  const accrued = aman && totalWorkingDays > 0
-    ? Math.round(full * Math.min(1, result.workingDays / totalWorkingDays))
-    : 0;
 
   return (
     <div className={`rounded-xl border p-4 space-y-1.5 ${aman ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'}`}>
@@ -56,30 +53,24 @@ export const AttendanceBonusBalanceCard: React.FC<{ employee: Employee }> = ({ e
         <span className={`text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${aman ? 'text-emerald-700' : 'text-rose-700'}`}>
           <Award className="w-4 h-4" /> Saldo Bonus Kehadiran
         </span>
-        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${aman ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}`}>
-          {aman ? 'AMAN ✓' : 'GUGUR'}
+        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${aman ? 'bg-emerald-600 text-white' : 'bg-amber-500 text-white'}`}>
+          {result.qualifiedDays}/{result.workingDays} HARI
         </span>
       </div>
       <p className={`text-2xl font-black font-mono ${aman ? 'text-emerald-800' : 'text-rose-400'}`}>
         {formatIDR(accrued)}
       </p>
-      {aman ? (
-        <p className="text-xs text-emerald-700">
-          Terkumpul {result.workingDays}/{totalWorkingDays} hari kerja {monthLabel(currentMonth)} · penuh {formatIDR(full)}
-          <span className="block text-[11px] text-emerald-600 mt-0.5">
-            Cair: {nextMonthFirstDate(currentMonth)} — bila aman sampai akhir bulan
-          </span>
-        </p>
-      ) : (
-        <p className="text-xs text-rose-700">
-          {result.reasons.join(' · ')}
-          <span className="block text-[11px] text-rose-500 mt-0.5">
-            {isEligibleForAttendanceBonus(employee)
-              ? 'Kesempatan baru mulai bulan depan.'
-              : 'Bonus mulai berlaku setelah status berubah menjadi Karyawan.'}
-          </span>
-        </p>
-      )}
+      <p className={`text-xs ${accrued > 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+        {result.qualifiedDays} hari layak x {formatIDR(result.dailyRate)} · {monthLabel(currentMonth)}
+        {result.reasons.length > 0 && (
+          <span className="block text-[11px] text-rose-600 mt-0.5">{result.reasons.join(' · ')}</span>
+        )}
+        <span className="block text-[11px] text-gray-500 mt-0.5">
+          {isEligibleForAttendanceBonus(employee)
+            ? <>Terus bertambah tiap hari masuk tanpa telat. Cair: {nextMonthFirstDate(currentMonth)}</>
+            : 'Bonus mulai berlaku setelah status berubah menjadi Karyawan.'}
+        </span>
+      </p>
     </div>
   );
 };
@@ -171,15 +162,12 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
   const running = useMemo(() => {
     // Hari kerja yang sudah dinilai hanya sampai kemarin, jadi sisanya termasuk hari ini
     const totalWorkingDays = workingDaysInMonth(currentMonth, dataStore.getWorkSettings().attendance_effective_from);
+    // Saldo berjalan = akumulasi bonus harian yang sudah diperoleh; hari yang telat
+    // atau absen hanya kehilangan hari itu, saldo sebelumnya tidak hangus.
     const rows = employees
       .map(emp => {
         const result = dataStore.evaluateAttendanceBonus(emp.id, currentMonth);
-        // Saldo berjalan = bagian bonus yang sepadan dengan hari kerja yang sudah dilewati
-        // dengan status aman. Gugur berarti nol, karena bonusnya penuh atau tidak sama sekali.
-        const accrued = result.status === 'aman' && totalWorkingDays > 0
-          ? Math.round(bonusOf(emp) * Math.min(1, result.workingDays / totalWorkingDays))
-          : 0;
-        return { emp, result, accrued };
+        return { emp, result, accrued: result.amount };
       })
       .sort((a, b) => a.emp.name.localeCompare(b.emp.name, 'id'));
     const aman = rows.filter(r => r.result.status === 'aman');
@@ -208,8 +196,8 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
       amanCount: aman.length,
       // Saldo berjalan seluruh karyawan sampai kemarin
       accruedTotal: rows.reduce((sum, r) => sum + r.accrued, 0),
-      // Nilai penuh bila semua yang masih aman bertahan sampai akhir bulan
-      total: aman.reduce((sum, r) => sum + r.result.amount, 0),
+      // Potensi bila semua hari kerja bulan ini layak
+      total: rows.reduce((sum, r) => sum + r.result.potentialAmount, 0),
       employeeCount: rows.length,
       totalWorkingDays,
       assessedDays,
@@ -310,7 +298,7 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
           <span className="text-[11px] text-emerald-800">
             <b className="uppercase tracking-wide">Saldo bonus berjalan {monthLabel(currentMonth)}</b>
             <span className="block text-emerald-600 mt-0.5">
-              {running.amanCount} dari {running.employeeCount} karyawan masih aman ·
+              {running.amanCount} dari {running.employeeCount} karyawan tanpa catatan ·
               {' '}{running.assessedDays} dari {running.totalWorkingDays} hari kerja terlewati ·
               {' '}sisa {running.remainingDays} hari lagi
             </span>
@@ -318,7 +306,7 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
           <span className="text-right">
             <span className="block font-mono font-black text-emerald-800 text-lg">{formatIDR(running.accruedTotal)}</span>
             <span className="block text-[10px] text-emerald-600">
-              penuh bulan ini {formatIDR(running.total)}
+              potensi bulan ini {formatIDR(running.total)}
             </span>
           </span>
         </button>
@@ -364,10 +352,10 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
                 <tr className="bg-evergreen/90 text-white font-bold uppercase tracking-wider text-[10px]">
                   <th className="py-2 px-3">Karyawan</th>
                   <th className="py-2 px-3 text-center w-24">Hadir</th>
+                  <th className="py-2 px-3 text-center w-24">Hari Layak</th>
                   <th className="py-2 px-3 text-center w-24">Telat</th>
-                  <th className="py-2 px-3 text-center w-24">Status</th>
                   <th className="py-2 px-3 text-right w-32">Saldo Berjalan</th>
-                  <th className="py-2 px-3 text-right w-32">Penuh</th>
+                  <th className="py-2 px-3 text-right w-28">Potensi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-emerald-100">
@@ -384,29 +372,20 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
                       )}
                     </td>
                     <td className="py-2 px-3 text-center font-mono text-gray-600">{result.presentDays}/{result.workingDays}</td>
-                    <td className={`py-2 px-3 text-center font-mono ${result.lateMinutesNet > 0 ? 'text-rose-600 font-bold' : 'text-gray-400'}`}>
-                      {result.lateMinutesNet > 0 ? `${result.lateMinutesNet} mnt` : '—'}
+                    <td className="py-2 px-3 text-center font-mono font-bold text-emerald-700" title={result.reasons.join(' · ') || 'Semua hari kerja layak'}>
+                      {result.qualifiedDays}
+                      <span className="text-gray-400 font-normal">/{result.workingDays}</span>
                     </td>
-                    <td className="py-2 px-3 text-center">
-                      {result.status === 'aman' ? (
-                        <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                          <CheckCircle2 className="w-3 h-3" /> AMAN
-                        </span>
-                      ) : (
-                        <span
-                          title={result.reasons.join(' · ')}
-                          className="inline-flex items-center gap-1 bg-rose-100 text-rose-700 text-[10px] font-bold px-2 py-0.5 rounded-full"
-                        >
-                          <XCircle className="w-3 h-3" /> GUGUR
-                        </span>
-                      )}
+                    <td className={`py-2 px-3 text-center font-mono ${result.lateDates.length > 0 ? 'text-rose-600 font-bold' : 'text-gray-400'}`}>
+                      {result.lateDates.length > 0 ? `${result.lateDates.length} hari` : '—'}
                     </td>
-                    <td className={`py-2 px-3 text-right font-mono font-black ${result.status === 'aman' ? 'text-emerald-700' : 'text-rose-400'}`}>
+                    <td className={`py-2 px-3 text-right font-mono font-black ${accrued > 0 ? 'text-emerald-700' : 'text-rose-400'}`}>
                       {formatIDR(accrued)}
+                      <span className="block text-[9px] font-normal text-gray-400">
+                        {result.qualifiedDays}x {formatIDR(result.dailyRate)}
+                      </span>
                     </td>
-                    <td className={`py-2 px-3 text-right font-mono ${result.status === 'aman' ? 'text-gray-500' : 'text-rose-300 line-through'}`}>
-                      {formatIDR(bonusOf(emp))}
-                    </td>
+                    <td className="py-2 px-3 text-right font-mono text-gray-500">{formatIDR(result.potentialAmount)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -414,10 +393,11 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
           </div>
 
           <p className="px-3 py-2 text-[10px] text-gray-400 bg-gray-50/70 border-t border-gray-100">
-            <b>Saldo Berjalan</b> = bagian bonus yang sepadan dengan hari kerja yang sudah dilewati
-            ({running.assessedDays}/{running.totalWorkingDays} hari), dinilai sampai kemarin.
-            <b> Penuh</b> = nilai bila bertahan aman sampai akhir bulan. Bonus bersifat penuh atau gugur:
-            satu kali telat atau tidak hadir membuat saldo ini jatuh ke Rp0, jadi angkanya belum tentu cair.
+            <b>Saldo Berjalan</b> = jumlah hari layak × tarif harian, terkumpul sampai kemarin
+            ({running.assessedDays}/{running.totalWorkingDays} hari kerja). Satu hari layak bila masuk
+            tanpa telat dan scan pulang pada/setelah jam pulang. Hari yang telat atau tidak hadir hanya
+            kehilangan hari itu — saldo yang sudah terkumpul tidak hangus.
+            <b> Potensi</b> = bila seluruh hari kerja bulan ini layak.
           </p>
         </details>
 

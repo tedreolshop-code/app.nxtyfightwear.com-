@@ -491,73 +491,119 @@ class DataStore {
 
   /**
    * Evaluasi bonus kehadiran satu karyawan untuk satu bulan — MURNI dari data absensi.
-   * GUGUR bila ada: telat (net, setelah kompensasi disetujui), tidak hadir di hari
-   * kerja, atau masuk setengah hari. Hari Minggu tidak dihitung sebagai hari kerja.
-   * Untuk bulan berjalan, ketidakhadiran hanya dinilai untuk tanggal yang sudah lewat.
+   *
+   * Bonusnya AKUMULASI HARIAN, bukan penuh-atau-gugur sebulan: tiap hari kerja yang
+   * layak menambah tarif harian ke saldo, dan hari yang tidak layak hanya kehilangan
+   * hari itu — saldo yang sudah terkumpul tidak hangus.
+   *
+   * Satu hari layak bila ketiganya terpenuhi:
+   *   1. ada scan MASUK,
+   *   2. tidak telat (setelah kompensasi yang disetujui),
+   *   3. ada scan PULANG pada/setelah jam pulang dan bukan setengah hari.
+   *
+   * Minggu tidak dihitung hari kerja. Untuk bulan berjalan, hari ini belum dinilai.
+   * Hari sebelum attendance_effective_from dilewati (masa sebelum absensi dipakai).
    */
   evaluateAttendanceBonus = (employeeId: string, month: string): {
-    workingDays: number; presentDays: number; lateMinutesNet: number; halfDays: number;
-    absentDates: string[]; halfDayDates: string[];
-    status: 'aman' | 'gugur'; reasons: string[]; amount: number;
+    workingDays: number; presentDays: number; qualifiedDays: number; dailyRate: number;
+    lateMinutesNet: number; halfDays: number;
+    absentDates: string[]; halfDayDates: string[]; lateDates: string[]; earlyLeaveDates: string[];
+    status: 'aman' | 'gugur'; reasons: string[]; amount: number; potentialAmount: number;
   } => {
     const employee = this.getEmployees().find(e => e.id === employeeId);
     const settings = this.getWorkSettings();
-    const bonusAmount = Math.round(Number(employee?.default_attendance_bonus ?? settings.monthly_bonus_amount) || 0);
+    // Nilai ini adalah tarif PER HARI layak, bukan per bulan
+    const dailyRate = Math.round(Number(employee?.default_attendance_bonus ?? settings.monthly_bonus_amount) || 0);
+    const endTime = settings.end_time || '16:00';
 
     const today = wibTodayStr();
     const [year, mon] = month.split('-').map(Number);
     const daysInMonth = new Date(year, mon, 0).getDate();
     const isCurrentMonth = month === today.slice(0, 7);
 
-    // Kumpulkan hari kerja bulan ini (tanpa Minggu; bulan berjalan: hanya s/d kemarin untuk penilaian absen)
     const workingDates: string[] = [];
     for (let d = 1; d <= daysInMonth; d++) {
       const dateStr = `${month}-${String(d).padStart(2, '0')}`;
-      const dow = new Date(`${dateStr}T00:00:00Z`).getUTCDay();
-      if (dow === 0) continue; // Minggu libur
-      if (isCurrentMonth && dateStr >= today) continue; // hari ini/masa depan belum dinilai
-      // Sebelum absensi dipakai, tidak ada data scan sama sekali — jangan dihitung
-      // sebagai tidak hadir karena itu menggugurkan bonus semua orang.
+      if (new Date(`${dateStr}T00:00:00Z`).getUTCDay() === 0) continue; // Minggu libur
+      if (isCurrentMonth && dateStr >= today) continue; // hari ini belum selesai
       if (settings.attendance_effective_from && dateStr < settings.attendance_effective_from) continue;
       workingDates.push(dateStr);
     }
 
     const logs = this.getAttendance().filter(a => a.employee_id === employeeId && a.timestamp.startsWith(month));
-    const presentDates = new Set(logs.filter(a => a.type_scan === 'masuk').map(a => a.timestamp.slice(0, 10)));
-    const halfDayDates = Array.from(new Set(
-      logs.filter(a => a.type_scan === 'pulang' && a.work_fraction === 0.5).map(a => a.timestamp.slice(0, 10))
-    )).sort();
+    const byDate = new Map<string, Attendance[]>();
+    logs.forEach(log => {
+      const date = log.timestamp.slice(0, 10);
+      byDate.set(date, [...(byDate.get(date) || []), log]);
+    });
 
-    const totalLate = logs.reduce((sum, a) => sum + (a.late_minutes || 0), 0);
-    const compensated = this.getAttendanceAdjustments()
+    // Kompensasi telat yang disetujui, per tanggal
+    const compensationByDate = new Map<string, number>();
+    this.getAttendanceAdjustments()
       .filter(item => item.employee_id === employeeId && item.date.startsWith(month) && item.type !== 'ignored')
-      .reduce((sum, item) => sum + (item.late_compensation_minutes || 0), 0);
-    const lateMinutesNet = Math.max(0, totalLate - compensated);
+      .forEach(item => compensationByDate.set(
+        item.date,
+        (compensationByDate.get(item.date) || 0) + (item.late_compensation_minutes || 0)
+      ));
 
-    const absentDates = workingDates.filter(date => !presentDates.has(date));
+    const absentDates: string[] = [];
+    const lateDates: string[] = [];
+    const earlyLeaveDates: string[] = [];
+    const halfDayDates: string[] = [];
+    let qualifiedDays = 0;
+    let lateMinutesNet = 0;
+
+    for (const date of workingDates) {
+      const dayLogs = byDate.get(date) || [];
+      const masuk = dayLogs.filter(a => a.type_scan === 'masuk');
+      if (masuk.length === 0) { absentDates.push(date); continue; }
+
+      const lateRaw = dayLogs.reduce((sum, a) => sum + (a.late_minutes || 0), 0);
+      const lateNet = Math.max(0, lateRaw - (compensationByDate.get(date) || 0));
+      lateMinutesNet += lateNet;
+
+      const pulang = dayLogs.filter(a => a.type_scan === 'pulang');
+      const halfDay = pulang.some(a => a.work_fraction === 0.5);
+      if (halfDay) halfDayDates.push(date);
+      // Pulang sah: pada/setelah jam pulang dan bukan setengah hari
+      const pulangSah = pulang.some(a => a.timestamp.slice(11, 16) >= endTime && a.work_fraction !== 0.5);
+
+      if (lateNet > 0) { lateDates.push(date); continue; }
+      if (!pulangSah) { earlyLeaveDates.push(date); continue; }
+      qualifiedDays++;
+    }
 
     const fmtShort = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+    const ringkas = (dates: string[]) =>
+      `${dates.slice(0, 3).map(fmtShort).join(', ')}${dates.length > 3 ? ', …' : ''}`;
     const reasons: string[] = [];
-    // Bonus kehadiran adalah hak karyawan; yang masih training tetap dinilai absensinya
-    // supaya rekapnya terlihat, tapi slipnya terbit sebagai gugur dengan alasan jelas.
-    if (!isEligibleForAttendanceBonus(employee)) reasons.push('Masih berstatus training');
-    if (lateMinutesNet > 0) reasons.push(`Telat ${lateMinutesNet} menit`);
-    if (absentDates.length > 0) reasons.push(`Tidak hadir ${absentDates.length} hari (${absentDates.slice(0, 3).map(fmtShort).join(', ')}${absentDates.length > 3 ? ', …' : ''})`);
-    if (halfDayDates.length > 0) reasons.push(`Setengah hari ${halfDayDates.length}x (${halfDayDates.slice(0, 3).map(fmtShort).join(', ')}${halfDayDates.length > 3 ? ', …' : ''})`);
+    const eligible = isEligibleForAttendanceBonus(employee);
+    if (!eligible) reasons.push('Masih berstatus training');
+    if (lateDates.length > 0) reasons.push(`Telat ${lateDates.length} hari (${ringkas(lateDates)})`);
+    if (absentDates.length > 0) reasons.push(`Tidak hadir ${absentDates.length} hari (${ringkas(absentDates)})`);
+    if (earlyLeaveDates.length > 0) reasons.push(`Pulang sebelum ${endTime} atau tanpa scan pulang ${earlyLeaveDates.length} hari (${ringkas(earlyLeaveDates)})`);
 
-    const status: 'aman' | 'gugur' = reasons.length === 0 ? 'aman' : 'gugur';
+    // Training tidak berhak, jadi tidak ada hari yang dihitung
+    const paidDays = eligible ? qualifiedDays : 0;
     return {
       workingDays: workingDates.length,
       presentDays: workingDates.length - absentDates.length,
+      qualifiedDays: paidDays,
+      dailyRate,
       lateMinutesNet,
       halfDays: halfDayDates.length,
       absentDates,
       halfDayDates,
-      status,
+      lateDates,
+      earlyLeaveDates,
+      // 'aman' = seluruh hari kerja yang dinilai layak semua (tanpa hari hilang)
+      status: reasons.length === 0 && workingDates.length > 0 ? 'aman' : 'gugur',
       reasons,
-      amount: status === 'aman' ? bonusAmount : 0,
+      amount: paidDays * dailyRate,
+      potentialAmount: workingDates.length * dailyRate,
     };
   };
+
   setPayrollWeekly = (data: PayrollWeekly[]) => this.set('payroll_weekly', data);
 
   getCustomers = (): Customer[] => this.get('customers', INITIAL_CUSTOMERS);
