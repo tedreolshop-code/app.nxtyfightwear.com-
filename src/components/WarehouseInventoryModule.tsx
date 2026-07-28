@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Product, RawMaterial, StockMovement, materialDivisionLabel } from '../types';
+import { Product, RawMaterial, StockMovement, materialDivisionLabel, divisionLabel } from '../types';
+import { DivisionFilter, matchesDivision } from './DivisionFilter';
 import { dataStore, stagesForProduct } from '../dataStore';
 import TabButton from './TabButton';
 import {
@@ -37,7 +38,8 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
   const [activeTab, setActiveTab] = useState<'bahan' | 'jadi' | 'mutasi'>('bahan');
   
   // Department filter for Materials & Products
-  const [selectedDept, setSelectedDept] = useState<'all' | 'eva' | 'konveksi'>('all');
+  // '' = semua divisi; nilai lain adalah department_id
+  const [selectedDept, setSelectedDept] = useState('');
   
   // Search query
   const [searchQuery, setSearchQuery] = useState('');
@@ -115,12 +117,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
     materialDivisionLabel(rawMaterials.find(item => item.id === materialId));
 
   // Bahan Umum tetap muncul saat filter divisi aktif, karena memang dipakai keduanya
-  const materialMatchesDept = (mat: RawMaterial) => {
-    if (selectedDept === 'all') return true;
-    const div = materialDivisionLabel(mat);
-    if (div === 'Umum') return true;
-    return selectedDept === 'eva' ? div === 'Eva Foam' : div === 'Konveksi';
-  };
+  const materialMatchesDept = (mat: RawMaterial) => matchesDivision(mat.department_id, selectedDept, 'match-all');
 
   const makeItemId = (type: 'material' | 'product', name: string) => {
     const slug = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 36) || Date.now().toString();
@@ -133,11 +130,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
     setNewItemId('');
     setNewItemName('');
     // Bahan baku default Umum saat filter "Semua Divisi"; barang jadi wajib punya divisi
-    setNewDepartmentId(
-      selectedDept === 'konveksi' ? 'dept-konveksi'
-        : selectedDept === 'eva' ? 'dept-eva-foam'
-        : type === 'material' ? '' : 'dept-eva-foam'
-    );
+    setNewDepartmentId(selectedDept || (type === 'material' ? '' : 'dept-eva-foam'));
     setNewUnit('Kg');
     setNewMinimumStock(0);
     setNewInitialStock(0);
@@ -282,11 +275,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
   const filteredProducts = products.filter(prod => {
     const matchesSearch = prod.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           prod.variant.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesDept = 
-      selectedDept === 'all' || 
-      (selectedDept === 'eva' && prod.department_id === 'dept-eva-foam') || 
-      (selectedDept === 'konveksi' && prod.department_id === 'dept-konveksi');
-    return matchesSearch && matchesDept;
+    return matchesSearch && matchesDivision(prod.department_id, selectedDept);
   }).sort((a, b) => a.name.localeCompare(b.name));
 
   // Filter Movements
@@ -482,26 +471,7 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
         {/* Division Filter */}
         <div className="flex items-center gap-3 w-full md:w-auto">
           {activeTab !== 'mutasi' && (
-            <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200 text-[10px] font-black shrink-0">
-              <button
-                onClick={() => setSelectedDept('all')}
-                className={`px-2.5 py-1 rounded-md transition-all uppercase cursor-pointer ${selectedDept === 'all' ? 'bg-white text-evergreen font-bold shadow-xs' : 'text-gray-500'}`}
-              >
-                Semua Divisi
-              </button>
-              <button
-                onClick={() => setSelectedDept('eva')}
-                className={`px-2.5 py-1 rounded-md transition-all uppercase cursor-pointer ${selectedDept === 'eva' ? 'bg-white text-evergreen font-bold shadow-xs' : 'text-gray-500'}`}
-              >
-                Eva Foam
-              </button>
-              <button
-                onClick={() => setSelectedDept('konveksi')}
-                className={`px-2.5 py-1 rounded-md transition-all uppercase cursor-pointer ${selectedDept === 'konveksi' ? 'bg-white text-evergreen font-bold shadow-xs' : 'text-gray-500'}`}
-              >
-                Konveksi
-              </button>
-            </div>
+            <DivisionFilter value={selectedDept} onChange={setSelectedDept} />
           )}
 
           {/* Search Bar */}
@@ -938,8 +908,8 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
                       .map(m => <option key={m.id} value={m.id}>{m.name} [{materialDivisionLabel(m)}] [Aktif: {m.current_stock} {m.unit}]</option>)
                   )}
                 </select>
-                {adjustType === 'material' && selectedDept !== 'all' && (
-                  <p className="text-[10px] text-gray-400 mt-1">Daftar dibatasi divisi <b>{selectedDept === 'eva' ? 'Eva Foam' : 'Konveksi'}</b> (termasuk bahan Umum). Pilih "Semua Divisi" di atas untuk melihat seluruh bahan.</p>
+                {adjustType === 'material' && selectedDept && (
+                  <p className="text-[10px] text-gray-400 mt-1">Daftar dibatasi divisi <b>{divisionLabel(selectedDept)}</b> (termasuk bahan Umum). Pilih "Semua Divisi" di atas untuk melihat seluruh bahan.</p>
                 )}
               </div>
 

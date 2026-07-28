@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Product, RawMaterial, StockMovement, ProductionLog, ProductionJob, Employee, RejectedGood, ProductionTaskLog, PackingTask, materialDivisionLabel, divisionLabel } from '../types';
 import { ProductionHandoffPanel } from './ProductionHandoffPanel';
+import { DivisionFilter, matchesDivision } from './DivisionFilter';
 import { dataStore, RECIPES, wibNowISO, wibTodayStr, stagesForProduct, DEFAULT_PRODUCTION_STAGES } from '../dataStore';
 import { brandName, brandLegalName } from '../brand';
 import { StageListEditor } from './StageListEditor';
@@ -42,10 +43,6 @@ interface ProductionInventoryModuleProps {
 
 type ProductionDepartmentId = ProductionJob['department_id'];
 
-type DivisionFilterValue = 'all' | 'Eva Foam' | 'Konveksi';
-const departmentIdOf = (division: Exclude<DivisionFilterValue, 'all'>) =>
-  division === 'Eva Foam' ? 'dept-eva-foam' : 'dept-konveksi';
-
 // Baris mutasi terbaru yang ditampilkan di tabel Riwayat Mutasi
 const MOVEMENT_LIMIT = 100;
 
@@ -76,12 +73,12 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
   const [manualStep, setManualStep] = useState<1 | 2 | 3>(1);
   // Filter divisi untuk tabel Stok Bahan Baku dan Stok Barang Jadi di Riwayat & Stok.
   // Khusus bahan baku, yang berdivisi Umum selalu ikut tampil karena dipakai keduanya.
-  const [historyDivFilter, setHistoryDivFilter] = useState<DivisionFilterValue>('all');
+  const [historyDivFilter, setHistoryDivFilter] = useState('');
   // Filter divisi tabel Pengaturan Alur (terpisah dari Riwayat & Stok)
-  const [stageDivFilter, setStageDivFilter] = useState<DivisionFilterValue>('all');
+  const [stageDivFilter, setStageDivFilter] = useState('');
   // Filter jenis item tabel Riwayat Mutasi
   const [movementFilter, setMovementFilter] = useState<'all' | 'material' | 'product'>('all');
-  const [movementDivFilter, setMovementDivFilter] = useState<DivisionFilterValue>('all');
+  const [movementDivFilter, setMovementDivFilter] = useState('');
 
   // Pengaturan Alur Produksi — pindahan dari menu Gudang, atur tahapan kerja per produk barang jadi
   const [stageEditProduct, setStageEditProduct] = useState<Product | null>(null);
@@ -258,11 +255,8 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
     : [];
   // Tabel Stok Bahan Baku: ikut filter divisi, urut abjad. Bahan Umum selalu ikut.
   const visibleMaterials = rawMaterials
-    .filter(mat => {
-      if (historyDivFilter === 'all') return true;
-      const div = materialDivisionLabel(mat);
-      return div === historyDivFilter || div === 'Umum';
-    })
+    // Bahan Umum ikut tampil di kedua divisi karena memang dipakai keduanya
+    .filter(mat => matchesDivision(mat.department_id, historyDivFilter, 'match-all'))
     .sort((a, b) => a.name.localeCompare(b.name, 'id'));
 
   // Tabel Riwayat Mutasi: ikut filter jenis item, urut terbaru, dibatasi agar tabel tidak
@@ -271,8 +265,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
     .filter(mov => (movementFilter === 'all'
       || (movementFilter === 'product') === mov.type.includes('barang_jadi'))
       // Mutasi lama belum punya divisi; jangan disembunyikan saat filter divisi aktif
-      && (movementDivFilter === 'all' || !mov.department_id
-        || mov.department_id === departmentIdOf(movementDivFilter)))
+      && matchesDivision(mov.department_id, movementDivFilter, 'match-all'))
     .slice(0, MOVEMENT_LIMIT);
 
   // Packing selesai yang belum ada fotonya, terbaru dulu
@@ -282,32 +275,15 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
 
   // Tabel Stok Barang Jadi: ikut filter divisi, urut nama lalu varian
   const visibleProducts = products
-    .filter(prod => historyDivFilter === 'all' || prod.department_id === departmentIdOf(historyDivFilter))
+    .filter(prod => matchesDivision(prod.department_id, historyDivFilter))
     .sort((a, b) => a.name.localeCompare(b.name, 'id') || a.variant.localeCompare(b.variant, 'id'));
-
-  // Dipakai tabel Stok Bahan Baku, Stok Barang Jadi, dan Pengaturan Alur
-  const renderDivisionFilter = (active: DivisionFilterValue, onChange: (value: DivisionFilterValue) => void) => (
-    <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200 text-[10px] font-black w-fit shrink-0">
-      {([['all', 'Semua Divisi'], ['Eva Foam', 'Eva Foam'], ['Konveksi', 'Konveksi']] as const).map(([value, label]) => (
-        <button
-          key={value}
-          onClick={() => onChange(value)}
-          className={`px-2.5 py-1 rounded-md uppercase transition-all cursor-pointer ${
-            active === value ? 'bg-white text-evergreen shadow-xs' : 'text-gray-500'
-          }`}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
-  );
 
   // Produk yang tampil di Pengaturan Alur: ikut pencarian dan filter divisi, urut nama lalu varian
   const stageSettingProducts = products
     .filter(prod =>
       (prod.name.toLowerCase().includes(settingsSearchQuery.toLowerCase()) ||
         prod.variant.toLowerCase().includes(settingsSearchQuery.toLowerCase())) &&
-      (stageDivFilter === 'all' || prod.department_id === departmentIdOf(stageDivFilter))
+      matchesDivision(prod.department_id, stageDivFilter)
     )
     .sort((a, b) => a.name.localeCompare(b.name, 'id') || a.variant.localeCompare(b.variant, 'id'));
 
@@ -1005,7 +981,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                   className="w-full bg-gray-50 border border-gray-200 rounded pl-9 pr-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-evergreen"
                 />
               </div>
-              {renderDivisionFilter(stageDivFilter, setStageDivFilter)}
+              <DivisionFilter value={stageDivFilter} onChange={setStageDivFilter} />
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
@@ -2427,11 +2403,11 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                 <h3 className="font-bold text-sm text-gray-800">Status Stok Bahan Baku</h3>
                 <p className="text-xs text-gray-400">
                   Monitoring sisa bahan baku di pabrik {brandName()}
-                  {historyDivFilter !== 'all' && <span className="text-gray-400"> · {visibleMaterials.length} jenis, termasuk bahan Umum</span>}
+                  {historyDivFilter && <span className="text-gray-400"> · {visibleMaterials.length} jenis, termasuk bahan Umum</span>}
                 </p>
               </div>
 
-              {renderDivisionFilter(historyDivFilter, setHistoryDivFilter)}
+              <DivisionFilter value={historyDivFilter} onChange={setHistoryDivFilter} />
             </div>
 
             {/* Satu tabel urut abjad; divisi jadi kolom ("Umum" = dipakai kedua divisi) */}
@@ -2452,7 +2428,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                   {visibleMaterials.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="p-6 text-center text-gray-400 italic">
-                        {rawMaterials.length === 0 ? 'Belum ada bahan baku terdaftar.' : `Tidak ada bahan baku untuk divisi ${historyDivFilter}.`}
+                        {rawMaterials.length === 0 ? 'Belum ada bahan baku terdaftar.' : `Tidak ada bahan baku untuk divisi ${divisionLabel(historyDivFilter)}.`}
                       </td>
                     </tr>
                   ) : (
@@ -2503,11 +2479,11 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                 <h3 className="font-bold text-sm text-gray-800 font-sans">Sisa Stok Barang Jadi</h3>
                 <p className="text-xs text-gray-400">
                   Stok siap kirim hasil produksi gudang {brandName()}
-                  {historyDivFilter !== 'all' && <span> · {visibleProducts.length} produk</span>}
+                  {historyDivFilter && <span> · {visibleProducts.length} produk</span>}
                 </p>
               </div>
 
-              {renderDivisionFilter(historyDivFilter, setHistoryDivFilter)}
+              <DivisionFilter value={historyDivFilter} onChange={setHistoryDivFilter} />
             </div>
 
             {/* Satu tabel urut nama lalu varian; ambang kritis 15 unit sama seperti sebelumnya */}
@@ -2527,7 +2503,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                   {visibleProducts.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="p-6 text-center text-gray-400 italic">
-                        {products.length === 0 ? 'Belum ada barang jadi terdaftar.' : `Tidak ada barang jadi untuk divisi ${historyDivFilter}.`}
+                        {products.length === 0 ? 'Belum ada barang jadi terdaftar.' : `Tidak ada barang jadi untuk divisi ${divisionLabel(historyDivFilter)}.`}
                       </td>
                     </tr>
                   ) : (
@@ -2598,7 +2574,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-              {renderDivisionFilter(movementDivFilter, setMovementDivFilter)}
+              <DivisionFilter value={movementDivFilter} onChange={setMovementDivFilter} />
 
               {/* Filter jenis item; divisi diambil dari snapshot saat mutasi terjadi */}
               <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200 text-[10px] font-black w-fit shrink-0">

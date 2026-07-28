@@ -285,8 +285,12 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
             <h3 className="font-bold text-sm text-gray-800 flex items-center gap-1.5">
               <CalendarCheck2 className="w-4 h-4 text-[var(--color-evergreen)]" /> Bonus Kehadiran Bulanan
             </h3>
-            <p className="text-xs text-gray-400 mt-0.5">
-              Hanya untuk yang berstatus <b>Karyawan</b>; yang masih training tetap dinilai tapi belum berhak cair. Dinilai 100% dari data absensi — gugur bila ada telat, tidak hadir, atau setengah hari (Minggu tidak dihitung). Dibayarkan setiap tanggal 1.
+            <p className="text-xs text-gray-800 mt-0.5 leading-relaxed">
+              Hanya untuk yang berstatus <b>Karyawan</b>; yang masih training tetap dinilai tapi belum berhak cair.
+              Dinilai 100% dari data absensi: <b>tiap hari</b> masuk tanpa telat dan scan pulang pada/setelah jam
+              pulang menambah tarif harian ke saldo. Hari yang telat, tidak hadir, atau setengah hari hanya
+              kehilangan hari itu — saldo yang sudah terkumpul tidak hangus. Minggu tidak dihitung hari kerja.
+              Dibayarkan setiap tanggal 1.
             </p>
           </div>
           <div className="flex items-end gap-2">
