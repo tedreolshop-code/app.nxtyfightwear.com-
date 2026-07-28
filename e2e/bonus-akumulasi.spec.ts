@@ -58,3 +58,42 @@ test('bonus kehadiran menumpuk per hari dan tidak hangus saat telat', async ({ p
   // Kartu ringkasan menunjukkan saldo yang sama
   await expect(page.getByText(/Saldo bonus berjalan/)).toBeVisible();
 });
+
+test('bonus kehadiran bisa disortir per karyawan dan per divisi', async ({ page }) => {
+  await isolateAsOwner(page);
+  await page.addInitScript(() => {
+    const base = {
+      role: 'karyawan', rate_harian: 100000, rate_lembur_per_jam: 10000, default_attendance_bonus: 10000,
+      status_aktif: true, phone_number: '08', pin: 'x', pin_hashed: false, employment_status: 'karyawan',
+    };
+    localStorage.setItem('nxty_employees', JSON.stringify([
+      { ...base, id: 'emp-owner', username: 'ari', name: 'Ari Owner', access_role: 'owner', department_id: 'dept-eva-foam' },
+      { ...base, id: 'emp-eva', username: 'eka', name: 'Eka Evafoam', department_id: 'dept-eva-foam' },
+      { ...base, id: 'emp-kon', username: 'koni', name: 'Koni Konveksi', department_id: 'dept-konveksi' },
+    ]));
+  });
+  await page.goto('/');
+  await page.locator('#nav-tab-karyawan').click();
+  await page.getByRole('button', { name: 'Payroll & Slip Gaji' }).click();
+  await page.getByRole('button', { name: 'Bonus Kehadiran' }).click();
+
+  const tabelHarian = page.locator('details table');
+  await expect(tabelHarian.locator('tbody tr')).toHaveCount(3);
+
+  // Filter divisi berlaku untuk tabel harian maupun tabel bulan
+  await page.getByRole('button', { name: 'Konveksi', exact: true }).click();
+  await expect(tabelHarian.locator('tbody tr')).toHaveCount(1);
+  await expect(tabelHarian).toContainText('Koni Konveksi');
+  await expect(page.getByText('1 dari 3 karyawan aktif')).toBeVisible();
+
+  // Pencarian nama
+  await page.getByRole('button', { name: 'Semua Divisi', exact: true }).click();
+  await page.getByPlaceholder('Cari nama karyawan...').fill('eka');
+  await expect(tabelHarian.locator('tbody tr')).toHaveCount(1);
+  await expect(tabelHarian).toContainText('Eka Evafoam');
+
+  // Penting: penerbitan slip tetap untuk SEMUA karyawan aktif, bukan hanya yang tersaring
+  await expect(page.getByRole('button', { name: /Terbitkan Slip/ })).toBeVisible();
+  page.once('dialog', d => { expect(d.message()).toContain('3 karyawan aktif'); d.dismiss(); });
+  await page.getByRole('button', { name: /Terbitkan Slip/ }).click();
+});

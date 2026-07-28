@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AttendanceBonusPayout, Employee, isEligibleForAttendanceBonus, workingDaysInMonth } from '../types';
 import { dataStore, wibNowISO, wibTodayStr } from '../dataStore';
+import { DivisionFilter } from './DivisionFilter';
 import { Award, CalendarCheck2, CheckCircle2, XCircle, Gift, History, AlertTriangle } from 'lucide-react';
 
 /** Tanggal hari ini dalam bahasa Indonesia, mis. "27 Juli 2026". */
@@ -139,6 +140,9 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
   const [month, setMonth] = useState(previousMonth(currentMonth)); // default: bulan yang jatuh tempo dibayar
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [payouts, setPayouts] = useState<AttendanceBonusPayout[]>([]);
+  // Sortir: cari nama karyawan dan batasi per divisi
+  const [search, setSearch] = useState('');
+  const [divFilter, setDivFilter] = useState('');
 
   const load = () => {
     setEmployees(dataStore.getEmployees().filter(e => e.status_aktif));
@@ -151,8 +155,28 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
     return () => window.removeEventListener('nxty_storage_change', load);
   }, []);
 
+  // Satu sumber penyaringan untuk tabel bulan penilaian maupun tabel posisi hari ini,
+  // supaya angka di keduanya selalu bicara tentang orang yang sama.
+  const filteredEmployees = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return employees.filter(emp =>
+      (!divFilter || emp.department_id === divFilter) &&
+      (!q || `${emp.name} ${emp.username || ''}`.toLowerCase().includes(q))
+    );
+  }, [employees, search, divFilter]);
+
   const evaluations = useMemo(() =>
-    [...employees].sort((a, b) => a.name.localeCompare(b.name)).map(emp => ({ emp, result: dataStore.evaluateAttendanceBonus(emp.id, month) })),
+    [...filteredEmployees].sort((a, b) => a.name.localeCompare(b.name, 'id'))
+      .map(emp => ({ emp, result: dataStore.evaluateAttendanceBonus(emp.id, month) })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filteredEmployees, month, payouts]
+  );
+
+  // Penerbitan slip WAJIB memakai seluruh karyawan aktif, bukan hasil sortir tampilan.
+  // Kalau ikut filter, slip hanya terbit untuk yang kebetulan terlihat di layar.
+  const issuableEvaluations = useMemo(() =>
+    [...employees].sort((a, b) => a.name.localeCompare(b.name, 'id'))
+      .map(emp => ({ emp, result: dataStore.evaluateAttendanceBonus(emp.id, month) })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [employees, month, payouts]
   );
@@ -164,7 +188,7 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
     const totalWorkingDays = workingDaysInMonth(currentMonth, dataStore.getWorkSettings().attendance_effective_from);
     // Saldo berjalan = akumulasi bonus harian yang sudah diperoleh; hari yang telat
     // atau absen hanya kehilangan hari itu, saldo sebelumnya tidak hangus.
-    const rows = employees
+    const rows = filteredEmployees
       .map(emp => {
         const result = dataStore.evaluateAttendanceBonus(emp.id, currentMonth);
         return { emp, result, accrued: result.amount };
@@ -207,11 +231,11 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
       effectiveFrom,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [employees, currentMonth, payouts]);
+  }, [filteredEmployees, currentMonth, payouts]);
 
   const alreadyIssued = payouts.some(p => p.month === month);
   const isFutureOrCurrent = month >= currentMonth;
-  const totalCair = evaluations.filter(e => e.result.status === 'aman').reduce((sum, e) => sum + e.result.amount, 0);
+  const totalCair = issuableEvaluations.reduce((sum, e) => sum + e.result.amount, 0);
   const monthOptions = useMemo(() => {
     const options: string[] = [];
     let m = currentMonth;
@@ -222,15 +246,15 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
   const handleIssue = () => {
     if (alreadyIssued) return alert(`Slip bonus ${monthLabel(month)} sudah pernah diterbitkan.`);
     if (isFutureOrCurrent && !window.confirm(`Bulan ${monthLabel(month)} belum selesai — penilaian belum final. Tetap terbitkan?`)) return;
-    if (!window.confirm(`Terbitkan slip bonus kehadiran ${monthLabel(month)} untuk ${evaluations.length} karyawan?\nTotal cair: ${formatIDR(totalCair)}`)) return;
+    if (!window.confirm(`Terbitkan slip bonus kehadiran ${monthLabel(month)} untuk ${issuableEvaluations.length} karyawan aktif?\nTotal cair: ${formatIDR(totalCair)}`)) return;
 
-    const newPayouts: AttendanceBonusPayout[] = evaluations.map(({ emp, result }) => ({
+    const newPayouts: AttendanceBonusPayout[] = issuableEvaluations.map(({ emp, result }) => ({
       id: `bonus-${month}-${emp.id}`,
       employee_id: emp.id,
       employee_name: emp.name,
       month,
       amount: result.amount,
-      status: result.status === 'aman' ? 'cair' : 'gugur',
+      status: result.amount > 0 ? 'cair' : 'gugur',
       reason: result.reasons.join(' · ') || undefined,
       working_days: result.workingDays,
       present_days: result.presentDays,
@@ -289,6 +313,21 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
               {alreadyIssued ? 'Sudah Diterbitkan' : `Terbitkan Slip ${monthLabel(month)}`}
             </button>
           </div>
+        </div>
+
+        {/* Sortir karyawan & divisi — berlaku untuk tabel posisi hari ini maupun tabel bulan */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 border-t border-gray-100 pt-3">
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Cari nama karyawan..."
+            className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs w-full sm:w-56 focus:outline-none focus:ring-1 focus:ring-evergreen"
+          />
+          <DivisionFilter value={divFilter} onChange={setDivFilter} />
+          <span className="text-[10px] text-gray-400 sm:ml-auto">
+            {evaluations.length} dari {employees.length} karyawan aktif
+          </span>
         </div>
 
         <button
@@ -360,7 +399,9 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
               </thead>
               <tbody className="divide-y divide-emerald-100">
                 {running.rows.length === 0 ? (
-                  <tr><td colSpan={6} className="py-6 text-center text-gray-400 italic">Tidak ada karyawan aktif.</td></tr>
+                  <tr><td colSpan={6} className="py-6 text-center text-gray-400 italic">
+                    {employees.length === 0 ? 'Tidak ada karyawan aktif.' : 'Tidak ada karyawan yang cocok dengan pencarian / divisi.'}
+                  </td></tr>
                 ) : running.rows.map(({ emp, result, accrued }) => (
                   <tr key={emp.id} className="hover:bg-gray-50/50">
                     <td className="py-2 px-3 font-bold text-gray-800">
@@ -424,7 +465,9 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
             </thead>
             <tbody className="divide-y divide-emerald-200">
               {evaluations.length === 0 ? (
-                <tr><td colSpan={7} className="py-8 text-center text-gray-400 italic">Tidak ada karyawan aktif.</td></tr>
+                <tr><td colSpan={7} className="py-8 text-center text-gray-400 italic">
+                  {employees.length === 0 ? 'Tidak ada karyawan aktif.' : 'Tidak ada karyawan yang cocok dengan pencarian / divisi.'}
+                </td></tr>
               ) : evaluations.map(({ emp, result }) => (
                 <tr key={emp.id} className="hover:bg-gray-50/50">
                   <td className="py-2.5 px-3 font-bold text-gray-800">
