@@ -156,12 +156,23 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
     setItemMaterialId(id);
     if (id === 'custom') {
       setItemDescription('');
-    } else {
-      const selectedMat = rawMaterials.find(m => m.id === id);
-      if (selectedMat) {
-        setItemDescription(selectedMat.name);
-      }
+      return;
     }
+    const selectedMat = rawMaterials.find(m => m.id === id);
+    if (selectedMat) setItemDescription(selectedMat.name);
+  };
+
+  /**
+   * Divisi PO diturunkan dari bahan yang ditautkan: kalau semua barisnya milik satu
+   * divisi, itulah divisinya. Campur atau ada bahan Umum → biarkan pilihan manual.
+   */
+  const divisionFromLinkedItems = (items: Array<{ material_id?: string }>): string | null => {
+    const divisions = new Set(
+      items
+        .map(item => item.material_id && rawMaterials.find(m => m.id === item.material_id)?.department_id)
+        .filter(Boolean) as string[]
+    );
+    return divisions.size === 1 ? [...divisions][0] : null;
   };
 
   // Add item draft to PO
@@ -171,16 +182,22 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
       alert('Isi deskripsi barang, jumlah qty, dan harga satuan dengan benar!');
       return;
     }
+    // Wajib memilih secara sadar: bahan baku dari gudang, atau tegas bukan bahan baku.
+    // Sebelumnya bawaannya "tidak terlink" sehingga tidak ada PO yang menambah stok bahan.
+    if (!itemMaterialId) {
+      alert('Pilih bahan baku dari gudang supaya stoknya bertambah otomatis, atau pilih "Bukan bahan baku" bila memang bukan.');
+      return;
+    }
 
-    setDraftItems(prev => [
-      ...prev,
-      {
-        description: itemDescription.trim(),
-        qty: itemQty,
-        price: itemPrice,
-        material_id: itemMaterialId && itemMaterialId !== 'custom' ? itemMaterialId : undefined
-      }
-    ]);
+    const materialId = itemMaterialId !== 'custom' ? itemMaterialId : undefined;
+    const nextItems = [
+      ...draftItems,
+      { description: itemDescription.trim(), qty: itemQty, price: itemPrice, material_id: materialId },
+    ];
+    setDraftItems(nextItems);
+    // Ikuti divisi bahan yang ditautkan bila seluruh baris satu divisi
+    const turunan = divisionFromLinkedItems(nextItems);
+    if (turunan) setPoDepartmentId(turunan);
 
     // Reset item input
     setItemMaterialId('');
@@ -222,7 +239,8 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
             type: 'bahan_masuk',
             department_id: currentMaterials.find(m => m.id === item.material_id)?.department_id,
             item_id: item.material_id,
-            item_name: item.description,
+            // Pakai nama bahan di gudang, bukan deskripsi PO, supaya Riwayat Mutasi konsisten
+            item_name: currentMaterials.find(m => m.id === item.material_id)?.name || item.description,
             amount: item.qty,
             reference: `PO #${po.po_number} - Supplier: ${po.supplier}`,
             created_at: new Date().toISOString()
@@ -963,18 +981,26 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                       </span>
                     </div>
                     <div>
-                      <label className="block text-[9px] font-bold text-emerald-800/60 uppercase mb-1">Link ke Inventory (Opsional)</label>
+                      <label className="block text-[9px] font-bold text-emerald-800/60 uppercase mb-1">Bahan Baku dari Gudang *</label>
                       <select
                         value={itemMaterialId}
                         onChange={(e) => handleMaterialChange(e.target.value)}
                         className="w-full bg-white border border-emerald-800/25 rounded-md py-1.5 px-2 focus:outline-none focus:border-emerald-700 text-emerald-950 font-medium cursor-pointer"
                       >
-                        <option value="">-- Tidak Terlink (Bukan Bahan Baku) --</option>
-                        {rawMaterials.map(m => (
-                          <option key={m.id} value={m.id}>{m.name} (Stok: {m.current_stock} {m.unit})</option>
-                        ))}
-                        <option value="custom">-- Tulis Nama Barang Kustom --</option>
+                        <option value="">-- Pilih bahan baku --</option>
+                        {[...rawMaterials]
+                          .sort((a, b) => a.name.localeCompare(b.name, 'id'))
+                          .map(m => (
+                            <option key={m.id} value={m.id}>
+                              {m.name} [{divisionLabel(m.department_id)}] · stok {m.current_stock} {m.unit}
+                            </option>
+                          ))}
+                        <option value="custom">-- Bukan bahan baku (tulis manual, stok tidak berubah) --</option>
                       </select>
+                      <p className="text-[10px] text-emerald-800/50 mt-1">
+                        Bahan yang ditautkan otomatis <b>menambah stok gudang</b> saat PO disimpan, dan divisinya
+                        mengikuti divisi bahan. Pilih "Bukan bahan baku" untuk alat, jasa, atau ongkos kirim.
+                      </p>
                     </div>
                     <div>
                       <label className="block text-[9px] font-bold text-emerald-800/60 uppercase mb-1">Nama Barang / Deskripsi *</label>
@@ -1036,6 +1062,16 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                               <span className="text-emerald-800/60 font-mono">
                                 {item.qty} Pcs x {formatIDR(item.price)}
                               </span>
+                              {/* Terlihat sebelum disimpan: baris mana yang menambah stok gudang */}
+                              {item.material_id ? (
+                                <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[9px] font-bold uppercase">
+                                  + stok {divisionLabel(rawMaterials.find(m => m.id === item.material_id)?.department_id)}
+                                </span>
+                              ) : (
+                                <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 text-[9px] font-bold uppercase">
+                                  bukan bahan baku
+                                </span>
+                              )}
                             </div>
                             <div className="flex items-center gap-2">
                               <span className="font-bold text-emerald-800 font-mono">{formatIDR(item.qty * item.price)}</span>
