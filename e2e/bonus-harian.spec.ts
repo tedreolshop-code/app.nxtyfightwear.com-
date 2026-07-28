@@ -34,7 +34,7 @@ test('posisi bonus hari ini tampil tanpa menunggu awal bulan', async ({ page }) 
 
   // Satu baris per karyawan aktif, dengan status hari ini
   const tabel = page.locator('details table');
-  await expect(tabel.locator('thead th')).toHaveText(['Karyawan', 'Hadir', 'Telat', 'Status', 'Bonus']);
+  await expect(tabel.locator('thead th')).toHaveText(['Karyawan', 'Hadir', 'Telat', 'Status', 'Saldo Berjalan', 'Penuh']);
   await expect(tabel.getByRole('row').filter({ hasText: 'Budi Tetap' })).toBeVisible();
 
   // Yang training tetap muncul dengan penanda, dan bonusnya gugur
@@ -42,8 +42,9 @@ test('posisi bonus hari ini tampil tanpa menunggu awal bulan', async ({ page }) 
   await expect(barisTraining).toContainText('Training');
   await expect(barisTraining).toContainText('GUGUR');
 
-  // Kartu bonus berjalan menyebut sisa hari kerja bulan ini
-  await expect(page.getByText(/sisa \d+ hari kerja lagi bulan ini/)).toBeVisible();
+  // Kartu saldo berjalan menyebut progres hari kerja dan sisa harinya
+  await expect(page.getByText(/Saldo bonus berjalan/)).toBeVisible();
+  await expect(page.getByText(/hari kerja terlewati · sisa \d+ hari lagi/)).toBeVisible();
 });
 
 test('tanggal mulai berlaku absensi menyelamatkan bonus dari hari sebelum sistem dipakai', async ({ page }) => {
@@ -81,4 +82,15 @@ test('tanggal mulai berlaku absensi menyelamatkan bonus dari hari sebelum sistem
   // Hanya hari sejak 20 Juli yang dinilai, jadi kehadirannya penuh dan bonus aman
   const baris = page.locator('details table').getByRole('row').filter({ hasText: 'H. Ari Gunawan' });
   await expect(baris).toContainText('AMAN');
+
+  // Saldo berjalan berupa rupiah, lebih kecil dari nilai penuh karena bulan belum selesai
+  const angka = (await baris.locator('td').allInnerTexts()).slice(-2).map(t => Number(t.replace(/\D/g, '')));
+  const [saldo, penuh] = angka;
+  expect(penuh).toBe(300000);
+  expect(saldo).toBeGreaterThan(0);
+  expect(saldo).toBeLessThan(penuh);
+
+  // Kartu ringkasan juga menampilkan saldo rupiah, bukan hanya jumlah karyawan
+  await expect(page.getByText(/Saldo bonus berjalan/)).toBeVisible();
+  await expect(page.getByText(/penuh bulan ini Rp/)).toBeVisible();
 });
