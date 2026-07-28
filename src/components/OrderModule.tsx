@@ -3,7 +3,10 @@ import { Order, OrderItem, Product, Employee, orderRemaining, orderPaymentStatus
 import { DivisionFilter } from './DivisionFilter';
 import { PaymentLedger, LedgerRow } from './PaymentLedger';
 import { dataStore, wibTodayStr } from '../dataStore';
-import { ShoppingBag, Plus, User, Phone, CheckCircle2, Trash2, PackageCheck, Truck, Printer, X } from 'lucide-react';
+import { ShoppingBag, Plus, User, Phone, CheckCircle2, Trash2, PackageCheck, Truck, Printer, X, Pencil, Ban, RotateCcw } from 'lucide-react';
+
+// Tombol aksi ikon 24x24 — dipakai berulang di kolom Aksi
+const iconBtn = 'w-6 h-6 flex items-center justify-center rounded border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 cursor-pointer';
 
 export const OrderModule: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -976,7 +979,7 @@ export const OrderModule: React.FC = () => {
                 <th className="border-r border-white/30 text-center w-[96px]">Bayar</th>
                 <th className="border-r border-white/30 text-center w-[88px]">Status</th>
                 <th className="border-r border-white/30 text-center w-[92px]">Kirim</th>
-                <th className="text-center w-[132px]">Aksi</th>
+                <th className="text-center w-[92px]">Aksi</th>
               </tr>
             </thead>
             <tbody className="font-mono bg-white [&_td]:border-r [&_td]:border-emerald-300 [&_td:last-child]:border-r-0">
@@ -1038,78 +1041,75 @@ export const OrderModule: React.FC = () => {
                       )}
                     </td>
                     <td className="text-center space-y-1">{getShippingBadge(ord)}{ord.tracking_number && <p className="text-[10px] font-mono text-gray-500">{ord.tracking_number}</p>}</td>
-                    <td className="text-center space-y-1">
-                      <button onClick={() => openOrderPanel(ord)} className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-[10px] font-bold px-2 py-1 rounded flex items-center gap-1 mx-auto">
-                        <PackageCheck className="w-3 h-3" /> Packing / Resi
-                      </button>
-
-                      {ord.status !== 'cancelled' && (
-                        <button
-                          onClick={() => handlePrintNota(ord)}
-                          className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-[10px] font-bold px-2 py-1 rounded flex items-center gap-1 mx-auto"
-                        >
-                          <Printer className="w-3 h-3" /> Cetak Nota
+                    {/* Aksi dipadatkan jadi ikon; label tetap ada di tooltip biar kolom nggak melebar */}
+                    <td className="text-center">
+                      <div className="flex flex-wrap justify-center gap-1">
+                        <button onClick={() => openOrderPanel(ord)} title="Packing / Resi" className={iconBtn}>
+                          <PackageCheck className="w-3.5 h-3.5" />
                         </button>
-                      )}
 
-                      {/* Pre-order, pending & legacy 'production': selesaikan dengan potong stok gudang */}
-                      {(ord.status === 'pending' || ord.status === 'preorder' || ord.status === 'production') && (
-                        <button
-                          onClick={() => handleCompleteOrder(ord.id)}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-2 py-1 rounded block w-full shadow-xs"
-                        >
-                          Selesaikan (Potong Stok Gudang)
-                        </button>
-                      )}
+                        {ord.status !== 'cancelled' && (
+                          <button onClick={() => handlePrintNota(ord)} title="Cetak Nota" className={iconBtn}>
+                            <Printer className="w-3.5 h-3.5" />
+                          </button>
+                        )}
 
-                      {ord.status === 'completed' && (
-                        <>
-                          <span className="text-[10px] text-emerald-600 font-semibold flex items-center justify-center gap-0.5">
-                            <CheckCircle2 className="w-3 h-3 text-emerald-500" /> Selesai Dikirim
-                          </span>
+                        {/* Pre-order, pending & legacy 'production': selesaikan dengan potong stok gudang */}
+                        {(ord.status === 'pending' || ord.status === 'preorder' || ord.status === 'production') && (
+                          <button
+                            onClick={() => handleCompleteOrder(ord.id)}
+                            title="Selesaikan (potong stok gudang)"
+                            className={`${iconBtn} bg-emerald-600 hover:bg-emerald-700 border-emerald-600 text-white`}
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+
+                        {ord.status === 'completed' && (
                           <button
                             onClick={() => handleReopenOrder(ord)}
-                            title="Kembalikan ke Pending/Pre-Order dan pulihkan stok gudang, supaya bisa diedit atau dihapus"
-                            className="bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[10px] font-bold px-2 py-1 rounded block w-full"
+                            title="Batalkan penyelesaian — stok gudang dikembalikan supaya order bisa diedit/dihapus"
+                            className={`${iconBtn} bg-amber-50 hover:bg-amber-100 border-amber-200 text-amber-800`}
                           >
-                            Batalkan Penyelesaian (Stok Kembali)
+                            <RotateCcw className="w-3.5 h-3.5" />
                           </button>
-                        </>
-                      )}
+                        )}
 
-                      {ord.status === 'cancelled' && (
-                        <button
-                          onClick={() => handleReactivateOrder(ord)}
-                          className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-[10px] font-bold px-2 py-1 rounded block w-full"
-                        >
-                          Aktifkan Kembali
-                        </button>
-                      )}
+                        {ord.status === 'cancelled' && (
+                          <button onClick={() => handleReactivateOrder(ord)} title="Aktifkan kembali" className={iconBtn}>
+                            <RotateCcw className="w-3.5 h-3.5" />
+                          </button>
+                        )}
 
-                      {isEditableStatus(ord.status) && (
-                        <>
+                        {isEditableStatus(ord.status) && (
+                          <>
+                            <button
+                              onClick={() => startEditOrder(ord)}
+                              title="Edit order"
+                              className={`${iconBtn} bg-amber-50 hover:bg-amber-100 border-amber-200 text-amber-800`}
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleCancelOrder(ord.id)}
+                              title="Batalkan order"
+                              className={`${iconBtn} text-rose-600 hover:bg-rose-50`}
+                            >
+                              <Ban className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
+
+                        {(isEditableStatus(ord.status) || ord.status === 'cancelled') && (
                           <button
-                            onClick={() => startEditOrder(ord)}
-                            className="bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[10px] font-bold px-2 py-1 rounded block w-full"
+                            onClick={() => handleDeleteOrder(ord)}
+                            title="Hapus order"
+                            className={`${iconBtn} bg-rose-50 hover:bg-rose-100 border-rose-200 text-rose-700`}
                           >
-                            Edit Order
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
-                          <button
-                            onClick={() => handleCancelOrder(ord.id)}
-                            className="text-rose-600 hover:text-rose-800 text-[10px] font-semibold underline block w-full"
-                          >
-                            Batalkan Order
-                          </button>
-                        </>
-                      )}
-                      {(isEditableStatus(ord.status) || ord.status === 'cancelled') && (
-                        <button
-                          onClick={() => handleDeleteOrder(ord)}
-                          className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[10px] font-bold px-2 py-1 rounded flex items-center justify-center gap-1 w-full"
-                        >
-                          <Trash2 className="w-3 h-3" /> Hapus
-                        </button>
-                      )}
+                        )}
+                      </div>
                     </td>
                   </tr>
                   {expandedOrderId === ord.id && (
