@@ -165,7 +165,7 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
       .sort((a, b) => a.emp.name.localeCompare(b.emp.name, 'id'));
     const aman = rows.filter(r => r.result.status === 'aman');
     // Hari kerja yang sudah dinilai hanya sampai kemarin, jadi sisanya termasuk hari ini
-    const totalWorkingDays = workingDaysInMonth(currentMonth);
+    const totalWorkingDays = workingDaysInMonth(currentMonth, dataStore.getWorkSettings().attendance_effective_from);
     const assessedDays = rows[0]?.result.workingDays ?? 0;
     return {
       rows,

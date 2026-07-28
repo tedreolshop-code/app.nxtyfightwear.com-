@@ -22,13 +22,15 @@ export const employmentStatusOf = (employee?: { employment_status?: EmploymentSt
  * Jumlah hari kerja dalam satu bulan 'YYYY-MM' (Minggu libur, sama seperti penilaian
  * bonus kehadiran). Dipakai untuk menghitung sisa hari kerja bulan berjalan.
  */
-export const workingDaysInMonth = (month: string): number => {
+export const workingDaysInMonth = (month: string, effectiveFrom?: string): number => {
   const [year, mon] = month.split('-').map(Number);
   const daysInMonth = new Date(year, mon, 0).getDate();
   let count = 0;
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${month}-${String(d).padStart(2, '0')}`;
-    if (new Date(`${dateStr}T00:00:00Z`).getUTCDay() !== 0) count++;
+    if (new Date(`${dateStr}T00:00:00Z`).getUTCDay() === 0) continue; // Minggu libur
+    if (effectiveFrom && dateStr < effectiveFrom) continue; // absensi belum dipakai
+    count++;
   }
   return count;
 };
@@ -211,6 +213,10 @@ export interface WorkSettings {
   monthly_bonus_amount: number;
   monthly_bonus_min_days: number;
   location_qr_token: string;
+  // Tanggal (YYYY-MM-DD) sejak absensi benar-benar dipakai. Hari kerja sebelum tanggal
+  // ini tidak dinilai untuk bonus, supaya masa sebelum sistem dipakai tidak terhitung
+  // sebagai tidak hadir. Kosong = nilai semua hari seperti sebelumnya.
+  attendance_effective_from?: string;
   // Cara hasil kerja berpindah antar karyawan produksi:
   // assign = wajib tunjuk penerima; queue = selalu lepas ke antrean (ambil sendiri);
   // hybrid = karyawan memilih salah satu saat serah terima

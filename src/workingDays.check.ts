@@ -19,3 +19,10 @@ for (const month of ['2026-01', '2026-04', '2026-06', '2026-12']) {
 }
 
 console.log('OK: hitungan hari kerja sebulan');
+
+// Dengan tanggal mulai berlaku, hari sebelum itu tidak dihitung sebagai hari kerja.
+// Juli 2026: 27 hari kerja penuh; mulai 10 Juli menyisakan 10..31 tanpa Minggu.
+assert.equal(workingDaysInMonth('2026-07', '2026-07-10'), 19);
+assert.equal(workingDaysInMonth('2026-07', '2026-07-01'), 27); // sama dengan tanpa batas
+assert.ok(workingDaysInMonth('2026-07', '2026-08-01') === 0, 'setelah bulan berakhir harus nol');
+console.log('OK: hari kerja dengan tanggal mulai berlaku');

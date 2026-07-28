@@ -45,3 +45,40 @@ test('posisi bonus hari ini tampil tanpa menunggu awal bulan', async ({ page }) 
   // Kartu bonus berjalan menyebut sisa hari kerja bulan ini
   await expect(page.getByText(/sisa \d+ hari kerja lagi bulan ini/)).toBeVisible();
 });
+
+test('tanggal mulai berlaku absensi menyelamatkan bonus dari hari sebelum sistem dipakai', async ({ page }) => {
+  await isolateAsOwner(page);
+  await page.addInitScript(() => {
+    const base = {
+      department_id: 'dept-eva-foam', role: 'karyawan', rate_harian: 100000, rate_lembur_per_jam: 10000,
+      default_attendance_bonus: 300000, status_aktif: true, phone_number: '08', pin: 'x', pin_hashed: false,
+    };
+    localStorage.setItem('nxty_employees', JSON.stringify([
+      { ...base, id: 'emp-owner', username: 'ari', name: 'H. Ari Gunawan', access_role: 'owner' },
+    ]));
+    // Absen hanya tercatat sejak 20 Juli; hari sebelumnya sistem belum dipakai
+    const scans: any[] = [];
+    for (let d = 20; d <= 27; d++) {
+      const tgl = `2026-07-${String(d).padStart(2, '0')}`;
+      if (new Date(`${tgl}T00:00:00Z`).getUTCDay() === 0) continue;
+      scans.push({
+        id: `a-${d}`, employee_id: 'emp-owner', employee_name: 'H. Ari Gunawan',
+        timestamp: `${tgl}T07:30:00+07:00`, type_scan: 'masuk', latitude: 0, longitude: 0,
+        distance_meters: 1, selfie_url: '', device_token: 'x', is_mock_location_flag: false,
+        status: 'normal', late_minutes: 0,
+      });
+    }
+    localStorage.setItem('nxty_attendance', JSON.stringify(scans));
+    const settings = JSON.parse(localStorage.getItem('nxty_work_settings') || '{}');
+    localStorage.setItem('nxty_work_settings', JSON.stringify({ ...settings, attendance_effective_from: '2026-07-20' }));
+  });
+
+  await page.goto('/');
+  await page.locator('#nav-tab-karyawan').click();
+  await page.getByRole('button', { name: 'Payroll & Slip Gaji' }).click();
+  await page.getByRole('button', { name: 'Bonus Kehadiran' }).click();
+
+  // Hanya hari sejak 20 Juli yang dinilai, jadi kehadirannya penuh dan bonus aman
+  const baris = page.locator('details table').getByRole('row').filter({ hasText: 'H. Ari Gunawan' });
+  await expect(baris).toContainText('AMAN');
+});

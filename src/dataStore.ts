@@ -516,6 +516,9 @@ class DataStore {
       const dow = new Date(`${dateStr}T00:00:00Z`).getUTCDay();
       if (dow === 0) continue; // Minggu libur
       if (isCurrentMonth && dateStr >= today) continue; // hari ini/masa depan belum dinilai
+      // Sebelum absensi dipakai, tidak ada data scan sama sekali — jangan dihitung
+      // sebagai tidak hadir karena itu menggugurkan bonus semua orang.
+      if (settings.attendance_effective_from && dateStr < settings.attendance_effective_from) continue;
       workingDates.push(dateStr);
     }
 

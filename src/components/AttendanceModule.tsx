@@ -660,6 +660,20 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
               <div><label className="text-xs font-bold">Bonus Rajin Bulanan</label><input type="number" min="0" value={workSettings.monthly_bonus_amount || ''} onChange={e => setWorkSettings({...workSettings, monthly_bonus_amount:Number(e.target.value)})} className="w-full mt-1 border rounded-lg p-2" /></div>
               <div><label className="text-xs font-bold">Minimum Kehadiran Bonus (hari)</label><input type="number" min="1" value={workSettings.monthly_bonus_min_days || ''} onChange={e => setWorkSettings({...workSettings, monthly_bonus_min_days:Number(e.target.value)})} className="w-full mt-1 border rounded-lg p-2" /></div>
             </div>
+            <div>
+              <label className="text-xs font-bold">Absensi Mulai Berlaku</label>
+              <input
+                type="date"
+                value={workSettings.attendance_effective_from || ''}
+                onChange={e => setWorkSettings({ ...workSettings, attendance_effective_from: e.target.value || undefined })}
+                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs mt-1"
+              />
+              <p className="text-[11px] text-gray-500 mt-1">
+                Hari kerja sebelum tanggal ini tidak dinilai untuk bonus kehadiran. Isi dengan hari
+                pertama absensi benar-benar dipakai, supaya masa sebelum itu tidak terhitung sebagai
+                tidak hadir dan menggugurkan bonus semua orang. Kosongkan bila ingin menilai semua hari.
+              </p>
+            </div>
             <p className="text-[11px] text-gray-500 bg-gray-50 border border-gray-100 rounded-lg p-2">Jika lokasi karyawan lebih jauh dari radius ini, absensi akan ditolak dan tidak tersimpan.</p>
             <div className="location-qr-print-card border rounded-2xl p-4 text-center space-y-3"><p className="font-black">QR LOKASI ABSENSI · {brandName()}</p><div className="inline-flex bg-white p-2"><QRCodeSVG value={`ARI-LOCATION:${workSettings.location_qr_token}`} size={220} level="H" /></div><p className="text-xs">Scan QR ini melalui menu Absensi pada akun karyawan.</p></div>
             <div className="flex flex-wrap gap-2"><button onClick={regenerateLocationQr} className="px-3 py-2 bg-rose-50 text-rose-700 rounded-lg text-xs font-bold cursor-pointer">Ganti QR Lokasi</button><button onClick={printLocationQr} className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-xs font-bold cursor-pointer"><Printer className="w-3.5 h-3.5 inline mr-1" /> Cetak QR</button><button onClick={saveWorkSettings} className="ml-auto px-4 py-2 bg-[var(--color-evergreen)] text-white rounded-lg text-xs font-bold cursor-pointer">Simpan Pengaturan</button></div>
