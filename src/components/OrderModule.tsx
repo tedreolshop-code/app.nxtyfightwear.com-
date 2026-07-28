@@ -377,11 +377,11 @@ export const OrderModule: React.FC = () => {
 
   const getSourceBadge = (order: Order) => {
     if (order.source === 'offline') {
-      return <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-[10px] rounded font-semibold font-mono border">Offline / Custom</span>;
+      return <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[9px] rounded font-bold font-mono border border-gray-200">OFFLINE</span>;
     }
     return (
-      <span className="px-2 py-0.5 bg-sky-100 text-sky-800 text-[10px] rounded font-semibold font-mono border border-sky-200">
-        Online ({order.marketplace_name})
+      <span className="px-1.5 py-0.5 bg-sky-100 text-sky-800 text-[9px] rounded font-bold font-mono border border-sky-200 uppercase">
+        {order.marketplace_name}
       </span>
     );
   };
@@ -972,8 +972,7 @@ export const OrderModule: React.FC = () => {
               <tr className="bg-evergreen border-b border-evergreen-dark text-white font-bold uppercase tracking-wider text-[10px] text-center">
                 <th className="border-r border-white/30 text-left w-[96px]">No. Order</th>
                 <th className="border-r border-white/30 text-left w-[76px]">Tanggal</th>
-                <th className="border-r border-white/30 text-left w-[130px]">Nama Pelanggan</th>
-                <th className="border-r border-white/30 text-center w-[88px]">Kanal</th>
+                <th className="border-r border-white/30 text-left w-[150px]">Pelanggan</th>
                 <th className="border-r border-white/30 text-left">Daftar Barang</th>
                 <th className="border-r border-white/30 text-right w-[104px]">Total Tagihan</th>
                 <th className="border-r border-white/30 text-center w-[96px]">Bayar</th>
@@ -985,7 +984,7 @@ export const OrderModule: React.FC = () => {
             <tbody className="font-mono bg-white [&_td]:border-r [&_td]:border-emerald-300 [&_td:last-child]:border-r-0">
               {visibleOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="p-6 text-center text-gray-400 italic">
+                  <td colSpan={9} className="p-6 text-center text-gray-400 italic">
                     {orders.length === 0 ? 'Belum ada data pesanan tercatat.' : 'Tidak ada pesanan yang cocok dengan pencarian / filter.'}
                   </td>
                 </tr>
@@ -998,8 +997,8 @@ export const OrderModule: React.FC = () => {
                     <td>
                       <p className="font-bold text-gray-800 font-sans">{ord.customer_name}</p>
                       <p className="text-[10px] text-gray-400 font-mono">{ord.customer_phone}</p>
+                      <div className="mt-1">{getSourceBadge(ord)}</div>
                     </td>
-                    <td>{getSourceBadge(ord)}</td>
                     <td className="space-y-1">
                       {ord.items.map((item, i) => (
                         <div key={i} className="bg-gray-100/60 px-2 py-0.5 rounded text-[10px] text-gray-600 border border-gray-100 w-fit flex items-center gap-1.5">
@@ -1114,7 +1113,7 @@ export const OrderModule: React.FC = () => {
                   </tr>
                   {expandedOrderId === ord.id && (
                     <tr className="bg-gray-50/60 border-b border-gray-100">
-                      <td colSpan={10} className="p-4">
+                      <td colSpan={9} className="p-4">
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                           <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
                             <div><h4 className="font-black text-xs text-gray-800 flex items-center gap-1"><PackageCheck className="w-4 h-4 text-[var(--color-evergreen)]" /> Tugas Packing</h4><p className="text-[10px] text-gray-400">Assign ke karyawan, nanti muncul di Daftar Kerjaan.</p></div>
