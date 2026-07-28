@@ -32,6 +32,10 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
   const [payrollPage, setPayrollPage] = useState(1);
+  // Slip lunas pindah ke Arsip supaya daftar aktif hanya berisi yang perlu ditindak
+  const [payrollListView, setPayrollListView] = useState<'aktif' | 'arsip'>('aktif');
+  // Bulan arsip yang sedang dibuka ('' = belum ada yang dibuka)
+  const [openArchiveMonth, setOpenArchiveMonth] = useState('');
   const PAYROLL_PAGE_SIZE = 20;
   const [payrollDetailView, setPayrollDetailView] = useState<'review' | 'register'>('register');
   const [employeeSearchQuery, setEmployeeSearchQuery] = useState('');
@@ -274,8 +278,13 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
   };
 
   const handleTogglePaymentStatus = (pay: PayrollWeekly) => {
-    dataStore.setPayrollPaymentStatus(pay.id, pay.payment_status === 'paid' ? 'unpaid' : 'paid');
+    const menjadiLunas = pay.payment_status !== 'paid';
+    dataStore.setPayrollPaymentStatus(pay.id, menjadiLunas ? 'paid' : 'unpaid');
     loadData();
+    // Slip lunas langsung pindah ke Arsip, jadi hilangnya dari daftar ini perlu dijelaskan
+    alert(menjadiLunas
+      ? `Slip ${empName(pay.employee_id)} ditandai lunas dan dipindahkan ke Arsip Lunas (${monthLabelId(pay.period_end.slice(0, 7))}).`
+      : `Status lunas slip ${empName(pay.employee_id)} dibatalkan. Slip kembali ke daftar Belum Dibayar.`);
   };
 
   const handleDeletePayroll = (id: string) => {
@@ -346,6 +355,12 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     e.preventDefault();
     dataStore.setCalibration(calibration);
     alert('Kalibrasi cetak berhasil disimpan!');
+  };
+
+  // Label bulan 'YYYY-MM' -> "Juli 2026", untuk judul kelompok arsip
+  const monthLabelId = (month: string) => {
+    const [year, mon] = month.split('-');
+    return `${['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'][Number(mon) - 1]} ${year}`;
   };
 
   const handlePrint = (pay: PayrollWeekly) => {
@@ -1035,11 +1050,38 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const empName = (id: string) => employees.find(e => e.id === id)?.name || '';
-  const filteredPayrolls = payrolls.filter(pay => {
+  const payrollsInRange = payrolls.filter(pay => {
     if (filterStartDate && pay.period_start < filterStartDate) return false;
     if (filterEndDate && pay.period_end > filterEndDate) return false;
     return true;
-  }).sort((a, b) => empName(a.employee_id).localeCompare(empName(b.employee_id)));
+  });
+
+  // Aktif = belum dibayar (yang masih perlu ditindak). Arsip = sudah lunas.
+  const archivedPayrolls = payrollsInRange.filter(pay => pay.payment_status === 'paid');
+  const filteredPayrolls = (payrollListView === 'arsip' ? archivedPayrolls : payrollsInRange.filter(pay => pay.payment_status !== 'paid'))
+    .sort((a, b) => empName(a.employee_id).localeCompare(empName(b.employee_id)));
+
+  /**
+   * Arsip dikelompokkan per BULAN PERIODE KERJA (bukan tanggal bayar), karena yang
+   * ditanyakan orang selalu "gaji bulan Juli", bukan "yang dibayar bulan Juli".
+   * Gaji mingguan berarti satu bulan berisi 4-5 periode.
+   */
+  const archiveMonths = (() => {
+    const map = new Map<string, PayrollWeekly[]>();
+    archivedPayrolls.forEach(pay => {
+      const month = pay.period_end.slice(0, 7);
+      map.set(month, [...(map.get(month) || []), pay]);
+    });
+    return [...map.entries()]
+      .sort((a, b) => b[0].localeCompare(a[0])) // bulan terbaru dulu
+      .map(([month, slips]) => ({
+        month,
+        slips: [...slips].sort((a, b) => b.period_end.localeCompare(a.period_end)
+          || empName(a.employee_id).localeCompare(empName(b.employee_id))),
+        total: slips.reduce((sum, item) => sum + item.total_pay, 0),
+        periods: new Set(slips.map(item => `${item.period_start}|${item.period_end}`)).size,
+      }));
+  })();
   const payrollTotalPages = Math.max(1, Math.ceil(filteredPayrolls.length / PAYROLL_PAGE_SIZE));
   const payrollPageClamped = Math.min(payrollPage, payrollTotalPages);
   const pagedPayrolls = filteredPayrolls.slice((payrollPageClamped - 1) * PAYROLL_PAGE_SIZE, payrollPageClamped * PAYROLL_PAGE_SIZE);
@@ -1250,10 +1292,129 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                 </button>
               )}
             </div>
-            <div className="font-mono text-[11px] text-gray-500 bg-gray-50 px-2.5 py-1 rounded-md border border-gray-200">
-              Menampilkan {pagedPayrolls.length} dari {filteredPayrolls.length} slip (halaman {payrollPageClamped}/{payrollTotalPages})
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="bg-white p-1 rounded-xl border border-gray-200 inline-flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => { setPayrollListView('aktif'); setPayrollPage(1); }}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer ${
+                    payrollListView === 'aktif' ? 'bg-[var(--color-evergreen)] text-white' : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  Belum Dibayar
+                  {payrollsInRange.filter(p => p.payment_status !== 'paid').length > 0 && (
+                    <span className={`ml-1.5 text-[10px] font-mono px-1.5 rounded-full ${
+                      payrollListView === 'aktif' ? 'bg-white/20' : 'bg-amber-100 text-amber-800'
+                    }`}>
+                      {payrollsInRange.filter(p => p.payment_status !== 'paid').length}
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setPayrollListView('arsip'); setPayrollPage(1); }}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer ${
+                    payrollListView === 'arsip' ? 'bg-[var(--color-evergreen)] text-white' : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  Arsip Lunas
+                  {archivedPayrolls.length > 0 && (
+                    <span className={`ml-1.5 text-[10px] font-mono px-1.5 rounded-full ${
+                      payrollListView === 'arsip' ? 'bg-white/20' : 'bg-emerald-100 text-emerald-800'
+                    }`}>
+                      {archivedPayrolls.length}
+                    </span>
+                  )}
+                </button>
+              </div>
+              <div className="font-mono text-[11px] text-gray-500 bg-gray-50 px-2.5 py-1 rounded-md border border-gray-200">
+                {payrollListView === 'arsip'
+                  ? `${archiveMonths.length} bulan · ${archivedPayrolls.length} slip lunas`
+                  : `Menampilkan ${pagedPayrolls.length} dari ${filteredPayrolls.length} slip (halaman ${payrollPageClamped}/${payrollTotalPages})`}
+              </div>
             </div>
           </div>
+
+          {payrollListView === 'arsip' && (
+            <div className="p-4 space-y-2 bg-gray-50/50 border-t border-gray-100">
+              <p className="text-xs text-gray-800">
+                Slip yang sudah <b>Lunas</b>, dikelompokkan per bulan periode kerja. Gaji mingguan, jadi
+                satu bulan berisi 4&ndash;5 periode. Untuk mengoreksi, buka bulannya lalu tekan
+                <b> Batalkan Lunas</b> — slipnya kembali ke daftar Belum Dibayar dan bisa diedit di sana.
+              </p>
+
+              {archiveMonths.length === 0 ? (
+                <p className="text-xs text-gray-400 italic py-6 text-center">Belum ada slip lunas yang diarsipkan.</p>
+              ) : archiveMonths.map(({ month, slips, total, periods }) => (
+                <div key={month} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setOpenArchiveMonth(openArchiveMonth === month ? '' : month)}
+                    className="w-full flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-left hover:bg-gray-50 cursor-pointer"
+                  >
+                    <span>
+                      <span className="font-bold text-sm text-gray-800">{monthLabelId(month)}</span>
+                      <span className="block text-[11px] text-gray-500">
+                        {slips.length} slip · {periods} periode mingguan
+                      </span>
+                    </span>
+                    <span className="flex items-center gap-3">
+                      <span className="font-mono font-black text-[var(--color-evergreen)]">{formatIDR(total)}</span>
+                      <span className="text-gray-400 text-xs">{openArchiveMonth === month ? '▲' : '▼'}</span>
+                    </span>
+                  </button>
+
+                  {openArchiveMonth === month && (
+                    <div className="overflow-x-auto border-t border-gray-100">
+                      <table className="w-full text-xs text-left">
+                        <thead>
+                          <tr className="bg-evergreen/90 text-white font-bold uppercase tracking-wider text-[10px]">
+                            <th className="p-2">Karyawan</th>
+                            <th className="p-2 w-48">Periode</th>
+                            <th className="p-2 w-28 text-right">Total Bersih</th>
+                            <th className="p-2 w-28">Dibayar</th>
+                            <th className="p-2 w-40 text-center">Aksi</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {slips.map(pay => (
+                            <tr key={pay.id} className="border-b border-emerald-100 hover:bg-emerald-50/20">
+                              <td className="p-2 font-semibold text-gray-700">{empName(pay.employee_id)}</td>
+                              <td className="p-2 font-mono text-gray-500">{pay.period_start} → {pay.period_end}</td>
+                              <td className="p-2 text-right font-mono font-bold text-gray-800">{formatIDR(pay.total_pay)}</td>
+                              <td className="p-2 font-mono text-[10px] text-gray-500">{pay.paid_at?.slice(0, 10) || '—'}</td>
+                              <td className="p-2 text-center">
+                                <div className="inline-flex gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handlePrint(pay)}
+                                    className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-[10px] font-bold px-2 py-1 rounded cursor-pointer"
+                                  >
+                                    Cetak Ulang
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (!window.confirm(`Batalkan status lunas slip ${empName(pay.employee_id)} (${pay.period_start} → ${pay.period_end})?\n\nSlip kembali ke daftar Belum Dibayar dan bisa diedit.`)) return;
+                                      dataStore.setPayrollPaymentStatus(pay.id, 'unpaid');
+                                      loadData();
+                                    }}
+                                    className="bg-amber-50 border border-amber-200 hover:bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-1 rounded cursor-pointer"
+                                  >
+                                    Batalkan Lunas
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* max-h wajib: tanpa batas tinggi, wrapper tidak pernah scroll vertikal
               sehingga header sticky di bawah ikut hanyut saat halaman digulir */}
