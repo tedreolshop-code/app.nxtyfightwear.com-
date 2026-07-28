@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Order, OrderItem, Product, Employee, orderRemaining, orderPaymentStatus, divisionLabel } from '../types';
+import { Order, OrderItem, Product, Employee, orderRemaining, orderPaymentStatus, divisionLabel, paidAmountOf } from '../types';
 import { DivisionFilter } from './DivisionFilter';
-import { dataStore } from '../dataStore';
+import { PaymentLedger, LedgerRow } from './PaymentLedger';
+import { dataStore, wibTodayStr } from '../dataStore';
 import { ShoppingBag, Plus, User, Phone, CheckCircle2, Trash2, PackageCheck, Truck, Printer, X } from 'lucide-react';
 
 export const OrderModule: React.FC = () => {
@@ -17,6 +18,8 @@ export const OrderModule: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState<'active' | 'all' | Order['status']>('active');
   const [orderSearch, setOrderSearch] = useState('');
   const [orderDivFilter, setOrderDivFilter] = useState('');
+  // Sub-tab: daftar pesanan vs buku piutang pelanggan
+  const [orderView, setOrderView] = useState<'pesanan' | 'piutang'>('pesanan');
   const [packingEmployeeId, setPackingEmployeeId] = useState('');
   const [shipExpedition, setShipExpedition] = useState('');
   const [shipTracking, setShipTracking] = useState('');
@@ -507,6 +510,23 @@ export const OrderModule: React.FC = () => {
     );
   };
 
+  // Buku piutang: turunan dari order yang belum lunas. Order dibatalkan tidak ditagih.
+  const piutangRows: LedgerRow[] = orders
+    .filter(ord => ord.status !== 'cancelled')
+    .map(ord => ({
+      id: ord.id,
+      ref: ord.order_number,
+      party: ord.customer_name,
+      date: ord.date,
+      dueDate: ord.due_date,
+      // Satu order bisa berisi barang dua divisi
+      departmentIds: Array.from(new Set(ord.items.map(item => item.department_id).filter(Boolean))) as string[],
+      total: ord.total,
+      paid: paidAmountOf(ord),
+      payments: ord.payments || [],
+    }));
+  const piutangOutstanding = piutangRows.reduce((sum, row) => sum + Math.max(0, row.total - row.paid), 0);
+
   const visibleOrders = orders.filter(ord => {
     if (filterStatus === 'active') {
       if (ord.status === 'cancelled') return false;
@@ -848,8 +868,49 @@ export const OrderModule: React.FC = () => {
         </div>
       )}
 
+      {/* Sub-tab: daftar pesanan vs piutang pelanggan */}
+      <div className="no-print bg-white p-1 rounded-xl border border-gray-200 inline-flex gap-1">
+        <button
+          onClick={() => setOrderView('pesanan')}
+          className={`px-4 py-1.5 rounded-lg text-sm font-semibold cursor-pointer ${
+            orderView === 'pesanan' ? 'bg-[var(--color-evergreen)] text-white' : 'text-gray-600 hover:bg-gray-100'
+          }`}
+        >
+          Daftar Pesanan
+        </button>
+        <button
+          onClick={() => setOrderView('piutang')}
+          className={`px-4 py-1.5 rounded-lg text-sm font-semibold cursor-pointer flex items-center gap-1.5 ${
+            orderView === 'piutang' ? 'bg-[var(--color-evergreen)] text-white' : 'text-gray-600 hover:bg-gray-100'
+          }`}
+        >
+          Piutang Pelanggan
+          {piutangOutstanding > 0 && (
+            <span className={`text-[10px] font-mono px-1.5 rounded-full ${
+              orderView === 'piutang' ? 'bg-white/20' : 'bg-amber-100 text-amber-800'
+            }`}>
+              {formatIDR(piutangOutstanding)}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {orderView === 'piutang' && (
+        <PaymentLedger
+          title="Piutang Pelanggan"
+          subtitle="Turunan dari order yang belum lunas — DP dan cicilan dicatat di sini, angkanya selalu sama dengan ordernya."
+          partyLabel="Pelanggan"
+          rows={piutangRows}
+          todayStr={wibTodayStr()}
+          onPay={(id, amount, date, note) => {
+            if (!dataStore.addOrderPayment(id, amount, date, note)) return alert('Pembayaran gagal dicatat.');
+            loadData();
+          }}
+        />
+      )}
+
       {/* Orders List */}
-      <div className="no-print bg-white rounded-lg border border-gray-200 overflow-hidden shadow-xs">
+      <div className={`no-print bg-white rounded-lg border border-gray-200 overflow-hidden shadow-xs ${orderView === 'piutang' ? 'hidden' : ''}`}>
         <div className="p-4 bg-gray-50/50 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
             <span className="text-xs font-bold text-gray-700 block">Daftar Pesanan</span>

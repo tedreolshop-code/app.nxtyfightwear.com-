@@ -32,7 +32,7 @@ import {
   ,PackingTask
   ,AttendanceAdjustment
   ,CashAdvanceTransaction
-  ,AttendanceBonusPayout, isEligibleForAttendanceBonus } from './types';
+  ,AttendanceBonusPayout, isEligibleForAttendanceBonus, PaymentEntry, purchaseRemaining, orderRemaining } from './types';
 import { pushKeyToCloud, pushAttendanceToCloud, clearAttendanceInCloud } from './cloudSync';
 
 // Helper to generate UUIDs
@@ -637,6 +637,59 @@ class DataStore {
 
   getPurchases = (): Purchase[] => this.get('purchases', INITIAL_PURCHASES);
   setPurchases = (data: Purchase[]) => this.set('purchases', data);
+
+  /**
+   * Catat satu pembayaran hutang ke supplier. Nilainya dibatasi sisa hutang supaya
+   * total terbayar tidak pernah melebihi nilai PO.
+   */
+  addPurchasePayment = (purchaseId: string, amount: number, date: string, note?: string): boolean => {
+    const purchases = this.getPurchases();
+    const purchase = purchases.find(item => item.id === purchaseId);
+    if (!purchase || amount <= 0) return false;
+    const bayar = Math.min(amount, purchaseRemaining(purchase));
+    if (bayar <= 0) return false;
+    const entry: PaymentEntry = {
+      id: uuid(),
+      date,
+      amount: bayar,
+      note,
+      recorded_by: this.getCurrentActor().name,
+    };
+    this.setPurchases(purchases.map(item => item.id === purchaseId
+      ? { ...item, payments: [...(item.payments || []), entry] }
+      : item));
+    this.logAudit('update', 'purchases',
+      `Bayar hutang PO ${purchase.po_number} ke ${purchase.supplier} sebesar ${bayar}`, purchase.id);
+    return true;
+  };
+
+  /**
+   * Catat satu pembayaran piutang dari pelanggan. DP order lama dipindahkan lebih dulu
+   * menjadi entri pembayaran, supaya tidak terhitung dua kali.
+   */
+  addOrderPayment = (orderId: string, amount: number, date: string, note?: string): boolean => {
+    const orders = this.getOrders();
+    const order = orders.find(item => item.id === orderId);
+    if (!order || amount <= 0) return false;
+    const bayar = Math.min(amount, orderRemaining(order));
+    if (bayar <= 0) return false;
+    const riwayat: PaymentEntry[] = order.payments?.length
+      ? order.payments
+      : (order.dp ? [{ id: uuid(), date: order.date, amount: order.dp, note: 'DP awal' }] : []);
+    const entry: PaymentEntry = {
+      id: uuid(),
+      date,
+      amount: bayar,
+      note,
+      recorded_by: this.getCurrentActor().name,
+    };
+    this.setOrders(orders.map(item => item.id === orderId
+      ? { ...item, payments: [...riwayat, entry] }
+      : item));
+    this.logAudit('update', 'orders',
+      `Terima pembayaran order ${order.order_number} dari ${order.customer_name} sebesar ${bayar}`, order.id);
+    return true;
+  };
 
   getDailyExpenses = (): DailyExpense[] => this.get('daily_expenses', INITIAL_DAILY_EXPENSES);
   setDailyExpenses = (data: DailyExpense[]) => this.set('daily_expenses', data);

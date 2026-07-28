@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Purchase, PurchaseOrderItem, DailyExpense, RawMaterial, DIVISIONS, divisionLabel } from '../types';
+import { Purchase, PurchaseOrderItem, DailyExpense, RawMaterial, DIVISIONS, divisionLabel, paidAmountOf, purchaseRemaining, purchasePaymentState, PAYMENT_STATE_LABEL } from '../types';
 import { DivisionFilter, matchesDivision } from './DivisionFilter';
-import { dataStore } from '../dataStore';
+import { PaymentLedger, LedgerRow } from './PaymentLedger';
+import { dataStore, wibTodayStr } from '../dataStore';
 import { brandName, brandLegalName } from '../brand';
 import { 
   ShoppingCart, 
@@ -46,6 +47,10 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
   const [poStaff, setPoStaff] = useState('Admin Keuangan');
   // Divisi pemakai belanja; '' = bersama (dipakai kedua divisi)
   const [poDepartmentId, setPoDepartmentId] = useState('');
+  // Cara bayar ke supplier: tunai = langsung lunas saat PO dibuat, hutang = dibayar nanti
+  const [poPaymentMethod, setPoPaymentMethod] = useState<'tunai' | 'hutang'>('tunai');
+  const [poDueDate, setPoDueDate] = useState('');
+  const [poPaidNow, setPoPaidNow] = useState(0);
   const [editingPurchaseId, setEditingPurchaseId] = useState<string | null>(null);
 
   // PO Item Drafting states
@@ -76,6 +81,8 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
   const [deleteTarget, setDeleteTarget] = useState<{ id: string, type: 'purchase' | 'expense' } | null>(null);
   // Saat mode diisi, tab dikunci ke bagian itu (pemisahan menu).
   const [activeTabState, setActiveTab] = useState<'expenses' | 'purchases'>('purchases');
+  // Sub-tab menu Pembelian: daftar PO vs buku hutang ke supplier
+  const [purchaseView, setPurchaseView] = useState<'po' | 'hutang'>('po');
   const activeTab: 'expenses' | 'purchases' = mode ?? activeTabState;
   const [isPoModalOpen, setIsPoModalOpen] = useState(false);
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
@@ -255,6 +262,8 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
         if (p.id === editingPurchaseId) {
           const updatedPo: Purchase = {
             ...p,
+            payment_method: poPaymentMethod,
+            due_date: poPaymentMethod === 'hutang' ? (poDueDate || undefined) : undefined,
             supplier: poSupplier.trim(),
             po_number: finalPoNumber,
             date: poDate,
@@ -282,9 +291,23 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
       alert('Purchase Order berhasil diperbarui! Stok inventory telah disesuaikan.');
     } else {
       // Create new Purchase Order
+      // Tunai = langsung tercatat lunas; hutang = catat pembayaran awal bila ada
+      const bayarAwal = poPaymentMethod === 'tunai'
+        ? calculatedTotal
+        : Math.min(Math.max(0, poPaidNow || 0), calculatedTotal);
       const newPo: Purchase = {
         id: Math.random().toString(36).substring(2, 9),
         po_number: finalPoNumber,
+        payment_method: poPaymentMethod,
+        due_date: poPaymentMethod === 'hutang' ? (poDueDate || undefined) : undefined,
+        payments: bayarAwal > 0
+          ? [{
+              id: Math.random().toString(36).substring(2, 9),
+              date: poDate,
+              amount: bayarAwal,
+              note: poPaymentMethod === 'tunai' ? 'Dibayar tunai saat PO dibuat' : 'Pembayaran awal',
+            }]
+          : [],
         supplier: poSupplier.trim(),
         date: poDate,
         status: poStatus,
@@ -328,6 +351,9 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
     setPoStatus(po.status);
     setPoStaff(po.admin_staff || 'Admin Keuangan');
     setPoDepartmentId(po.department_id || '');
+    setPoPaymentMethod(po.payment_method || 'tunai');
+    setPoDueDate(po.due_date || '');
+    setPoPaidNow(paidAmountOf(po));
     setDraftItems(po.items.map(item => ({
       description: item.description,
       qty: item.qty,
@@ -339,6 +365,9 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
   const handleCancelEditPurchase = () => {
     setEditingPurchaseId(null);
     setPoDepartmentId('');
+    setPoPaymentMethod('tunai');
+    setPoDueDate('');
+    setPoPaidNow(0);
     setPoSupplier('');
     setPoNumber('');
     setPoDate(new Date().toISOString().split('T')[0]);
@@ -504,6 +533,23 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
     departmentId === 'dept-eva-foam' ? 'bg-emerald-100 text-emerald-800'
       : departmentId === 'dept-konveksi' ? 'bg-sky-100 text-sky-800'
       : 'bg-gray-100 text-gray-600';
+
+  // Buku hutang: turunan dari PO yang belum lunas. Tidak ada data terpisah yang diinput
+  // sendiri, supaya tidak pernah berbeda dari PO-nya.
+  const hutangRows: LedgerRow[] = purchases
+    .filter(p => p.status !== 'cancelled')
+    .map(p => ({
+      id: p.id,
+      ref: p.po_number,
+      party: p.supplier,
+      date: p.date,
+      dueDate: p.due_date,
+      departmentIds: p.department_id ? [p.department_id] : [],
+      total: p.total_price,
+      paid: paidAmountOf(p),
+      payments: p.payments || [],
+    }));
+  const hutangOutstanding = hutangRows.reduce((sum, row) => sum + Math.max(0, row.total - row.paid), 0);
 
   const filteredPurchases = purchases.filter(p => {
     const matchesSearch = p.supplier.toLowerCase().includes(poSearch.toLowerCase()) || 
@@ -832,6 +878,48 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                     />
                   </div>
 
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold text-emerald-800 uppercase tracking-wider mb-1">Cara Bayar</label>
+                      <select
+                        value={poPaymentMethod}
+                        onChange={(e) => setPoPaymentMethod(e.target.value as 'tunai' | 'hutang')}
+                        className="w-full bg-emerald-50/15 border border-emerald-800/25 rounded-lg px-3 py-2 focus:bg-white focus:border-emerald-700 focus:outline-none text-emerald-950 font-semibold"
+                      >
+                        <option value="tunai">Tunai (langsung lunas)</option>
+                        <option value="hutang">Hutang (bayar nanti)</option>
+                      </select>
+                    </div>
+                    {poPaymentMethod === 'hutang' && (
+                      <div>
+                        <label className="block text-[10px] font-bold text-emerald-800 uppercase tracking-wider mb-1">Jatuh Tempo</label>
+                        <input
+                          type="date"
+                          value={poDueDate}
+                          onChange={(e) => setPoDueDate(e.target.value)}
+                          className="w-full bg-emerald-50/15 border border-emerald-800/25 rounded-lg px-3 py-2 focus:bg-white focus:border-emerald-700 focus:outline-none text-emerald-950 font-semibold"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {poPaymentMethod === 'hutang' && !editingPurchaseId && (
+                    <div>
+                      <label className="block text-[10px] font-bold text-emerald-800 uppercase tracking-wider mb-1">Dibayar Sekarang (Rp)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={poPaidNow || ''}
+                        onChange={(e) => setPoPaidNow(Number(e.target.value))}
+                        placeholder="0 bila belum bayar sama sekali"
+                        className="w-full bg-emerald-50/15 border border-emerald-800/25 rounded-lg px-3 py-2 font-mono font-bold text-emerald-950 focus:bg-white focus:border-emerald-700 focus:outline-none"
+                      />
+                      <p className="text-[10px] text-emerald-800/50 mt-1">
+                        Sisanya jadi hutang dan bisa dicicil dari tab <b>Hutang Supplier</b>.
+                      </p>
+                    </div>
+                  )}
+
                   <div>
                     <label className="block text-[10px] font-bold text-emerald-800 uppercase tracking-wider mb-1">Divisi Pemakai</label>
                     <select
@@ -1069,6 +1157,46 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
           {/* TAB 1: PURCHASE ORDER VIEWER GRID */}
           {activeTab === 'purchases' && (
             <div className="space-y-4">
+              <div className="no-print bg-white p-1 rounded-xl border border-gray-200 inline-flex gap-1">
+                <button
+                  onClick={() => setPurchaseView('po')}
+                  className={`px-4 py-1.5 rounded-lg text-sm font-semibold cursor-pointer ${
+                    purchaseView === 'po' ? 'bg-[var(--color-evergreen)] text-white' : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  Daftar PO
+                </button>
+                <button
+                  onClick={() => setPurchaseView('hutang')}
+                  className={`px-4 py-1.5 rounded-lg text-sm font-semibold cursor-pointer flex items-center gap-1.5 ${
+                    purchaseView === 'hutang' ? 'bg-[var(--color-evergreen)] text-white' : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  Hutang Supplier
+                  {hutangOutstanding > 0 && (
+                    <span className={`text-[10px] font-mono px-1.5 rounded-full ${
+                      purchaseView === 'hutang' ? 'bg-white/20' : 'bg-rose-100 text-rose-700'
+                    }`}>
+                      {formatIDR(hutangOutstanding)}
+                    </span>
+                  )}
+                </button>
+              </div>
+
+              {purchaseView === 'hutang' ? (
+                <PaymentLedger
+                  title="Hutang ke Supplier"
+                  subtitle="Turunan dari PO yang belum lunas — tidak ada data yang diinput ulang di sini, jadi angkanya selalu sama dengan PO-nya."
+                  partyLabel="Supplier"
+                  rows={hutangRows}
+                  todayStr={wibTodayStr()}
+                  onPay={(id, amount, date, note) => {
+                    if (!dataStore.addPurchasePayment(id, amount, date, note)) return alert('Pembayaran gagal dicatat.');
+                    loadData();
+                  }}
+                />
+              ) : (
+              <>
               
               {/* Controls Header (Toggle ViewMode, Excel Export, Filter Supplier, Search) */}
               <div className="bg-white rounded-2xl border border-emerald-800/20 p-4 shadow-xs flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
@@ -1540,6 +1668,8 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                   </div>
 
                 </div>
+              )}
+              </>
               )}
 
             </div>

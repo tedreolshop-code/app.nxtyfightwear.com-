@@ -422,9 +422,20 @@ export interface Purchase {
   date: string; // Tanggal transaksi
   items: PurchaseOrderItem[];
   total_price: number; // Total harga PO
-  status: 'pending' | 'completed' | 'cancelled';
+  status: 'pending' | 'completed' | 'cancelled'; // status BARANG, bukan pembayaran
   admin_staff?: string;
+  payment_method?: 'tunai' | 'hutang'; // tunai = dibayar saat PO dibuat
+  due_date?: string; // Jatuh tempo bila hutang
+  payments?: PaymentEntry[]; // Riwayat pembayaran ke supplier
 }
+
+/** Sisa hutang ke supplier untuk satu PO. */
+export const purchaseRemaining = (purchase: Pick<Purchase, 'total_price' | 'payments'>): number =>
+  remainingOf(purchase.total_price, paidAmountOf(purchase));
+
+/** Status pelunasan PO ke supplier. */
+export const purchasePaymentState = (purchase: Pick<Purchase, 'total_price' | 'payments'>): PaymentState =>
+  paymentStateOf(purchase.total_price, paidAmountOf(purchase));
 
 export interface DailyExpense {
   id: string;
@@ -602,7 +613,9 @@ export interface Order {
   shipping_fee?: number; // Ongkir untuk order langsung/non-marketplace (masuk ke total)
   discount?: number; // Potongan harga (dikurangkan dari subtotal sebelum ongkir)
   total: number; // Tagihan ke pelanggan: subtotal - diskon + ongkir
-  dp?: number; // Uang muka yang sudah dibayar; sisa tagihan = total - dp
+  dp?: number; // Uang muka data lama; dipertahankan agar order lama tetap terbaca
+  payments?: PaymentEntry[]; // Riwayat pembayaran bertahap (DP, cicilan, pelunasan)
+  due_date?: string; // Jatuh tempo pelunasan piutang
   ready_date?: string; // Tanggal janji barang siap, khusus order preorder
   // preorder = barang belum tersedia, sudah dijanjikan ke pelanggan
   status: 'preorder' | 'pending' | 'production' | 'completed' | 'cancelled';
@@ -616,15 +629,48 @@ export interface Order {
   packing_employee_name?: string;
 }
 
-/** Sisa tagihan order setelah DP. */
-export const orderRemaining = (order: Pick<Order, 'total' | 'dp'>): number =>
-  Math.max(0, order.total - (order.dp || 0));
+/** Satu kali pembayaran (DP, cicilan, atau pelunasan). */
+export interface PaymentEntry {
+  id: string;
+  date: string;
+  amount: number;
+  note?: string;
+  recorded_by?: string;
+}
 
-/** Status bayar order: belum bayar / DP sebagian / lunas. */
-export const orderPaymentStatus = (order: Pick<Order, 'total' | 'dp'>): 'belum_bayar' | 'dp' | 'lunas' => {
-  const dp = order.dp || 0;
-  if (dp <= 0) return 'belum_bayar';
-  return dp >= order.total ? 'lunas' : 'dp';
+export type PaymentState = 'belum_bayar' | 'sebagian' | 'lunas';
+
+/**
+ * Jumlah yang sudah dibayar. Data order lama hanya punya satu angka `dp`, jadi dipakai
+ * sebagai penopang bila daftar pembayaran belum ada.
+ */
+export const paidAmountOf = (entity: { payments?: PaymentEntry[]; dp?: number }): number =>
+  entity.payments?.length
+    ? entity.payments.reduce((sum, p) => sum + (p.amount || 0), 0)
+    : (entity.dp || 0);
+
+/** Sisa tagihan; tidak pernah negatif walau terjadi kelebihan bayar. */
+export const remainingOf = (total: number, paid: number): number => Math.max(0, total - paid);
+
+export const paymentStateOf = (total: number, paid: number): PaymentState => {
+  if (paid <= 0) return 'belum_bayar';
+  return paid >= total ? 'lunas' : 'sebagian';
+};
+
+export const PAYMENT_STATE_LABEL: Record<PaymentState, string> = {
+  belum_bayar: 'Belum Bayar',
+  sebagian: 'Sebagian',
+  lunas: 'Lunas',
+};
+
+/** Sisa tagihan order setelah pembayaran yang tercatat. */
+export const orderRemaining = (order: Pick<Order, 'total' | 'dp' | 'payments'>): number =>
+  remainingOf(order.total, paidAmountOf(order));
+
+/** Status bayar order: belum bayar / dibayar sebagian (DP) / lunas. */
+export const orderPaymentStatus = (order: Pick<Order, 'total' | 'dp' | 'payments'>): 'belum_bayar' | 'dp' | 'lunas' => {
+  const state = paymentStateOf(order.total, paidAmountOf(order));
+  return state === 'sebagian' ? 'dp' : state;
 };
 
 /**
