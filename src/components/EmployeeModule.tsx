@@ -258,21 +258,16 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
     setModalOvertimeHours(computedOvertimeHours);
     setModalKasbonDeduction(suggestedDeduction);
     setModalOutstandingKasbon(totalOutstanding);
-    const settings = dataStore.getWorkSettings();
-    const periodEndDate = new Date(`${modalPeriodEnd}T00:00:00+07:00`);
-    const nextDay = new Date(periodEndDate.getTime() + 86400000);
-    const isMonthEnd = nextDay.getMonth() !== periodEndDate.getMonth();
-    const monthPrefix = modalPeriodEnd.slice(0, 7);
-    const monthScans = dataStore.getAttendance().filter(scan => scan.employee_id === empId && scan.timestamp.startsWith(monthPrefix));
-    const monthDays = new Set(monthScans.filter(scan => scan.type_scan === 'masuk').map(scan => scan.timestamp.slice(0, 10))).size;
-    const totalLate = monthScans.reduce((sum, scan) => sum + (scan.late_minutes || 0), 0);
-    const totalLateCompensation = monthScans.reduce((sum, scan) => sum + (scan.late_compensation_minutes || 0), 0);
-    const netLate = Math.max(0, totalLate - totalLateCompensation);
-    const defaultAttendanceBonus = profileModalEmp.default_attendance_bonus ?? settings.monthly_bonus_amount;
-    const attendanceBonus = isMonthEnd
-      ? (monthDays >= settings.monthly_bonus_min_days && netLate === 0 ? defaultAttendanceBonus : 0)
-      : (daysCount >= 6 && netLate === 0 ? defaultAttendanceBonus : 0);
-    setModalBonus(attendanceBonus);
+    // Bonus di slip mingguan HANYA bonus kerja (Live TikTok, dsb) — sama seperti
+    // pembuat slip di PayrollModule. Bonus KEHADIRAN sengaja tidak ikut di sini karena
+    // diakumulasi harian lalu dibayarkan terpisah tiap tanggal 1 lewat tab
+    // "Bonus Kehadiran"; kalau ikut, karyawan dibayar dua kali untuk hal yang sama.
+    const liveBonus = dataStore.getAttendanceAdjustments()
+      .filter(item => item.employee_id === empId
+        && item.type === 'live_tiktok'
+        && item.date >= modalPeriodStart && item.date <= modalPeriodEnd)
+      .reduce((sum, item) => sum + (item.bonus_amount || 0), 0);
+    setModalBonus(liveBonus);
 
     showNotification(`Sukses sinkronisasi data absensi! - Hari Kerja Terhitung: ${daysCount} Hari - Estimasi Jam Lembur: ${computedOvertimeHours} Jam`, 'success');
   };
@@ -1390,7 +1385,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                         </div>
 
                         <div>
-                          <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider">Bonus / Tunjangan (Rp)</label>
+                          <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider">Bonus Kerja / Tunjangan (Rp)</label>
                           <input 
                             type="number" 
                             value={modalBonus}
@@ -1399,6 +1394,10 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                             min={0}
                             required
                           />
+                          <p className="text-[10px] text-gray-400 mt-1">
+                            Hanya bonus kerja seperti Live TikTok. <b>Bonus kehadiran tidak di sini</b> —
+                            diakumulasi harian dan dibayar terpisah tiap tanggal 1 lewat Payroll &gt; Bonus Kehadiran.
+                          </p>
                         </div>
 
                         <div>
