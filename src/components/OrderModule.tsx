@@ -963,22 +963,23 @@ export const OrderModule: React.FC = () => {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
+          {/* Gaya tabel disamakan dengan Penjualan Marketplace: header evergreen, garis emerald, body mono */}
+          <table className="w-full table-fixed text-left border-collapse text-[11px] border-2 border-evergreen/60 [&_th]:px-2 [&_th]:py-1.5 [&_td]:px-2 [&_td]:py-2">
             <thead>
-              <tr className="bg-evergreen text-white font-bold uppercase tracking-wider text-[10px]">
-                <th className="p-3">No. Order</th>
-                <th className="p-3">Tanggal</th>
-                <th className="p-3">Nama Pelanggan</th>
-                <th className="p-3">Kanal/Sumber</th>
-                <th className="p-3">Daftar Barang</th>
-                <th className="p-3 text-right">Total Tagihan</th>
-                <th className="p-3 text-center">Bayar</th>
-                <th className="p-3 text-center">Status</th>
-                <th className="p-3 text-center">Kirim</th>
-                <th className="p-3 text-center">Aksi</th>
+              <tr className="bg-evergreen border-b border-evergreen-dark text-white font-bold uppercase tracking-wider text-[10px] text-center">
+                <th className="border-r border-white/30 text-left w-[96px]">No. Order</th>
+                <th className="border-r border-white/30 text-left w-[76px]">Tanggal</th>
+                <th className="border-r border-white/30 text-left w-[130px]">Nama Pelanggan</th>
+                <th className="border-r border-white/30 text-center w-[88px]">Kanal</th>
+                <th className="border-r border-white/30 text-left">Daftar Barang</th>
+                <th className="border-r border-white/30 text-right w-[104px]">Total Tagihan</th>
+                <th className="border-r border-white/30 text-center w-[96px]">Bayar</th>
+                <th className="border-r border-white/30 text-center w-[88px]">Status</th>
+                <th className="border-r border-white/30 text-center w-[92px]">Kirim</th>
+                <th className="text-center w-[132px]">Aksi</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="font-mono bg-white [&_td]:border-r [&_td]:border-emerald-300 [&_td:last-child]:border-r-0">
               {visibleOrders.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="p-6 text-center text-gray-400 italic">
@@ -988,15 +989,15 @@ export const OrderModule: React.FC = () => {
               ) : (
                 visibleOrders.map((ord) => (
                   <React.Fragment key={ord.id}>
-                  <tr className="border-b border-emerald-200 hover:bg-gray-50/55 align-top">
-                    <td className="p-3 font-mono font-bold text-gray-800">{ord.order_number}</td>
-                    <td className="p-3 font-mono text-gray-500 whitespace-nowrap">{ord.date}</td>
-                    <td className="p-3">
-                      <p className="font-bold text-gray-800">{ord.customer_name}</p>
+                  <tr className="border-t border-emerald-200 hover:bg-emerald-50/15 transition-colors align-top">
+                    <td className="font-mono font-bold text-gray-800">{ord.order_number}</td>
+                    <td className="font-mono text-gray-500 whitespace-nowrap">{ord.date}</td>
+                    <td>
+                      <p className="font-bold text-gray-800 font-sans">{ord.customer_name}</p>
                       <p className="text-[10px] text-gray-400 font-mono">{ord.customer_phone}</p>
                     </td>
-                    <td className="p-3">{getSourceBadge(ord)}</td>
-                    <td className="p-3 space-y-1">
+                    <td>{getSourceBadge(ord)}</td>
+                    <td className="space-y-1">
                       {ord.items.map((item, i) => (
                         <div key={i} className="bg-gray-100/60 px-2 py-0.5 rounded text-[10px] text-gray-600 border border-gray-100 w-fit flex items-center gap-1.5">
                           <span><span className="font-bold">{item.qty}x</span> {item.product_name} <span className="opacity-75">({item.variant})</span></span>
@@ -1013,7 +1014,7 @@ export const OrderModule: React.FC = () => {
                         </p>
                       )}
                     </td>
-                    <td className="p-3 text-right font-mono font-bold text-gray-800">
+                    <td className="text-right font-mono font-bold text-gray-800">
                       {formatIDR(ord.total)}
                       {(ord.discount ?? 0) > 0 && (
                         <p className="text-[10px] text-rose-500 font-normal whitespace-nowrap">disc {formatIDR(ord.discount!)}</p>
@@ -1022,7 +1023,7 @@ export const OrderModule: React.FC = () => {
                         <p className="text-[10px] text-gray-400 font-normal whitespace-nowrap">incl. ongkir {formatIDR(ord.shipping_fee!)}</p>
                       )}
                     </td>
-                    <td className="p-3 text-center space-y-1">
+                    <td className="text-center space-y-1">
                       {getPaymentBadge(ord)}
                       {orderPaymentStatus(ord) === 'dp' && (
                         <p className="text-[10px] font-mono text-gray-500 whitespace-nowrap">
@@ -1030,14 +1031,14 @@ export const OrderModule: React.FC = () => {
                         </p>
                       )}
                     </td>
-                    <td className="p-3 text-center space-y-1">
+                    <td className="text-center space-y-1">
                       {getStatusBadge(ord.status)}
                       {ord.status === 'preorder' && ord.ready_date && (
                         <p className="text-[10px] font-mono text-violet-700 whitespace-nowrap">siap {ord.ready_date}</p>
                       )}
                     </td>
-                    <td className="p-3 text-center space-y-1">{getShippingBadge(ord)}{ord.tracking_number && <p className="text-[10px] font-mono text-gray-500">{ord.tracking_number}</p>}</td>
-                    <td className="p-3 text-center space-y-1">
+                    <td className="text-center space-y-1">{getShippingBadge(ord)}{ord.tracking_number && <p className="text-[10px] font-mono text-gray-500">{ord.tracking_number}</p>}</td>
+                    <td className="text-center space-y-1">
                       <button onClick={() => openOrderPanel(ord)} className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-[10px] font-bold px-2 py-1 rounded flex items-center gap-1 mx-auto">
                         <PackageCheck className="w-3 h-3" /> Packing / Resi
                       </button>
