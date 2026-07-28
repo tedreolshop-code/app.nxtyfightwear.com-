@@ -59,7 +59,9 @@ export const OrderModule: React.FC = () => {
 
   const loadData = () => {
     setOrders(dataStore.getOrders());
-    setProducts(dataStore.getProducts());
+    // Urutkan abjad (nama lalu varian) biar gampang dicari di dropdown order
+    setProducts([...dataStore.getProducts()].sort((a, b) =>
+      `${a.name} ${a.variant}`.localeCompare(`${b.name} ${b.variant}`, 'id', { sensitivity: 'base', numeric: true })));
     setEmployees(dataStore.getEmployees().filter(employee => employee.status_aktif));
     setCalibration(dataStore.getCalibration());
   };
