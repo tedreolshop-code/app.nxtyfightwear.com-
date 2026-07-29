@@ -354,29 +354,6 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
           </span>
         </button>
 
-        {(running.zeroBonus > 0 || running.emptyDays > 0) && (
-          <div className="space-y-1.5 text-[11px] text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-            <p className="font-bold flex items-center gap-1.5">
-              <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> Kenapa saldonya nol?
-            </p>
-            {running.emptyDays > 0 && (
-              <p>
-                <b>{running.emptyDays} hari kerja</b> bulan ini tidak punya absensi dari siapa pun, jadi
-                dihitung tidak hadir dan menggugurkan bonus. Kalau itu masa sebelum absensi dipakai,
-                isi <b>Absensi Mulai Berlaku</b> di Absensi → Jam Kerja & QR Lokasi
-                {running.effectiveFrom ? ` (sekarang ${running.effectiveFrom})` : ' (sekarang masih kosong)'}.
-              </p>
-            )}
-            {running.zeroBonus > 0 && (
-              <p>
-                <b>{running.zeroBonus} dari {running.employeeCount} karyawan</b> nilai bonusnya masih Rp0,
-                jadi saldonya nol walau kehadirannya aman. Atur <b>Bonus Rajin Bulanan</b> di Jam Kerja,
-                atau nilai per orang di Data Karyawan → Profil &amp; Gaji.
-              </p>
-            )}
-          </div>
-        )}
-
         {/* Posisi hari ini per karyawan — supaya tidak perlu menunggu awal bulan.
             Angka bonus di sini bukan uang yang sudah pasti: satu telat atau absen
             menggugurkan bonus sebulan penuh, jadi baris bisa berubah kapan saja. */}
