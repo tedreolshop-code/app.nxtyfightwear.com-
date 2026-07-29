@@ -516,6 +516,9 @@ export interface ProductionJob {
     employee_id: string;
     employee_name: string;
   }>;
+  // Rencana penugasan per tahap (opsional, informasi saja): nama tahap -> id karyawan.
+  // Tidak membatasi siapa boleh lapor kerja di Daftar Kerjaan.
+  stage_employees?: Record<string, string[]>;
 }
 
 export interface RejectedGood {

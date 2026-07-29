@@ -102,7 +102,9 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
   const [manualOutputs, setManualOutputs] = useState<Array<{ product_id: string; target_qty: number }>>([{ product_id: '', target_qty: 1 }]);
   const [manualMaterials, setManualMaterials] = useState<Array<{ material_id: string; qty: number }>>([{ material_id: '', qty: 1 }]);
   const [manualStages, setManualStages] = useState('Potong\nJahit\nCek Kualitas\nPacking');
-  const [manualEmployeeIds, setManualEmployeeIds] = useState<string[]>([]);
+  // Penugasan per tahap: satu tahap bisa diklik untuk pilih karyawannya sendiri; satu orang boleh masuk beberapa tahap
+  const [manualStageEmployees, setManualStageEmployees] = useState<Record<string, string[]>>({});
+  const [expandedManualStage, setExpandedManualStage] = useState('');
   const [manualNotes, setManualNotes] = useState('');
   const [finalJobId, setFinalJobId] = useState('');
   const [finalOutputs, setFinalOutputs] = useState<Array<{ product_id: string; good_qty: number; reject_qty: number; reject_reason: string }>>([]);
@@ -236,7 +238,8 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
   const setManualDepartment = (departmentId: ProductionDepartmentId) => {
     setManualDepartmentId(departmentId);
     setManualOutputs([{ product_id: '', target_qty: 1 }]);
-    setManualEmployeeIds([]);
+    setManualStageEmployees({});
+    setExpandedManualStage('');
     setManualStages(DEFAULT_STAGES_BY_DEPARTMENT[departmentId]);
   };
 
@@ -365,10 +368,18 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
       .filter((item): item is { material_id: string; material_name: string; qty: number; unit: string } => Boolean(item && item.qty > 0));
     if (materialsPlanned.length === 0) return alert('Pilih minimal satu bahan baku yang dipakai.');
 
-    const assignedEmployees = manualEmployeeIds
+    // Karyawan job-level = gabungan semua karyawan yang ditugaskan di tahap manapun
+    const stageAssignedIds = Array.from(new Set(Object.values(manualStageEmployees).flat()));
+    const assignedEmployees = stageAssignedIds
       .map(id => employees.find(employee => employee.id === id))
       .filter(employee => employee && employee.department_id === manualDepartmentId)
       .map(employee => ({ employee_id: employee!.id, employee_name: employee!.name }));
+    // Hanya simpan penugasan untuk tahap yang memang masih ada di alur final
+    const stageEmployeesForJob = Object.fromEntries(
+      stages
+        .map(stage => [stage, (manualStageEmployees[stage] || []).filter(id => stageAssignedIds.includes(id))] as const)
+        .filter(([, ids]) => ids.length > 0)
+    );
 
     const orderNumber = `PROD/${new Date().getFullYear()}/${String(productionJobs.length + 1).padStart(4, '0')}`;
     const job: ProductionJob = {
@@ -393,7 +404,8 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
         good_qty: 0,
         reject_qty: 0
       })),
-      assigned_employees: assignedEmployees
+      assigned_employees: assignedEmployees,
+      stage_employees: stageEmployeesForJob
     };
 
     const materialSummary = materialsPlanned.map(item => `- ${item.material_name}: ${item.qty} ${item.unit}`).join('\n');
@@ -408,7 +420,8 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
     setManualOutputs([{ product_id: '', target_qty: 1 }]);
     setManualMaterials([{ material_id: '', qty: 1 }]);
     setManualStages(DEFAULT_STAGES_BY_DEPARTMENT[manualDepartmentId]);
-    setManualEmployeeIds([]);
+    setManualStageEmployees({});
+    setExpandedManualStage('');
     setManualNotes('');
     setManualStep(1);
     loadData();
@@ -2157,36 +2170,70 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                         <button type="button" onClick={() => setManualOutputs(items => [...items, { product_id: '', target_qty: 1 }])} className="text-xs font-semibold text-gray-500 hover:text-[var(--color-evergreen)] border border-dashed border-gray-300 hover:border-emerald-300 rounded-lg px-3 py-1.5 flex items-center gap-1 cursor-pointer transition-colors"><Plus className="w-3.5 h-3.5" /> Tambah output</button>
                       </div>
 
-                      {/* Alur sudah otomatis ke-load dari pengaturan produk (Atur Alur) begitu produk output pertama dipilih;
-                          ditampilkan di sini dulu (sebelum karyawan) supaya urutannya alur -> karyawan, bukan sebaliknya. */}
-                      {manualBasicValid && (
-                        <div className="rounded-lg border border-gray-200 bg-gray-50 p-2.5">
-                          <p className="text-[10px] font-bold text-gray-500 uppercase mb-1.5">Alur Kerja (dari pengaturan produk)</p>
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            {manualStages.split('\n').map(stage => stage.trim()).filter(Boolean).map((stage, index, list) => (
-                              <React.Fragment key={index}>
-                                <span className="px-2 py-0.5 rounded bg-white border border-gray-200 text-[11px] font-semibold text-gray-700">{stage}</span>
-                                {index < list.length - 1 && <span className="text-gray-300 text-xs">→</span>}
-                              </React.Fragment>
-                            ))}
+                      {/* Alur sudah otomatis ke-load dari pengaturan produk (Atur Alur) begitu produk output pertama dipilih.
+                          Klik tiap tahap untuk pilih karyawannya sendiri — satu orang boleh masuk beberapa tahap. */}
+                      {manualBasicValid && (() => {
+                        const stageList = manualStages.split('\n').map(stage => stage.trim()).filter(Boolean);
+                        const totalAssigned = new Set(Object.values(manualStageEmployees).flat()).size;
+                        return (
+                          <div className="rounded-lg border border-gray-200 bg-gray-50 p-2.5 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <p className="text-[10px] font-bold text-gray-500 uppercase">Alur Kerja &amp; Karyawan per Tahap</p>
+                              <p className="text-[10px] text-gray-400">{totalAssigned > 0 ? `${totalAssigned} karyawan ditugaskan` : 'klik tahap untuk pilih karyawan'}</p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {stageList.map((stage, index) => {
+                                const assignedCount = (manualStageEmployees[stage] || []).length;
+                                const isOpen = expandedManualStage === stage;
+                                return (
+                                  <React.Fragment key={stage}>
+                                    <button
+                                      type="button"
+                                      onClick={() => setExpandedManualStage(current => current === stage ? '' : stage)}
+                                      title="Klik untuk pilih karyawan tahap ini"
+                                      className={`px-2 py-0.5 rounded text-[11px] font-semibold border cursor-pointer transition-colors flex items-center gap-1 ${
+                                        isOpen ? 'bg-[var(--color-evergreen)] text-white border-[var(--color-evergreen)]'
+                                          : assignedCount > 0 ? 'bg-emerald-50 text-emerald-800 border-emerald-300' : 'bg-white text-gray-700 border-gray-200 hover:border-emerald-300'
+                                      }`}
+                                    >
+                                      {stage}
+                                      {assignedCount > 0 && <span className={`rounded-full px-1.5 text-[9px] font-black ${isOpen ? 'bg-white/25' : 'bg-emerald-600 text-white'}`}>{assignedCount}</span>}
+                                    </button>
+                                    {index < stageList.length - 1 && <span className="text-gray-300 text-xs">→</span>}
+                                  </React.Fragment>
+                                );
+                              })}
+                            </div>
+                            {expandedManualStage && stageList.includes(expandedManualStage) && (
+                              <div className="bg-white border border-emerald-200 rounded-lg p-2 space-y-1.5">
+                                <p className="text-[10px] font-bold text-gray-500">Karyawan untuk tahap "{expandedManualStage}"</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-28 overflow-y-auto overscroll-contain">
+                                  {manualAssignableEmployees.length === 0 && <p className="text-[11px] text-gray-400 col-span-full">Belum ada karyawan aktif di departemen ini.</p>}
+                                  {manualAssignableEmployees.map(employee => {
+                                    const ids = manualStageEmployees[expandedManualStage] || [];
+                                    return (
+                                      <label key={employee.id} className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          checked={ids.includes(employee.id)}
+                                          onChange={event => setManualStageEmployees(current => ({
+                                            ...current,
+                                            [expandedManualStage]: event.target.checked
+                                              ? [...ids, employee.id]
+                                              : ids.filter(id => id !== employee.id)
+                                          }))}
+                                        />
+                                        <span>{employee.name}</span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                            <p className="text-[10px] text-gray-400">Alur bisa disesuaikan lagi nanti di Langkah 3 · Tahapan.</p>
                           </div>
-                          <p className="text-[10px] text-gray-400 mt-1.5">Bisa disesuaikan lagi nanti di Langkah 3 · Tahapan.</p>
-                        </div>
-                      )}
-
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-500 mb-1">Karyawan Ditugaskan</label>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-32 overflow-y-auto overscroll-contain bg-gray-50 border border-gray-200 rounded-lg p-2">
-                          {!manualDepartmentId && <p className="text-[11px] text-gray-400 col-span-full">Pilih departemen dulu.</p>}
-                          {manualDepartmentId && manualAssignableEmployees.length === 0 && <p className="text-[11px] text-gray-400 col-span-full">Belum ada karyawan aktif di departemen ini.</p>}
-                          {manualAssignableEmployees.map(employee => (
-                            <label key={employee.id} className="flex items-center gap-2 text-xs text-gray-700">
-                              <input type="checkbox" checked={manualEmployeeIds.includes(employee.id)} onChange={event => setManualEmployeeIds(ids => event.target.checked ? [...ids, employee.id] : ids.filter(id => id !== employee.id))} />
-                              <span>{employee.name}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
+                        );
+                      })()}
 
                       <div>
                         <label className="block text-xs font-semibold text-gray-500 mb-1">Catatan Instruksi</label>
@@ -2243,8 +2290,19 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                             <p key={item.material.id} className="pl-2">• {item.material.name} — {item.qty} {item.material.unit}</p>
                           ))}
                         </div>
-                        <p><b>Karyawan:</b> {manualEmployeeIds.length > 0 ? `${manualEmployeeIds.length} orang ditugaskan` : ''}</p>
-                        {manualEmployeeIds.length === 0 && (
+                        {(() => {
+                          const stageEntries = Object.entries(manualStageEmployees).filter(([, ids]) => (ids as string[]).length > 0) as Array<[string, string[]]>;
+                          if (stageEntries.length === 0) return null;
+                          return (
+                            <div>
+                              <p className="font-semibold text-gray-700">Karyawan per tahap:</p>
+                              {stageEntries.map(([stage, ids]) => (
+                                <p key={stage} className="pl-2">• <b>{stage}</b>: {ids.map(id => manualAssignableEmployees.find(e => e.id === id)?.name || id).join(', ')}</p>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                        {Object.values(manualStageEmployees).every(ids => (ids as string[]).length === 0) && (
                           <p className="flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 font-semibold">
                             <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> Belum ada karyawan ditugaskan — order tetap bisa dibuat, tugaskan nanti dari tracker.
                           </p>
