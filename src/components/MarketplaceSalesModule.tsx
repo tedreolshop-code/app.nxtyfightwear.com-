@@ -1132,22 +1132,22 @@ export const MarketplaceSalesModule: React.FC = () => {
 
                 <div className="overflow-x-auto">
                   {/* table-fixed + padding rapat: 12 kolom muat di desktop normal tanpa scroll samping */}
-                  <table className="w-full table-fixed text-left border-collapse text-[11px] border-2 border-evergreen/60 [&_th]:px-2 [&_th]:py-1.5 [&_td]:px-2 [&_td]:py-1.5 [&_td]:truncate">
+                  <table className="w-full table-fixed text-left border-collapse text-[11px] border-2 border-evergreen/60 [&_th]:px-2 [&_th]:py-1.5 [&_td]:px-2 [&_td]:py-1.5">
                     <thead>
                       <tr className="bg-evergreen border-b border-evergreen-dark text-white font-bold uppercase tracking-wider text-[10px] text-center">
-                        <th className="p-3 border-r border-white/30 w-[74px]">TGL</th>
-                        <th className="p-3 border-r border-white/30 w-8">No</th>
-                        <th className="p-3 border-r border-white/30 text-left">No pesenan</th>
-                        <th className="p-3 border-r border-white/30 text-left w-[86px]">Ref</th>
-                        <th className="p-3 border-r border-white/30 text-center w-[78px]">Status</th>
-                        <th className="p-3 border-r border-white/30 text-left">Deskripsi</th>
-                        <th className="p-3 border-r border-white/30 text-center w-[86px]">Divisi</th>
-                        <th className="p-3 border-r border-white/30 text-center w-10">QTY</th>
-                        <th className="p-3 border-r border-white/30 text-right w-[82px]">Harga</th>
-                        <th className="p-3 border-r border-white/30 text-right w-[92px]">Subtotal</th>
-                        <th className="p-3 border-r border-white/30 text-right w-[82px]">Biaya</th>
-                        <th className="p-3 border-r border-white/30 text-right font-black w-[96px]">Total</th>
-                        <th className="p-3 text-center w-[58px]">Aksi</th>
+                        <th className="border-r border-white/30 w-[88px]">TGL</th>
+                        <th className="border-r border-white/30 w-8">No</th>
+                        <th className="border-r border-white/30 text-left">No pesenan</th>
+                        <th className="border-r border-white/30 text-left w-[78px]">Ref</th>
+                        <th className="border-r border-white/30 text-center w-[78px]">Status</th>
+                        <th className="border-r border-white/30 text-left">Deskripsi</th>
+                        <th className="border-r border-white/30 text-center w-[80px]">Divisi</th>
+                        <th className="border-r border-white/30 text-center w-10">QTY</th>
+                        <th className="border-r border-white/30 text-right w-[82px]">Harga</th>
+                        <th className="border-r border-white/30 text-right w-[92px]">Subtotal</th>
+                        <th className="border-r border-white/30 text-right w-[90px]">Biaya</th>
+                        <th className="border-r border-white/30 text-right font-black w-[96px]">Total</th>
+                        <th className="text-center w-[58px]">Aksi</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-emerald-200 font-mono bg-white">
@@ -1164,15 +1164,15 @@ export const MarketplaceSalesModule: React.FC = () => {
                             <tr key={item.id} className={`hover:bg-emerald-50/15 transition-colors ${itemIdx === 0 ? 'border-t-2 border-gray-900' : 'border-t border-emerald-200'} ${!isCounted(item) ? 'opacity-55 bg-gray-50/50' : ''}`}>
                               {itemIdx === 0 && (
                                 <>
-                                  <td rowSpan={span} className="p-3 text-center border-r border-emerald-400 font-mono text-emerald-950 font-bold bg-emerald-50/30 whitespace-nowrap align-middle">
+                                  <td rowSpan={span} className="text-center border-r border-emerald-400 font-mono text-emerald-950 font-bold bg-emerald-50/30 whitespace-nowrap align-middle">
                                     {formatDateExcel(group.date)}
                                   </td>
-                                  <td rowSpan={span} className="p-3 text-center text-gray-500 border-r border-emerald-300 align-middle">{groupIdx + 1}</td>
-                                  <td rowSpan={span} className="p-3 font-bold text-gray-800 select-all truncate border-r border-emerald-300 align-middle" title={group.order_number}>
+                                  <td rowSpan={span} className="text-center text-gray-500 border-r border-emerald-300 align-middle">{groupIdx + 1}</td>
+                                  <td rowSpan={span} className="font-bold text-gray-800 select-all truncate overflow-hidden border-r border-emerald-300 align-middle" title={group.order_number}>
                                     {group.order_number}
                                     {span > 1 && <span className="block text-[8px] text-gray-400 font-sans font-semibold mt-0.5">{span} barang</span>}
                                   </td>
-                                  <td rowSpan={span} className="p-3 border-r border-emerald-300 align-middle">
+                                  <td rowSpan={span} className="border-r border-emerald-300 align-middle">
                                     <span className={`block truncate px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider font-sans ${
                                       group.marketplace_ref.toLowerCase() === 'tokopedia' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
                                       group.marketplace_ref.toLowerCase() === 'shopee' ? 'bg-orange-100 text-orange-800 border border-orange-200' :
@@ -1184,7 +1184,7 @@ export const MarketplaceSalesModule: React.FC = () => {
                                   </td>
                                 </>
                               )}
-                              <td className="p-3 text-center border-r border-emerald-300">
+                              <td className="text-center border-r border-emerald-300">
                                 <button
                                   type="button"
                                   onClick={() => { setStatusModalItem(item); setReturChoice(null); }}
@@ -1197,27 +1197,27 @@ export const MarketplaceSalesModule: React.FC = () => {
                                   <span className="block text-[8px] text-gray-400 font-sans mt-0.5">{item.retur_to_stock ? 'kembali ke stok' : 'barang rusak'}</span>
                                 )}
                               </td>
-                              <td className="p-3 text-gray-900 font-bold font-sans truncate border-r border-emerald-300" title={item.description}>
+                              <td className="text-gray-900 font-bold font-sans border-r border-emerald-300 whitespace-normal break-words" title={item.description}>
                                 {item.description}
                               </td>
-                              <td className="p-3 text-center border-r border-emerald-300">
+                              <td className="text-center border-r border-emerald-300">
                                 <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase font-sans ${divisionBadgeClass(item.department_id)}`}>
                                   {divisionLabel(item.department_id, 'Belum diisi')}
                                 </span>
                               </td>
-                              <td className="p-3 text-center font-bold text-gray-950 border-r border-emerald-300">{item.qty}</td>
-                              <td className="p-3 text-right text-gray-700 border-r border-emerald-300 font-semibold">{formatIDR(item.price)}</td>
-                              <td className="p-3 text-right text-gray-700 border-r border-emerald-300 font-semibold">{formatIDR(item.subtotal)}</td>
+                              <td className="text-center font-bold text-gray-950 border-r border-emerald-300">{item.qty}</td>
+                              <td className="text-right text-gray-700 border-r border-emerald-300 font-semibold">{formatIDR(item.price)}</td>
+                              <td className="text-right text-gray-700 border-r border-emerald-300 font-semibold">{formatIDR(item.subtotal)}</td>
                               {itemIdx === 0 && (
-                                <td rowSpan={span} className="p-3 text-right text-red-600 font-bold border-r border-emerald-300 align-middle">
+                                <td rowSpan={span} className="text-right text-red-600 font-bold border-r border-emerald-300 align-middle">
                                   {group.fee > 0 ? `-${formatIDR(group.fee)}` : 'Rp0'}
                                 </td>
                               )}
                               {itemIdx === 0 && (
-                                <td rowSpan={span} className={`p-3 text-right font-black border-r border-emerald-300 text-[12px] align-middle ${group.anyCounted ? 'text-evergreen' : 'text-gray-400 line-through'}`}>{formatIDR(group.total)}</td>
+                                <td rowSpan={span} className={`text-right font-black border-r border-emerald-300 text-[12px] align-middle ${group.anyCounted ? 'text-evergreen' : 'text-gray-400 line-through'}`}>{formatIDR(group.total)}</td>
                               )}
                               {itemIdx === 0 && (
-                                <td rowSpan={span} className="p-3 text-center whitespace-nowrap align-middle">
+                                <td rowSpan={span} className="text-center whitespace-nowrap align-middle">
                                   <div className="flex items-center justify-center gap-1.5">
                                     <button
                                       onClick={() => handleStartEditOrder(group.items)}
@@ -1246,13 +1246,13 @@ export const MarketplaceSalesModule: React.FC = () => {
                     {filteredItemSales.length > 0 && (
                       <tfoot className="bg-emerald-50/60 border-t-2 border-evergreen/60 font-semibold font-sans text-xs">
                         <tr className="text-emerald-950 font-bold">
-                          <td colSpan={6} className="p-3 text-right uppercase tracking-wider border-r border-emerald-300 font-black">TOTAL EFEKTIF (tanpa Cancel/Retur):</td>
-                          <td className="p-3 text-center font-bold font-mono text-gray-900 border-r border-emerald-300">{totalItemQty} Pcs</td>
-                          <td className="p-3 border-r border-emerald-300" />
-                          <td className="p-3 text-right font-mono border-r border-emerald-300 text-gray-800 font-bold">{formatIDR(totalItemSubtotal)}</td>
-                          <td className="p-3 text-right font-mono text-red-600 border-r border-emerald-300 font-bold">-{formatIDR(totalItemAdminFee)}</td>
-                          <td className="p-3 text-right font-mono text-evergreen font-black text-sm border-r border-emerald-300">{formatIDR(totalItemNetOmset)}</td>
-                          <td className="p-3" />
+                          <td colSpan={6} className="text-right uppercase tracking-wider border-r border-emerald-300 font-black">TOTAL EFEKTIF (tanpa Cancel/Retur):</td>
+                          <td className="text-center font-bold font-mono text-gray-900 border-r border-emerald-300">{totalItemQty} Pcs</td>
+                          <td className="border-r border-emerald-300" />
+                          <td className="text-right font-mono border-r border-emerald-300 text-gray-800 font-bold">{formatIDR(totalItemSubtotal)}</td>
+                          <td className="text-right font-mono text-red-600 border-r border-emerald-300 font-bold">-{formatIDR(totalItemAdminFee)}</td>
+                          <td className="text-right font-mono text-evergreen font-black text-sm border-r border-emerald-300">{formatIDR(totalItemNetOmset)}</td>
+                          <td className="" />
                         </tr>
                       </tfoot>
                     )}
