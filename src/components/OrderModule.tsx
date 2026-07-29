@@ -22,6 +22,7 @@ export const OrderModule: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState<'active' | 'all' | Order['status']>('active');
   const [orderSearch, setOrderSearch] = useState('');
   const [orderDivFilter, setOrderDivFilter] = useState('');
+  const [orderSort, setOrderSort] = useState<'newest' | 'oldest' | 'total-desc' | 'total-asc' | 'customer'>('newest');
   // Sub-tab: daftar pesanan vs buku piutang pelanggan
   const [orderView, setOrderView] = useState<'pesanan' | 'piutang'>('pesanan');
   const [packingEmployeeId, setPackingEmployeeId] = useState('');
@@ -557,6 +558,15 @@ export const OrderModule: React.FC = () => {
     // Satu order bisa berisi barang dari dua divisi, jadi cukup salah satu barang cocok
     if (orderDivFilter && !ord.items.some(item => (item.department_id || '') === orderDivFilter)) return false;
     return true;
+  }).sort((a, b) => {
+    switch (orderSort) {
+      case 'oldest': return a.date.localeCompare(b.date) || a.order_number.localeCompare(b.order_number);
+      case 'total-desc': return b.total - a.total;
+      case 'total-asc': return a.total - b.total;
+      case 'customer': return a.customer_name.localeCompare(b.customer_name, 'id', { sensitivity: 'base' });
+      // Terbaru: tanggal sama dipisah nomor order supaya urutannya stabil
+      default: return b.date.localeCompare(a.date) || b.order_number.localeCompare(a.order_number);
+    }
   });
 
   // Total footer tabel — order dibatalkan tidak dihitung walau sedang ditampilkan filternya
@@ -988,6 +998,18 @@ export const OrderModule: React.FC = () => {
               className="bg-white border border-gray-200 rounded px-3 py-1.5 text-xs text-gray-800 focus:outline-none focus:border-emerald-600 w-48"
             />
             <DivisionFilter value={orderDivFilter} onChange={setOrderDivFilter} />
+            <select
+              value={orderSort}
+              onChange={(e) => setOrderSort(e.target.value as typeof orderSort)}
+              title="Urutkan daftar pesanan"
+              className="bg-white border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-800 focus:outline-none focus:border-emerald-600 cursor-pointer"
+            >
+              <option value="newest">Tanggal Terbaru</option>
+              <option value="oldest">Tanggal Terlama</option>
+              <option value="total-desc">Total Terbesar</option>
+              <option value="total-asc">Total Terkecil</option>
+              <option value="customer">Pelanggan A-Z</option>
+            </select>
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value as typeof filterStatus)}
