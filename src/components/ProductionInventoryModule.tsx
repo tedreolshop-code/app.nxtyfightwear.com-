@@ -2157,6 +2157,23 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                         <button type="button" onClick={() => setManualOutputs(items => [...items, { product_id: '', target_qty: 1 }])} className="text-xs font-semibold text-gray-500 hover:text-[var(--color-evergreen)] border border-dashed border-gray-300 hover:border-emerald-300 rounded-lg px-3 py-1.5 flex items-center gap-1 cursor-pointer transition-colors"><Plus className="w-3.5 h-3.5" /> Tambah output</button>
                       </div>
 
+                      {/* Alur sudah otomatis ke-load dari pengaturan produk (Atur Alur) begitu produk output pertama dipilih;
+                          ditampilkan di sini dulu (sebelum karyawan) supaya urutannya alur -> karyawan, bukan sebaliknya. */}
+                      {manualBasicValid && (
+                        <div className="rounded-lg border border-gray-200 bg-gray-50 p-2.5">
+                          <p className="text-[10px] font-bold text-gray-500 uppercase mb-1.5">Alur Kerja (dari pengaturan produk)</p>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {manualStages.split('\n').map(stage => stage.trim()).filter(Boolean).map((stage, index, list) => (
+                              <React.Fragment key={index}>
+                                <span className="px-2 py-0.5 rounded bg-white border border-gray-200 text-[11px] font-semibold text-gray-700">{stage}</span>
+                                {index < list.length - 1 && <span className="text-gray-300 text-xs">→</span>}
+                              </React.Fragment>
+                            ))}
+                          </div>
+                          <p className="text-[10px] text-gray-400 mt-1.5">Bisa disesuaikan lagi nanti di Langkah 3 · Tahapan.</p>
+                        </div>
+                      )}
+
                       <div>
                         <label className="block text-xs font-semibold text-gray-500 mb-1">Karyawan Ditugaskan</label>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-32 overflow-y-auto overscroll-contain bg-gray-50 border border-gray-200 rounded-lg p-2">
