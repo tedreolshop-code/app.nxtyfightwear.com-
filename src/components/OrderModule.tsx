@@ -106,6 +106,19 @@ export const OrderModule: React.FC = () => {
     setCurrentQty(1);
   };
 
+  // Harga per barang bisa dioverride saat edit (nego / harga khusus pelanggan)
+  const handleItemPriceChange = (id: string, price: number) => {
+    const clean = Math.max(0, price || 0);
+    setSelectedItems(selectedItems.map(item =>
+      item.id === id ? { ...item, price: clean, subtotal: clean * item.qty } : item));
+  };
+
+  const handleItemQtyChange = (id: string, qty: number) => {
+    const clean = Math.max(1, qty || 1);
+    setSelectedItems(selectedItems.map(item =>
+      item.id === id ? { ...item, qty: clean, subtotal: item.price * clean } : item));
+  };
+
   const handleRemoveItem = (id: string) => {
     setSelectedItems(selectedItems.filter(item => item.id !== id));
   };
@@ -546,6 +559,11 @@ export const OrderModule: React.FC = () => {
     return true;
   });
 
+  // Total footer tabel — order dibatalkan tidak dihitung walau sedang ditampilkan filternya
+  const countedOrders = visibleOrders.filter(ord => ord.status !== 'cancelled');
+  const visibleTotal = countedOrders.reduce((sum, ord) => sum + ord.total, 0);
+  const visiblePaid = countedOrders.reduce((sum, ord) => sum + paidAmountOf(ord), 0);
+
   return (
     <div className="space-y-6">
       <div className="no-print flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-4">
@@ -752,8 +770,24 @@ export const OrderModule: React.FC = () => {
                         <tr key={item.id} className="border-b border-emerald-200 hover:bg-gray-50">
                           <td className="p-2 font-medium">{item.product_name}</td>
                           <td className="p-2">{item.variant}</td>
-                          <td className="p-2 text-center font-mono font-bold">{item.qty} Pcs</td>
-                          <td className="p-2 text-right font-mono">{formatIDR(item.price)}</td>
+                          <td className="p-2 text-center">
+                            <input
+                              type="number"
+                              min={1}
+                              value={item.qty}
+                              onChange={(e) => handleItemQtyChange(item.id, Number(e.target.value))}
+                              className="w-16 bg-white border border-gray-200 rounded px-1.5 py-1 text-xs font-mono font-bold text-center"
+                            />
+                          </td>
+                          <td className="p-2 text-right">
+                            <input
+                              type="number"
+                              min={0}
+                              value={item.price}
+                              onChange={(e) => handleItemPriceChange(item.id, Number(e.target.value))}
+                              className="w-28 bg-white border border-gray-200 rounded px-2 py-1 text-xs font-mono text-right"
+                            />
+                          </td>
                           <td className="p-2 text-right font-mono text-[var(--color-evergreen)] font-bold">{formatIDR(item.subtotal)}</td>
                           <td className="p-2 text-center">
                             <button
@@ -971,8 +1005,8 @@ export const OrderModule: React.FC = () => {
           <table className="w-full table-fixed text-left border-collapse text-[11px] border-2 border-evergreen/60 [&_th]:px-2 [&_th]:py-1.5 [&_td]:px-2 [&_td]:py-2 [&_td]:overflow-hidden">
             <thead>
               <tr className="bg-evergreen border-b border-evergreen-dark text-white font-bold uppercase tracking-wider text-[10px] text-center">
-                <th className="border-r border-white/30 text-left w-[120px]">No. Order</th>
                 <th className="border-r border-white/30 text-left w-[76px]">Tanggal</th>
+                <th className="border-r border-white/30 text-left w-[120px]">No. Order</th>
                 <th className="border-r border-white/30 text-left w-[150px]">Pelanggan</th>
                 <th className="border-r border-white/30 text-left">Daftar Barang</th>
                 <th className="border-r border-white/30 text-right w-[124px]">Total Tagihan</th>
@@ -993,8 +1027,8 @@ export const OrderModule: React.FC = () => {
                 visibleOrders.map((ord) => (
                   <React.Fragment key={ord.id}>
                   <tr className="border-t border-emerald-200 hover:bg-emerald-50/15 transition-colors align-top">
-                    <td className="font-mono font-bold text-gray-800">{ord.order_number}</td>
                     <td className="font-mono text-gray-500 whitespace-nowrap">{ord.date}</td>
+                    <td className="font-mono font-bold text-gray-800">{ord.order_number}</td>
                     <td>
                       <p className="font-bold text-gray-800 font-sans">{ord.customer_name}</p>
                       <p className="text-[10px] text-gray-400 font-mono">{ord.customer_phone}</p>
@@ -1143,6 +1177,20 @@ export const OrderModule: React.FC = () => {
                 ))
               )}
             </tbody>
+            {countedOrders.length > 0 && (
+              <tfoot className="bg-emerald-50/60 border-t-2 border-evergreen/60 font-sans text-[11px]">
+                <tr className="text-emerald-950 font-bold">
+                  <td colSpan={4} className="px-2 py-3 text-right uppercase tracking-wider border-r border-emerald-300 font-black">
+                    TOTAL {countedOrders.length} ORDER (tanpa dibatalkan):
+                  </td>
+                  <td className="px-2 py-3 text-right font-mono text-evergreen font-black text-sm border-r border-emerald-300">{formatIDR(visibleTotal)}</td>
+                  <td className="px-2 py-3 text-center font-mono border-r border-emerald-300 text-gray-700">
+                    bayar {formatIDR(visiblePaid)}<br />sisa {formatIDR(visibleTotal - visiblePaid)}
+                  </td>
+                  <td colSpan={3} className="px-2 py-3" />
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </div>
