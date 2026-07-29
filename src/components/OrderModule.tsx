@@ -20,6 +20,8 @@ export const OrderModule: React.FC = () => {
 
   // Filter & pencarian daftar pesanan ('active' = semua kecuali dibatalkan)
   const [filterStatus, setFilterStatus] = useState<'active' | 'all' | Order['status']>('active');
+  const [filterPayment, setFilterPayment] = useState<'all' | 'lunas' | 'dp' | 'belum_bayar'>('all');
+  const [filterShipping, setFilterShipping] = useState<'all' | 'belum_dikirim' | 'siap_dikirim' | 'dikirim'>('all');
   const [orderSearch, setOrderSearch] = useState('');
   const [orderDivFilter, setOrderDivFilter] = useState('');
   const [orderSort, setOrderSort] = useState<'newest' | 'oldest' | 'total-desc' | 'total-asc' | 'customer'>('newest');
@@ -560,6 +562,8 @@ export const OrderModule: React.FC = () => {
     if (q && !`${ord.order_number} ${ord.customer_name} ${ord.customer_phone}`.toLowerCase().includes(q)) return false;
     // Satu order bisa berisi barang dari dua divisi, jadi cukup salah satu barang cocok
     if (orderDivFilter && !ord.items.some(item => (item.department_id || '') === orderDivFilter)) return false;
+    if (filterPayment !== 'all' && orderPaymentStatus(ord) !== filterPayment) return false;
+    if (filterShipping !== 'all' && (ord.shipping_status || 'belum_dikirim') !== filterShipping) return false;
     return true;
   }).sort((a, b) => {
     switch (orderSort) {
@@ -1044,6 +1048,28 @@ export const OrderModule: React.FC = () => {
               <option value="completed">Selesai</option>
               <option value="cancelled">Dibatalkan</option>
               <option value="all">Semua Status</option>
+            </select>
+            <select
+              value={filterPayment}
+              onChange={(e) => setFilterPayment(e.target.value as typeof filterPayment)}
+              title="Filter status pembayaran"
+              className="bg-white border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-800 focus:outline-none focus:border-emerald-600 cursor-pointer"
+            >
+              <option value="all">Semua Bayar</option>
+              <option value="lunas">Lunas</option>
+              <option value="dp">DP</option>
+              <option value="belum_bayar">Belum Bayar</option>
+            </select>
+            <select
+              value={filterShipping}
+              onChange={(e) => setFilterShipping(e.target.value as typeof filterShipping)}
+              title="Filter status pengiriman"
+              className="bg-white border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-800 focus:outline-none focus:border-emerald-600 cursor-pointer"
+            >
+              <option value="all">Semua Kirim</option>
+              <option value="belum_dikirim">Belum Kirim</option>
+              <option value="siap_dikirim">Siap Kirim</option>
+              <option value="dikirim">Dikirim</option>
             </select>
           </div>
         </div>
