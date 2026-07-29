@@ -754,8 +754,8 @@ export const OrderModule: React.FC = () => {
                     <tr className="bg-evergreen text-white font-bold uppercase tracking-wider text-[10px]">
                       <th className="p-2">Nama Barang</th>
                       <th className="p-2">Variant</th>
-                      <th className="p-2 text-center">Qty</th>
-                      <th className="p-2 text-right">Harga</th>
+                      <th className="p-2 text-center">Qty <span className="normal-case font-normal opacity-75">(edit)</span></th>
+                      <th className="p-2 text-right">Harga Satuan <span className="normal-case font-normal opacity-75">(edit)</span></th>
                       <th className="p-2 text-right">Subtotal</th>
                       <th className="p-2 text-center">Aksi</th>
                     </tr>
@@ -776,17 +776,21 @@ export const OrderModule: React.FC = () => {
                               min={1}
                               value={item.qty}
                               onChange={(e) => handleItemQtyChange(item.id, Number(e.target.value))}
-                              className="w-16 bg-white border border-gray-200 rounded px-1.5 py-1 text-xs font-mono font-bold text-center"
+                              className="w-16 bg-amber-50 border border-amber-300 rounded px-1.5 py-1 text-xs font-mono font-bold text-center focus:outline-none focus:border-amber-500"
                             />
                           </td>
                           <td className="p-2 text-right">
-                            <input
-                              type="number"
-                              min={0}
-                              value={item.price}
-                              onChange={(e) => handleItemPriceChange(item.id, Number(e.target.value))}
-                              className="w-28 bg-white border border-gray-200 rounded px-2 py-1 text-xs font-mono text-right"
-                            />
+                            <div className="relative w-32 ml-auto">
+                              <span className="absolute inset-y-0 left-0 pl-2 flex items-center text-gray-400 text-xs font-mono">Rp</span>
+                              <input
+                                type="number"
+                                min={0}
+                                value={item.price}
+                                onChange={(e) => handleItemPriceChange(item.id, Number(e.target.value))}
+                                title="Ubah harga satuan (harga nego / khusus)"
+                                className="w-full bg-amber-50 border border-amber-300 rounded pl-7 pr-2 py-1 text-xs font-mono font-bold text-right focus:outline-none focus:border-amber-500"
+                              />
+                            </div>
                           </td>
                           <td className="p-2 text-right font-mono text-[var(--color-evergreen)] font-bold">{formatIDR(item.subtotal)}</td>
                           <td className="p-2 text-center">
