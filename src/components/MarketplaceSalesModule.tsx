@@ -1132,7 +1132,7 @@ export const MarketplaceSalesModule: React.FC = () => {
 
                 <div className="overflow-x-auto">
                   {/* table-fixed + padding rapat: 12 kolom muat di desktop normal tanpa scroll samping */}
-                  <table className="w-full table-fixed text-left border-collapse text-[11px] border-2 border-evergreen/60 [&_th]:px-2 [&_th]:py-1.5 [&_td]:px-2 [&_td]:py-1.5">
+                  <table className="w-full min-w-[1240px] text-left border-collapse text-[11px] border-2 border-evergreen/60 [&_th]:px-3 [&_th]:py-2 [&_td]:px-3 [&_td]:py-2 [&_td]:whitespace-nowrap">
                     <thead>
                       <tr className="bg-evergreen border-b border-evergreen-dark text-white font-bold uppercase tracking-wider text-[10px] text-center">
                         <th className="border-r border-white/30 w-[88px]">TGL</th>
@@ -1168,7 +1168,7 @@ export const MarketplaceSalesModule: React.FC = () => {
                                     {formatDateExcel(group.date)}
                                   </td>
                                   <td rowSpan={span} className="text-center text-gray-500 border-r border-emerald-300 align-middle">{groupIdx + 1}</td>
-                                  <td rowSpan={span} className="font-bold text-gray-800 select-all truncate overflow-hidden border-r border-emerald-300 align-middle" title={group.order_number}>
+                                  <td rowSpan={span} className="font-bold text-gray-800 select-all border-r border-emerald-300 align-middle" title={group.order_number}>
                                     {group.order_number}
                                     {span > 1 && <span className="block text-[8px] text-gray-400 font-sans font-semibold mt-0.5">{span} barang</span>}
                                   </td>
@@ -1197,7 +1197,7 @@ export const MarketplaceSalesModule: React.FC = () => {
                                   <span className="block text-[8px] text-gray-400 font-sans mt-0.5">{item.retur_to_stock ? 'kembali ke stok' : 'barang rusak'}</span>
                                 )}
                               </td>
-                              <td className="text-gray-900 font-bold font-sans border-r border-emerald-300 whitespace-normal break-words" title={item.description}>
+                              <td className="text-gray-900 font-bold font-sans border-r border-emerald-300" title={item.description}>
                                 {item.description}
                               </td>
                               <td className="text-center border-r border-emerald-300">
