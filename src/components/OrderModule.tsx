@@ -546,6 +546,9 @@ export const OrderModule: React.FC = () => {
       payments: ord.payments || [],
     }));
   const piutangOutstanding = piutangRows.reduce((sum, row) => sum + Math.max(0, row.total - row.paid), 0);
+  // Ringkasan uang seluruh order aktif (order dibatalkan tidak ditagih)
+  const totalTagihan = piutangRows.reduce((sum, row) => sum + row.total, 0);
+  const totalDibayar = piutangRows.reduce((sum, row) => sum + row.paid, 0);
 
   const visibleOrders = orders.filter(ord => {
     if (filterStatus === 'active') {
@@ -949,6 +952,25 @@ export const OrderModule: React.FC = () => {
         </button>
       </div>
 
+      {/* Ringkasan uang — berlaku untuk kedua sub-tab, hitungannya sama dengan buku piutang */}
+      <div className="no-print grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Tagihan</p>
+          <p className="text-lg font-black font-mono text-gray-800 mt-1">{formatIDR(totalTagihan)}</p>
+          <p className="text-[10px] text-gray-400 mt-0.5">{piutangRows.length} order aktif (tanpa dibatalkan)</p>
+        </div>
+        <div className="bg-white border border-emerald-200 rounded-xl p-4">
+          <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Sudah Bayar</p>
+          <p className="text-lg font-black font-mono text-emerald-700 mt-1">{formatIDR(totalDibayar)}</p>
+          <p className="text-[10px] text-gray-400 mt-0.5">DP + cicilan yang sudah masuk</p>
+        </div>
+        <div className={`bg-white border rounded-xl p-4 ${piutangOutstanding > 0 ? 'border-amber-200' : 'border-gray-200'}`}>
+          <p className={`text-[10px] font-bold uppercase tracking-wider ${piutangOutstanding > 0 ? 'text-amber-700' : 'text-gray-400'}`}>Sisa Tagihan</p>
+          <p className={`text-lg font-black font-mono mt-1 ${piutangOutstanding > 0 ? 'text-amber-700' : 'text-gray-400'}`}>{formatIDR(piutangOutstanding)}</p>
+          <p className="text-[10px] text-gray-400 mt-0.5">{piutangOutstanding > 0 ? 'Belum lunas — tagih di tab Piutang' : 'Semua order sudah lunas'}</p>
+        </div>
+      </div>
+
       {orderView === 'piutang' && (
         <PaymentLedger
           title="Piutang Pelanggan"
@@ -1031,7 +1053,7 @@ export const OrderModule: React.FC = () => {
           <table className="w-full table-fixed text-left border-collapse text-[11px] border-2 border-evergreen/60 [&_th]:px-2 [&_th]:py-1.5 [&_td]:px-2 [&_td]:py-2 [&_td]:overflow-hidden">
             <thead>
               <tr className="bg-evergreen border-b border-evergreen-dark text-white font-bold uppercase tracking-wider text-[10px] text-center">
-                <th className="border-r border-white/30 text-left w-[76px]">Tanggal</th>
+                <th className="border-r border-white/30 text-left w-[92px]">Tanggal</th>
                 <th className="border-r border-white/30 text-left w-[120px]">No. Order</th>
                 <th className="border-r border-white/30 text-left w-[150px]">Pelanggan</th>
                 <th className="border-r border-white/30 text-left">Daftar Barang</th>
