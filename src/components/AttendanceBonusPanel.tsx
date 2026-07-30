@@ -143,6 +143,7 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
   // Sortir: cari nama karyawan dan batasi per divisi
   const [search, setSearch] = useState('');
   const [divFilter, setDivFilter] = useState('');
+  const [view, setView] = useState<'posisi' | 'evaluasi' | 'riwayat'>('posisi');
 
   const load = () => {
     setEmployees(dataStore.getEmployees().filter(e => e.status_aktif));
@@ -341,6 +342,30 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
           </span>
         </div>
 
+        {/* Sub-tab: pisah 3 tabel supaya tidak scroll panjang */}
+        <div className="flex gap-1 border-b border-gray-100 -mb-4 pb-0">
+          {([
+            ['posisi', `Posisi Hari Ini`],
+            ['evaluasi', `Evaluasi ${monthLabel(month)}`],
+            ['riwayat', `Riwayat (${issuedMonths.length})`],
+          ] as const).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setView(key)}
+              className={`px-3 py-2 text-xs font-bold rounded-t-lg cursor-pointer ${
+                view === key
+                  ? 'bg-emerald-50 text-emerald-800 border border-b-0 border-emerald-100'
+                  : 'text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {view === 'posisi' && (
+      <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-xs space-y-4">
         <button
           onClick={() => setMonth(currentMonth)}
           className="w-full flex flex-wrap items-center justify-between gap-2 text-left bg-emerald-50/60 border border-emerald-100 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-emerald-50"
@@ -429,7 +454,11 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
             <b> Potensi</b> = bila seluruh hari kerja bulan ini layak.
           </p>
         </details>
+      </div>
+      )}
 
+      {view === 'evaluasi' && (
+      <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-xs space-y-4">
         {isFutureOrCurrent && (
           <div className="flex items-start gap-2 text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
             <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
@@ -506,8 +535,9 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
           </table>
         </div>
       </div>
+      )}
 
-      {/* Riwayat penerbitan */}
+      {view === 'riwayat' && (
       <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-xs space-y-3">
         <h3 className="font-bold text-sm text-gray-800 flex items-center gap-1.5">
           <History className="w-4 h-4 text-gray-400" /> Riwayat Penerbitan Bonus
@@ -555,6 +585,7 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
           </div>
         )}
       </div>
+      )}
     </div>
   );
 };
