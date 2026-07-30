@@ -30,6 +30,7 @@ export const OrderModule: React.FC = () => {
   const [shipExpedition, setShipExpedition] = useState('');
   const [shipTracking, setShipTracking] = useState('');
   const [shipProof, setShipProof] = useState('');
+  const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
 
   // New Order Form State
   const [customerName, setCustomerName] = useState('');
@@ -380,6 +381,13 @@ export const OrderModule: React.FC = () => {
       shipping_status: 'dikirim'
     });
     alert('Resi pengiriman berhasil disimpan.');
+    loadData();
+  };
+
+  const handleDeleteProof = (order: Order) => {
+    if (!window.confirm('Hapus bukti foto pengiriman ini?')) return;
+    dataStore.updateOrderShipping(order.id, { shipping_proof_url: undefined });
+    setShipProof('');
     loadData();
   };
 
@@ -1142,9 +1150,9 @@ export const OrderModule: React.FC = () => {
                     <td className="text-center space-y-1">
                       {getShippingBadge(ord)}{ord.tracking_number && <p className="text-[10px] font-mono text-gray-500">{ord.tracking_number}</p>}
                       {ord.shipping_proof_url && (
-                        <a href={ord.shipping_proof_url} target="_blank" rel="noreferrer" title="Lihat bukti pengiriman" className="flex items-center justify-center gap-0.5 text-[10px] text-emerald-700 font-bold">
+                        <button onClick={() => setPreviewPhoto(ord.shipping_proof_url!)} title="Lihat bukti pengiriman" className="flex items-center justify-center gap-0.5 text-[10px] text-emerald-700 font-bold cursor-pointer mx-auto">
                           <Camera className="w-3 h-3" /> Foto
-                        </a>
+                        </button>
                       )}
                     </td>
                     {/* Aksi dipadatkan jadi ikon; label tetap ada di tooltip biar kolom nggak melebar */}
@@ -1228,7 +1236,19 @@ export const OrderModule: React.FC = () => {
                               <input value={shipExpedition} onChange={event => setShipExpedition(event.target.value)} placeholder="Ekspedisi" className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs" />
                               <input value={shipTracking} onChange={event => setShipTracking(event.target.value)} placeholder="Nomor resi" className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono" />
                             </div>
-                            {shipProof && <img src={shipProof} alt="Bukti pengiriman" className="w-24 h-24 object-cover rounded-lg border border-gray-200" />}
+                            {shipProof && (
+                              <div className="flex items-center gap-2">
+                                <img
+                                  src={shipProof}
+                                  alt="Bukti pengiriman"
+                                  onClick={() => setPreviewPhoto(shipProof)}
+                                  className="w-24 h-24 object-cover rounded-lg border border-gray-200 cursor-pointer"
+                                />
+                                {ord.shipping_proof_url && (
+                                  <button onClick={() => handleDeleteProof(ord)} className="text-[10px] text-rose-600 font-bold cursor-pointer">Hapus Foto</button>
+                                )}
+                              </div>
+                            )}
                             <input type="file" accept="image/*" capture="environment" onChange={event => handleProofFile(event.target.files?.[0])} className="w-full text-xs file:mr-2 file:border-0 file:bg-gray-100 file:px-3 file:py-1.5 file:rounded file:text-xs file:font-bold" />
                             {shipProof && shipProof !== (ord.shipping_proof_url || '') && <p className="text-[10px] text-emerald-700 font-bold">Bukti baru siap disimpan.</p>}
                             <button onClick={() => handleSaveShipping(ord)} className="w-full bg-emerald-700 text-white rounded-lg py-2 text-xs font-bold cursor-pointer">Simpan Resi</button>
@@ -1271,6 +1291,16 @@ export const OrderModule: React.FC = () => {
           boxSizing: 'border-box'
         }}>
           {renderNotaLayout(printOrder)}
+        </div>
+      )}
+
+      {/* Preview bukti foto pengiriman */}
+      {previewPhoto && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setPreviewPhoto(null)}>
+          <img src={previewPhoto} alt="Bukti pengiriman" className="max-w-full max-h-full rounded-lg" onClick={e => e.stopPropagation()} />
+          <button onClick={() => setPreviewPhoto(null)} className="absolute top-4 right-4 text-white bg-white/10 rounded-full p-2 cursor-pointer">
+            <X className="w-5 h-5" />
+          </button>
         </div>
       )}
     </div>
