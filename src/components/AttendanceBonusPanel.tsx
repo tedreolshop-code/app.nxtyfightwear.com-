@@ -345,17 +345,15 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
         {/* Sub-tab: pisah 3 tabel supaya tidak scroll panjang */}
         <div className="flex gap-1 border-b border-gray-100 -mb-4 pb-0">
           {([
-            ['posisi', `Posisi Hari Ini`],
-            ['evaluasi', `Evaluasi ${monthLabel(month)}`],
-            ['riwayat', `Riwayat (${issuedMonths.length})`],
-          ] as const).map(([key, label]) => (
+            ['posisi', `Posisi Hari Ini`, 'bg-sky-50 text-sky-800 border-sky-100', 'bg-sky-50/50 text-sky-700/70'],
+            ['evaluasi', `Evaluasi ${monthLabel(month)}`, 'bg-emerald-50 text-emerald-800 border-emerald-100', 'bg-emerald-50/50 text-emerald-700/70'],
+            ['riwayat', `Riwayat (${issuedMonths.length})`, 'bg-amber-50 text-amber-800 border-amber-100', 'bg-amber-50/50 text-amber-700/70'],
+          ] as const).map(([key, label, activeColor, inactiveColor]) => (
             <button
               key={key}
               onClick={() => setView(key)}
-              className={`px-3 py-2 text-xs font-bold rounded-t-lg cursor-pointer ${
-                view === key
-                  ? 'bg-emerald-50 text-emerald-800 border border-b-0 border-emerald-100'
-                  : 'text-gray-400 hover:text-gray-600'
+              className={`px-3 py-2 text-xs font-bold rounded-t-lg cursor-pointer border border-b-0 ${
+                view === key ? activeColor : `${inactiveColor} border-transparent hover:brightness-95`
               }`}
             >
               {label}
