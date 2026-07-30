@@ -3,7 +3,7 @@ import { Order, OrderItem, Product, Employee, orderRemaining, orderPaymentStatus
 import { DivisionFilter } from './DivisionFilter';
 import { PaymentLedger, LedgerRow } from './PaymentLedger';
 import { dataStore, wibTodayStr } from '../dataStore';
-import { ShoppingBag, Plus, User, Phone, CheckCircle2, Trash2, PackageCheck, Truck, Printer, X, Pencil, Ban, RotateCcw } from 'lucide-react';
+import { ShoppingBag, Plus, User, Phone, CheckCircle2, Trash2, PackageCheck, Truck, Printer, X, Pencil, Ban, RotateCcw, Camera } from 'lucide-react';
 
 // Tombol aksi ikon 24x24 — dipakai berulang di kolom Aksi
 const iconBtn = 'w-6 h-6 flex items-center justify-center rounded border cursor-pointer';
@@ -1139,7 +1139,14 @@ export const OrderModule: React.FC = () => {
                         <p className="text-[10px] font-mono text-violet-700">siap {ord.ready_date}</p>
                       )}
                     </td>
-                    <td className="text-center space-y-1">{getShippingBadge(ord)}{ord.tracking_number && <p className="text-[10px] font-mono text-gray-500">{ord.tracking_number}</p>}</td>
+                    <td className="text-center space-y-1">
+                      {getShippingBadge(ord)}{ord.tracking_number && <p className="text-[10px] font-mono text-gray-500">{ord.tracking_number}</p>}
+                      {ord.shipping_proof_url && (
+                        <a href={ord.shipping_proof_url} target="_blank" rel="noreferrer" title="Lihat bukti pengiriman" className="flex items-center justify-center gap-0.5 text-[10px] text-emerald-700 font-bold">
+                          <Camera className="w-3 h-3" /> Foto
+                        </a>
+                      )}
+                    </td>
                     {/* Aksi dipadatkan jadi ikon; label tetap ada di tooltip biar kolom nggak melebar */}
                     <td className="text-center">
                       <div className="flex flex-wrap justify-center gap-1">
@@ -1221,8 +1228,9 @@ export const OrderModule: React.FC = () => {
                               <input value={shipExpedition} onChange={event => setShipExpedition(event.target.value)} placeholder="Ekspedisi" className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs" />
                               <input value={shipTracking} onChange={event => setShipTracking(event.target.value)} placeholder="Nomor resi" className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono" />
                             </div>
+                            {shipProof && <img src={shipProof} alt="Bukti pengiriman" className="w-24 h-24 object-cover rounded-lg border border-gray-200" />}
                             <input type="file" accept="image/*" capture="environment" onChange={event => handleProofFile(event.target.files?.[0])} className="w-full text-xs file:mr-2 file:border-0 file:bg-gray-100 file:px-3 file:py-1.5 file:rounded file:text-xs file:font-bold" />
-                            {shipProof && <p className="text-[10px] text-emerald-700 font-bold">Bukti resi siap disimpan.</p>}
+                            {shipProof && shipProof !== (ord.shipping_proof_url || '') && <p className="text-[10px] text-emerald-700 font-bold">Bukti baru siap disimpan.</p>}
                             <button onClick={() => handleSaveShipping(ord)} className="w-full bg-emerald-700 text-white rounded-lg py-2 text-xs font-bold cursor-pointer">Simpan Resi</button>
                           </div>
                         </div>
