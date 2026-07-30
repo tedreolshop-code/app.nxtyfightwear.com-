@@ -122,6 +122,11 @@ export const AttendanceBonusHistoryList: React.FC<{ employeeId: string }> = ({ e
                 <span className={`inline-flex items-center gap-1 text-[10px] font-bold ${p.status === 'cair' ? 'text-emerald-600' : 'text-rose-500'}`}>
                   {p.status === 'cair' ? <><CheckCircle2 className="w-3 h-3" /> CAIR</> : <><XCircle className="w-3 h-3" /> GUGUR</>}
                 </span>
+                {p.status === 'cair' && (
+                  <span className={`block mt-0.5 text-[9px] font-bold ${p.payment_status === 'paid' ? 'text-emerald-600' : 'text-amber-600'}`}>
+                    {p.payment_status === 'paid' ? '✓ Sudah dibayar' : 'Belum dibayar'}
+                  </span>
+                )}
               </div>
             </div>
           ))}
@@ -144,6 +149,8 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
   const [search, setSearch] = useState('');
   const [divFilter, setDivFilter] = useState('');
   const [view, setView] = useState<'posisi' | 'evaluasi' | 'riwayat'>('posisi');
+  const [riwayatOnlyCair, setRiwayatOnlyCair] = useState(false);
+  const [riwayatDivFilter, setRiwayatDivFilter] = useState('');
 
   const load = () => {
     setEmployees(dataStore.getEmployees().filter(e => e.status_aktif));
@@ -263,11 +270,17 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
       half_days: result.halfDays,
       issued_at: wibNowISO(),
       issued_by: issuedBy,
+      payment_status: 'unpaid',
     }));
     dataStore.setAttendanceBonusPayouts([...newPayouts, ...dataStore.getAttendanceBonusPayouts()]);
     dataStore.logAudit('create', 'attendance_bonus', `Menerbitkan slip bonus kehadiran ${monthLabel(month)}: ${newPayouts.filter(p => p.status === 'cair').length} cair (${formatIDR(totalCair)}), ${newPayouts.filter(p => p.status === 'gugur').length} gugur`);
     load();
     alert(`Slip bonus kehadiran ${monthLabel(month)} berhasil diterbitkan.`);
+  };
+
+  const handleTogglePaid = (p: AttendanceBonusPayout) => {
+    dataStore.setAttendanceBonusPaymentStatus(p.id, p.payment_status === 'paid' ? 'unpaid' : 'paid');
+    load();
   };
 
   const handleCancel = (m: string) => {
@@ -277,12 +290,17 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
     load();
   };
 
-  // Riwayat penerbitan, dikelompokkan per bulan
+  // Riwayat penerbitan, dikelompokkan per bulan — bisa disortir hanya yang cair & per divisi
+  const employeeDept = useMemo(() => new Map(employees.map(e => [e.id, e.department_id])), [employees]);
   const issuedMonths = useMemo(() => {
+    const filtered = payouts.filter(p =>
+      (!riwayatOnlyCair || p.status === 'cair') &&
+      (!riwayatDivFilter || employeeDept.get(p.employee_id) === riwayatDivFilter)
+    );
     const map = new Map<string, AttendanceBonusPayout[]>();
-    payouts.forEach(p => { map.set(p.month, [...(map.get(p.month) || []), p]); });
+    filtered.forEach(p => { map.set(p.month, [...(map.get(p.month) || []), p]); });
     return Array.from(map.entries()).sort((a, b) => b[0].localeCompare(a[0]));
-  }, [payouts]);
+  }, [payouts, riwayatOnlyCair, riwayatDivFilter, employeeDept]);
 
   return (
     <div className="space-y-6">
@@ -540,6 +558,13 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
         <h3 className="font-bold text-sm text-gray-800 flex items-center gap-1.5">
           <History className="w-4 h-4 text-gray-400" /> Riwayat Penerbitan Bonus
         </h3>
+        <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 pb-3">
+          <label className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-600 cursor-pointer">
+            <input type="checkbox" checked={riwayatOnlyCair} onChange={e => setRiwayatOnlyCair(e.target.checked)} />
+            Hanya yang dapat (cair)
+          </label>
+          <DivisionFilter value={riwayatDivFilter} onChange={setRiwayatDivFilter} />
+        </div>
         {issuedMonths.length === 0 ? (
           <p className="text-xs text-gray-400 italic text-center py-6 bg-gray-50 rounded border border-dashed border-gray-200">
             Belum ada slip bonus yang diterbitkan.
@@ -573,6 +598,17 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
                           <span className={`font-mono font-bold ${p.status === 'cair' ? 'text-emerald-700' : 'text-rose-300'}`}>
                             {p.status === 'cair' ? formatIDR(p.amount) : 'Rp0'}
                           </span>
+                          {p.status === 'cair' && (
+                            <button
+                              onClick={() => handleTogglePaid(p)}
+                              title={p.payment_status === 'paid' ? 'Klik untuk batalkan status lunas' : 'Klik untuk tandai sudah dibayar'}
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold cursor-pointer ${
+                                p.payment_status === 'paid' ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                              }`}
+                            >
+                              {p.payment_status === 'paid' ? '✓ Lunas' : 'Belum Dibayar'}
+                            </button>
+                          )}
                         </span>
                       </div>
                     ))}

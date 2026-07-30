@@ -169,6 +169,8 @@ export interface AttendanceBonusPayout {
   half_days: number;
   issued_at: string;
   issued_by?: string;
+  payment_status: 'paid' | 'unpaid';
+  paid_at?: string;
 }
 
 export interface Attendance {

@@ -488,6 +488,12 @@ class DataStore {
 
   getAttendanceBonusPayouts = (): AttendanceBonusPayout[] => this.get('attendance_bonus_payouts', []);
   setAttendanceBonusPayouts = (data: AttendanceBonusPayout[]) => this.set('attendance_bonus_payouts', data);
+  setAttendanceBonusPaymentStatus = (payoutId: string, status: 'paid' | 'unpaid'): void => {
+    const payouts = this.getAttendanceBonusPayouts().map(p =>
+      p.id === payoutId ? { ...p, payment_status: status, paid_at: status === 'paid' ? wibNowISO() : undefined } : p
+    );
+    this.setAttendanceBonusPayouts(payouts);
+  };
 
   /**
    * Evaluasi bonus kehadiran satu karyawan untuk satu bulan — MURNI dari data absensi.
