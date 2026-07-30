@@ -269,6 +269,13 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
     alert(`Slip bonus kehadiran ${monthLabel(month)} berhasil diterbitkan.`);
   };
 
+  const handleCancel = (m: string) => {
+    if (!window.confirm(`Batalkan seluruh slip bonus kehadiran ${monthLabel(m)}? Tindakan ini tidak bisa diurungkan.`)) return;
+    dataStore.setAttendanceBonusPayouts(dataStore.getAttendanceBonusPayouts().filter(p => p.month !== m));
+    dataStore.logAudit('delete', 'attendance_bonus', `Membatalkan slip bonus kehadiran ${monthLabel(m)}`);
+    load();
+  };
+
   // Riwayat penerbitan, dikelompokkan per bulan
   const issuedMonths = useMemo(() => {
     const map = new Map<string, AttendanceBonusPayout[]>();
@@ -521,6 +528,12 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
                       <span className="text-emerald-700 font-semibold">{cair.length} cair</span>
                       <span className="text-rose-500 font-semibold">{list.length - cair.length} gugur</span>
                       <span className="font-mono font-black text-emerald-800">{formatIDR(cair.reduce((s, p) => s + p.amount, 0))}</span>
+                      <button
+                        onClick={e => { e.preventDefault(); handleCancel(m); }}
+                        className="text-rose-600 hover:text-rose-700 font-semibold text-[10px] uppercase tracking-wide cursor-pointer"
+                      >
+                        Batalkan
+                      </button>
                     </span>
                   </summary>
                   <div className="px-3 pb-3 space-y-1">
