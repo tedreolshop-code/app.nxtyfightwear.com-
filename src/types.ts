@@ -405,6 +405,8 @@ export interface MarketplaceItemSale {
   admin_fee: number; // Biaya potongan admin marketplace
   total: number; // Subtotal - admin_fee
   admin_staff: string; // Staf penginput
+  shipping_proof_url?: string; // Bukti foto pengiriman, sama untuk semua item satu order_number
+  shipping_proof_uploaded_at?: string;
 }
 
 export interface PurchaseOrderItem {

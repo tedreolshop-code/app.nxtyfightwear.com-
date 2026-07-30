@@ -640,6 +640,12 @@ class DataStore {
     return migrated;
   };
   setMarketplaceItemSales = (data: MarketplaceItemSale[]) => this.set('marketplace_item_sales', data);
+  setMarketplaceShippingProof = (orderNumber: string, photoUrl: string | undefined): void => {
+    const items = this.getMarketplaceItemSales().map(item => item.order_number === orderNumber
+      ? { ...item, shipping_proof_url: photoUrl, shipping_proof_uploaded_at: photoUrl ? wibNowISO() : undefined }
+      : item);
+    this.setMarketplaceItemSales(items);
+  };
 
   getPurchases = (): Purchase[] => this.get('purchases', INITIAL_PURCHASES);
   setPurchases = (data: Purchase[]) => this.set('purchases', data);
