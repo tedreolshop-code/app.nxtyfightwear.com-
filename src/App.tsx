@@ -17,6 +17,7 @@ import { WarehouseInventoryModule } from './components/WarehouseInventoryModule'
 import { MarketplaceSalesModule } from './components/MarketplaceSalesModule';
 import { PurchasesExpensesModule } from './components/PurchasesExpensesModule';
 import { OrderModule } from './components/OrderModule';
+import { PackingPhotoDocsPanel } from './components/PackingPhotoDocsPanel';
 import { EmployeeModule } from './components/EmployeeModule';
 import { ProfileModule } from './components/ProfileModule';
 import { CashAdvanceModule } from './components/CashAdvanceModule';
@@ -323,7 +324,7 @@ export default function App() {
   }, []);
 
   // Sub-tab sederhana per halaman
-  const [salesSubTab, setSalesSubTab] = useState<'marketplace' | 'order'>('marketplace');
+  const [salesSubTab, setSalesSubTab] = useState<'marketplace' | 'order' | 'packing-docs'>('marketplace');
   const [karyawanSubTab, setKaryawanSubTab] = useState<'data' | 'absensi' | 'kasbon' | 'payroll'>('data');
   const now = new Date();
   const [reportMonth, setReportMonth] = useState(String(now.getMonth() + 1).padStart(2, '0'));
@@ -779,8 +780,18 @@ export default function App() {
                   >
                     Order Non-Marketplace
                   </button>
+                  <button
+                    onClick={() => setSalesSubTab('packing-docs')}
+                    className={`px-4 py-1.5 rounded-lg text-sm font-semibold cursor-pointer ${
+                      salesSubTab === 'packing-docs' ? 'bg-[var(--color-evergreen)] text-white' : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    Dokumentasi Foto Packing
+                  </button>
                 </div>
-                {salesSubTab === 'marketplace' ? <MarketplaceSalesModule /> : <OrderModule />}
+                {salesSubTab === 'marketplace' && <MarketplaceSalesModule />}
+                {salesSubTab === 'order' && <OrderModule />}
+                {salesSubTab === 'packing-docs' && <PackingPhotoDocsPanel userRole={currentRole} currentEmployee={loggedEmployee} />}
               </div>
             )}
 
