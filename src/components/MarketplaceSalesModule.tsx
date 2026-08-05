@@ -889,21 +889,6 @@ export const MarketplaceSalesModule: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Foto resi — diunggah setelah tombol simpan ditekan */}
-                    <div>
-                      <label className="block text-gray-500 font-semibold mb-1">Foto Resi / Bukti Pengiriman (opsional)</label>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => setProofFile(e.target.files?.[0] || null)}
-                        className="w-full text-[11px] text-gray-600 file:mr-2 file:rounded file:border-0 file:bg-evergreen file:px-3 file:py-1.5 file:text-white file:font-bold"
-                      />
-                      {proofFile && <p className="text-[10px] text-emerald-600 mt-1 font-semibold">{proofFile.name} akan diunggah setelah disimpan.</p>}
-                      {editingOrderNumber && itemSales.find(i => i.order_number === editingOrderNumber)?.shipping_proof_url && !proofFile && (
-                        <p className="text-[10px] text-gray-400 mt-1">Sudah ada foto resi. Pilih file baru untuk mengganti.</p>
-                      )}
-                    </div>
-
                     {/* Custom Marketplace input if Custom is selected */}
                     {marketplaceRef === 'Custom' && (
                       <div>
@@ -1040,6 +1025,21 @@ export const MarketplaceSalesModule: React.FC = () => {
                       />
                       {saleItemRows.length > 1 && (
                         <p className="text-[10px] text-gray-400 mt-1">Biaya ini dibebankan untuk seluruh {saleItemRows.length} barang dalam pesanan, disebar otomatis.</p>
+                      )}
+                    </div>
+
+                    {/* Foto resi — diunggah setelah tombol simpan ditekan */}
+                    <div>
+                      <label className="block text-gray-500 font-semibold mb-1">Foto Resi / Bukti Pengiriman (opsional)</label>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => setProofFile(e.target.files?.[0] || null)}
+                        className="w-full text-[11px] text-gray-600 file:mr-2 file:rounded file:border-0 file:bg-evergreen file:px-3 file:py-1.5 file:text-white file:font-bold"
+                      />
+                      {proofFile && <p className="text-[10px] text-emerald-600 mt-1 font-semibold">{proofFile.name} akan diunggah setelah disimpan.</p>}
+                      {editingOrderNumber && itemSales.find(i => i.order_number === editingOrderNumber)?.shipping_proof_url && !proofFile && (
+                        <p className="text-[10px] text-gray-400 mt-1">Sudah ada foto resi. Pilih file baru untuk mengganti.</p>
                       )}
                     </div>
 
