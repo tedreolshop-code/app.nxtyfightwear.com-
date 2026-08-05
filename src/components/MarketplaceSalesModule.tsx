@@ -123,6 +123,8 @@ export const MarketplaceSalesModule: React.FC = () => {
   // Panel bukti foto pengiriman — dibuka per order_number, terpisah dari form edit item
   const [photoPanelOrder, setPhotoPanelOrder] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  // Foto resi yang dipilih di form tambah/edit — diunggah setelah pesanan tersimpan
+  const [proofFile, setProofFile] = useState<File | null>(null);
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
 
   useEffect(() => {
@@ -183,6 +185,7 @@ export const MarketplaceSalesModule: React.FC = () => {
 
     const finalMarketplaceRef = marketplaceRef === 'Custom' ? customMarketplaceRef.trim() || 'Other' : marketplaceRef;
     const updatedItemSales = dataStore.getMarketplaceItemSales();
+    let savedOrderNumber = '';
 
     if (editingOrderNumber) {
       // Edit Mode — SATU pesanan diedit utuh (semua barangnya sekaligus).
@@ -199,6 +202,7 @@ export const MarketplaceSalesModule: React.FC = () => {
       });
 
       const finalOrderNumber = orderNumber.trim() || editingOrderNumber;
+      savedOrderNumber = finalOrderNumber;
       const rowFees = distributeFee(saleItemRows, computeOrderFee(saleItemRows));
       const rebuilt: MarketplaceItemSale[] = saleItemRows.map((row, rowIdx) => {
         const old = oldItems.find(item => item.id === row.key); // key baris = id barang lama
@@ -242,6 +246,7 @@ export const MarketplaceSalesModule: React.FC = () => {
     } else {
       // Create Mode — 1 order bisa terdiri dari beberapa baris item, semuanya berbagi No Pesanan yang sama
       const sharedOrderNumber = orderNumber.trim() || 'NP-' + Math.floor(100000 + Math.random() * 900000);
+      savedOrderNumber = sharedOrderNumber;
       // Biaya admin diinput sekali per pesanan, lalu disebar proporsional ke tiap barang
       const rowFees = distributeFee(saleItemRows, computeOrderFee(saleItemRows));
       saleItemRows.forEach((row, rowIdx) => {
@@ -277,6 +282,12 @@ export const MarketplaceSalesModule: React.FC = () => {
       dataStore.setMarketplaceItemSales(updatedItemSales);
       setItemSales(updatedItemSales);
       alert(saleItemRows.length > 1 ? `${saleItemRows.length} item dalam order berhasil dicatatkan!` : 'Detail penjualan produk berhasil dicatatkan!');
+    }
+
+    // Foto resi diunggah setelah pesanan tersimpan, supaya nomor pesanannya sudah pasti
+    if (proofFile) {
+      handleUploadShippingProof(savedOrderNumber, proofFile);
+      setProofFile(null);
     }
 
     // Reset inputs but preserve date & admin name for speed typing!
@@ -876,6 +887,21 @@ export const MarketplaceSalesModule: React.FC = () => {
                           <option value="Custom">Lainnya...</option>
                         </select>
                       </div>
+                    </div>
+
+                    {/* Foto resi — diunggah setelah tombol simpan ditekan */}
+                    <div>
+                      <label className="block text-gray-500 font-semibold mb-1">Foto Resi / Bukti Pengiriman (opsional)</label>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => setProofFile(e.target.files?.[0] || null)}
+                        className="w-full text-[11px] text-gray-600 file:mr-2 file:rounded file:border-0 file:bg-evergreen file:px-3 file:py-1.5 file:text-white file:font-bold"
+                      />
+                      {proofFile && <p className="text-[10px] text-emerald-600 mt-1 font-semibold">{proofFile.name} akan diunggah setelah disimpan.</p>}
+                      {editingOrderNumber && itemSales.find(i => i.order_number === editingOrderNumber)?.shipping_proof_url && !proofFile && (
+                        <p className="text-[10px] text-gray-400 mt-1">Sudah ada foto resi. Pilih file baru untuk mengganti.</p>
+                      )}
                     </div>
 
                     {/* Custom Marketplace input if Custom is selected */}
