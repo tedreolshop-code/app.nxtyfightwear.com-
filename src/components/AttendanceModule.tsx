@@ -1155,8 +1155,8 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
               <div className="lg:col-span-5 bg-white rounded-2xl border border-gray-200 p-5 space-y-4 shadow-xs text-left">
                 <h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider">Perlu Perhatian</h3>
                 <div className="space-y-2 max-h-64 overflow-y-auto overscroll-contain">
-                  {[...notCheckedInToday.slice(0, 8).map(emp => ({ name: emp.name, text: 'Belum absen masuk', tone: 'text-rose-700 bg-rose-50 border-rose-100' })),
-                    ...notCheckedOutToday.slice(0, 8).map(emp => ({ name: emp.name, text: 'Belum absen pulang', tone: 'text-sky-700 bg-sky-50 border-sky-100' }))].map((item, index) => (
+                  {[...notCheckedInToday.map(emp => ({ name: emp.name, text: 'Belum absen masuk', tone: 'text-rose-700 bg-rose-50 border-rose-100' })),
+                    ...notCheckedOutToday.map(emp => ({ name: emp.name, text: 'Belum absen pulang', tone: 'text-sky-700 bg-sky-50 border-sky-100' }))].map((item, index) => (
                     <div key={`${item.name}-${index}`} className={`rounded-lg border p-2.5 text-xs ${item.tone}`}><b>{item.name}</b><span className="ml-2">{item.text}</span></div>
                   ))}
                   {notCheckedInToday.length === 0 && notCheckedOutToday.length === 0 && <p className="text-xs text-gray-400 text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-200">Tidak ada catatan yang perlu perhatian hari ini.</p>}
