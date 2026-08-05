@@ -3,6 +3,7 @@ import { Order, OrderItem, Product, Employee, orderRemaining, orderPaymentStatus
 import { DivisionFilter } from './DivisionFilter';
 import { PaymentLedger, LedgerRow } from './PaymentLedger';
 import { dataStore, wibTodayStr } from '../dataStore';
+import { uploadPackingPhoto } from '../packingPhoto';
 import { ShoppingBag, Plus, User, Phone, CheckCircle2, Trash2, PackageCheck, Truck, Printer, X, Pencil, Ban, RotateCcw, Camera } from 'lucide-react';
 
 // Tombol aksi ikon 24x24 — dipakai berulang di kolom Aksi
@@ -31,6 +32,9 @@ export const OrderModule: React.FC = () => {
   const [shipTracking, setShipTracking] = useState('');
   const [shipProof, setShipProof] = useState('');
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
+  // Foto resi yang dipilih di form order — diunggah setelah order tersimpan
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [uploadingProof, setUploadingProof] = useState(false);
 
   // New Order Form State
   const [customerName, setCustomerName] = useState('');
@@ -141,7 +145,26 @@ export const OrderModule: React.FC = () => {
     setIsPreorder(false);
     setReadyDate('');
     setEditOrderId(null);
+    setProofFile(null);
     setIsModalOpen(false);
+  };
+
+  // Unggah foto resi ke Supabase Storage lalu tempelkan ke order (dipakai form tambah/edit)
+  const uploadOrderProof = async (orderId: string, orderNumber: string, file: File) => {
+    setUploadingProof(true);
+    try {
+      const url = await uploadPackingPhoto(orderNumber, file);
+      if (!url) {
+        alert('Penyimpanan foto tidak aktif. Isi VITE_SUPABASE_* di .env lalu muat ulang halaman.');
+        return;
+      }
+      dataStore.updateOrderShipping(orderId, { shipping_proof_url: url });
+      loadData();
+    } catch (error) {
+      alert(`Upload foto gagal: ${error instanceof Error ? error.message : 'periksa koneksi internet'}. Coba lagi.`);
+    } finally {
+      setUploadingProof(false);
+    }
   };
 
   // Edit hanya untuk order yang stok gudangnya belum dipotong (Pending / Pre-Order)
@@ -224,6 +247,7 @@ export const OrderModule: React.FC = () => {
         notes
       } : o);
       dataStore.setOrders(updatedOrders);
+      if (proofFile) uploadOrderProof(existing.id, existing.order_number, proofFile);
       alert(`Perubahan order ${existing.order_number} berhasil disimpan.`);
     } else {
       const orderNumber = generateOrderNumber();
@@ -245,6 +269,7 @@ export const OrderModule: React.FC = () => {
         notes
       };
       dataStore.setOrders([newOrder, ...dataStore.getOrders()]);
+      if (proofFile) uploadOrderProof(newOrder.id, orderNumber, proofFile);
       alert(isPreorder
         ? `Pre-order ${orderNumber} tercatat, dijanjikan siap ${readyDate}. Stok gudang baru dipotong saat order diselesaikan.`
         : `Order ${orderNumber} berhasil dicatat! Selesaikan order untuk memotong stok gudang.`);
@@ -906,6 +931,29 @@ export const OrderModule: React.FC = () => {
                 {cleanShippingFee > 0 && (
                   <p className="text-[10px] font-normal text-gray-400">Ongkir tidak dihitung sebagai pendapatan penjualan.</p>
                 )}
+              </div>
+
+              {/* Foto resi / bukti pengiriman — diunggah setelah order tersimpan */}
+              <div>
+                <label className="block text-gray-500 font-semibold mb-1 text-xs">Foto Resi / Bukti Pengiriman (opsional)</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={e => setProofFile(e.target.files?.[0] || null)}
+                  className="w-full text-[11px] text-gray-600 file:mr-2 file:rounded file:border-0 file:bg-[var(--color-evergreen)] file:px-3 file:py-1.5 file:text-white file:font-bold"
+                />
+                {proofFile && <p className="text-[10px] text-emerald-600 mt-1 font-semibold">{proofFile.name} akan diunggah setelah disimpan.</p>}
+                {uploadingProof && <p className="text-[10px] text-gray-400 mt-1">Mengunggah foto...</p>}
+                {(() => {
+                  const existingProof = editOrderId ? orders.find(o => o.id === editOrderId)?.shipping_proof_url : undefined;
+                  if (!existingProof || proofFile) return null;
+                  return (
+                    <div className="flex items-center gap-2 mt-2">
+                      <img src={existingProof} alt="Bukti pengiriman" onClick={() => setPreviewPhoto(existingProof)} className="w-16 h-16 object-cover rounded-lg border border-gray-200 cursor-pointer" />
+                      <span className="text-[10px] text-gray-400">Sudah ada foto resi. Pilih file baru untuk mengganti.</span>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div className="flex gap-3 pt-1">
