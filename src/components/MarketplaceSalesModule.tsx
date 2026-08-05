@@ -26,7 +26,7 @@ import {
   HelpCircle,
   FileSpreadsheet,
   Undo2,
-  Camera
+  Eye
 } from 'lucide-react';
 
 // Status order marketplace: data lama tanpa status dianggap Terkirim
@@ -120,8 +120,6 @@ export const MarketplaceSalesModule: React.FC = () => {
   // Confirmation state for deleting daily rekap
   const [deleteDailySaleId, setDeleteDailySaleId] = useState<string | null>(null);
 
-  // Panel bukti foto pengiriman — dibuka per order_number, terpisah dari form edit item
-  const [photoPanelOrder, setPhotoPanelOrder] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   // Foto resi yang dipilih di form tambah/edit — diunggah setelah pesanan tersimpan
   const [proofFile, setProofFile] = useState<File | null>(null);
@@ -1038,9 +1036,17 @@ export const MarketplaceSalesModule: React.FC = () => {
                         className="w-full text-[11px] text-gray-600 file:mr-2 file:rounded file:border-0 file:bg-evergreen file:px-3 file:py-1.5 file:text-white file:font-bold"
                       />
                       {proofFile && <p className="text-[10px] text-emerald-600 mt-1 font-semibold">{proofFile.name} akan diunggah setelah disimpan.</p>}
-                      {editingOrderNumber && itemSales.find(i => i.order_number === editingOrderNumber)?.shipping_proof_url && !proofFile && (
-                        <p className="text-[10px] text-gray-400 mt-1">Sudah ada foto resi. Pilih file baru untuk mengganti.</p>
-                      )}
+                      {uploadingPhoto && <p className="text-[10px] text-gray-400 mt-1">Mengunggah foto...</p>}
+                      {(() => {
+                        const proof = editingOrderNumber && itemSales.find(i => i.order_number === editingOrderNumber)?.shipping_proof_url;
+                        if (!proof || proofFile) return null;
+                        return (
+                          <div className="flex items-center gap-2 mt-2">
+                            <img src={proof} alt="Bukti pengiriman" onClick={() => setPreviewPhoto(proof)} className="w-16 h-16 object-cover rounded-lg border border-gray-200 cursor-pointer" />
+                            <button type="button" onClick={() => handleDeleteShippingProof(editingOrderNumber, proof)} className="text-[10px] text-rose-600 font-bold cursor-pointer">Hapus Foto</button>
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     {/* Submit Button */}
@@ -1285,11 +1291,12 @@ export const MarketplaceSalesModule: React.FC = () => {
                                       <Edit className="w-3.5 h-3.5" />
                                     </button>
                                     <button
-                                      onClick={() => setPhotoPanelOrder(group.order_number)}
-                                      className={`p-1 rounded transition-colors ${group.items[0].shipping_proof_url ? 'text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'}`}
-                                      title="Bukti foto pengiriman"
+                                      onClick={() => setPreviewPhoto(group.items[0].shipping_proof_url || null)}
+                                      disabled={!group.items[0].shipping_proof_url}
+                                      className={`p-1 rounded transition-colors ${group.items[0].shipping_proof_url ? 'text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50' : 'text-gray-300 cursor-not-allowed'}`}
+                                      title={group.items[0].shipping_proof_url ? 'Lihat bukti pengiriman' : 'Belum ada foto resi — unggah lewat tombol Edit'}
                                     >
-                                      <Camera className="w-3.5 h-3.5" />
+                                      <Eye className="w-3.5 h-3.5" />
                                     </button>
                                     <button
                                       onClick={() => handleDeleteDetailedSale(group.order_number)}
@@ -1717,40 +1724,6 @@ export const MarketplaceSalesModule: React.FC = () => {
           </div>
         </div>
       )}
-
-      {/* Panel bukti foto pengiriman — dipisah dari form edit item, dibuka per pesanan */}
-      {photoPanelOrder && (() => {
-        const proof = itemSales.find(i => i.order_number === photoPanelOrder)?.shipping_proof_url;
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setPhotoPanelOrder(null)}>
-            <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-gray-200 relative" onClick={e => e.stopPropagation()}>
-              <h3 className="text-sm font-bold text-gray-900 flex items-center gap-1.5 mb-1">
-                <Camera className="w-4 h-4 text-emerald-600" /> Bukti Pengiriman
-              </h3>
-              <p className="text-[11px] text-gray-400 mb-4">Pesanan {photoPanelOrder}</p>
-
-              {proof && (
-                <div className="flex items-center gap-2 mb-3">
-                  <img src={proof} alt="Bukti pengiriman" onClick={() => setPreviewPhoto(proof)} className="w-24 h-24 object-cover rounded-lg border border-gray-200 cursor-pointer" />
-                  <button onClick={() => handleDeleteShippingProof(photoPanelOrder, proof)} className="text-[11px] text-rose-600 font-bold cursor-pointer">Hapus Foto</button>
-                </div>
-              )}
-
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                disabled={uploadingPhoto}
-                onChange={e => handleUploadShippingProof(photoPanelOrder, e.target.files?.[0])}
-                className="w-full text-xs file:mr-2 file:border-0 file:bg-gray-100 file:px-3 file:py-1.5 file:rounded file:text-xs file:font-bold disabled:opacity-50"
-              />
-              {uploadingPhoto && <p className="text-[11px] text-gray-400 mt-2">Mengunggah foto...</p>}
-
-              <button onClick={() => setPhotoPanelOrder(null)} className="w-full mt-4 py-2 border border-gray-200 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50 cursor-pointer">Tutup</button>
-            </div>
-          </div>
-        );
-      })()}
 
       {/* Preview foto pengiriman ukuran penuh */}
       {previewPhoto && (
