@@ -4,6 +4,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { Employee, Attendance, AttendanceType, WorkSettings } from '../types';
 import { dataStore, wibNowISO } from '../dataStore';
 import { brandName, brandLegalName } from '../brand';
+import { exportExcel } from '../exportExcel';
 import { 
   MapPin, 
   Camera, 
@@ -560,16 +561,23 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
 
   useEffect(() => { setHistoryPage(1); }, [historySearch, historyPeriod, historyStart, historyEnd, historyType, historyStatus, historyMethod]);
 
-  const exportAttendanceCsv = () => {
-    const rows = [['Tanggal', 'Waktu WIB', 'Nama', 'Jenis', 'Status', 'Terlambat (menit)', 'Pengganti Telat (menit)', 'Durasi Kerja (menit)', 'Porsi Hari', 'Lembur (menit)', 'Metode', 'Dibantu Oleh', 'Alasan']];
-    filteredHistory.forEach(log => rows.push([log.timestamp.slice(0, 10), log.timestamp.slice(11, 16), log.employee_name, log.type_scan, log.status, String(log.late_minutes || 0), String(log.late_compensation_minutes || 0), String(log.worked_minutes || 0), String(log.work_fraction || ''), String(log.overtime_minutes || 0), log.verification_method || 'gps_self', log.assisted_by_name || '', log.assistance_reason || '']));
-    const csv = '\uFEFF' + rows.map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `Riwayat_Absensi_${periodBounds.start}_sd_${periodBounds.end}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
+  const exportAttendanceExcel = () => {
+    const rows = filteredHistory.map(log => ({
+      Tanggal: log.timestamp.slice(0, 10),
+      'Waktu WIB': log.timestamp.slice(11, 16),
+      Nama: log.employee_name,
+      Jenis: log.type_scan,
+      Status: log.status,
+      'Terlambat (menit)': log.late_minutes || 0,
+      'Pengganti Telat (menit)': log.late_compensation_minutes || 0,
+      'Durasi Kerja (menit)': log.worked_minutes || 0,
+      'Porsi Hari': log.work_fraction ?? '',
+      'Lembur (menit)': log.overtime_minutes || 0,
+      Metode: log.verification_method || 'gps_self',
+      'Dibantu Oleh': log.assisted_by_name || '',
+      Alasan: log.assistance_reason || '',
+    }));
+    void exportExcel(`Riwayat_Absensi_${periodBounds.start}_sd_${periodBounds.end}`, [{ name: 'Riwayat Absensi', rows }]);
   };
 
   // Stats calculation for Pola B Dashboard
@@ -1087,7 +1095,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
           <div className="space-y-2 no-print">
             <div className="flex flex-wrap gap-2">
               {(['today', 'week', 'month', 'custom'] as const).map(period => <button key={period} onClick={() => setHistoryPeriod(period)} className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold cursor-pointer border ${historyPeriod === period ? 'bg-[var(--color-evergreen)] text-white border-[var(--color-evergreen)]' : 'bg-white text-gray-600 border-gray-200'}`}>{period === 'today' ? 'Hari Ini' : period === 'week' ? 'Minggu Ini' : period === 'month' ? 'Bulan Ini' : 'Custom'}</button>)}
-              <button onClick={exportAttendanceCsv} className="ml-auto px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-100 cursor-pointer"><Download className="w-3 h-3 inline mr-1" /> CSV</button>
+              <button onClick={exportAttendanceExcel} className="ml-auto px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-100 cursor-pointer"><Download className="w-3 h-3 inline mr-1" /> Excel</button>
             </div>
             {historyPeriod === 'custom' && <div className="grid grid-cols-2 gap-2 max-w-md"><input type="date" value={historyStart} onChange={e => setHistoryStart(e.target.value)} className="border border-gray-200 rounded-lg p-2 text-xs" /><input type="date" value={historyEnd} min={historyStart} onChange={e => setHistoryEnd(e.target.value)} className="border border-gray-200 rounded-lg p-2 text-xs" /></div>}
             <p className="text-[10px] text-gray-400">Periode analisa: {periodBounds.start} s/d {periodBounds.end}</p>
@@ -1286,7 +1294,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
               <div className="space-y-2 no-print">
                 <div className="flex flex-wrap gap-2">
                   {(['today', 'week', 'month', 'custom'] as const).map(period => <button key={period} onClick={() => setHistoryPeriod(period)} className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold cursor-pointer border ${historyPeriod === period ? 'bg-[var(--color-evergreen)] text-white border-[var(--color-evergreen)]' : 'bg-white text-gray-600 border-gray-200'}`}>{period === 'today' ? 'Hari Ini' : period === 'week' ? 'Minggu Ini' : period === 'month' ? 'Bulan Ini' : 'Custom'}</button>)}
-                  <button onClick={exportAttendanceCsv} className="ml-auto px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-100 cursor-pointer"><Download className="w-3 h-3 inline mr-1" /> CSV</button>
+                  <button onClick={exportAttendanceExcel} className="ml-auto px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-100 cursor-pointer"><Download className="w-3 h-3 inline mr-1" /> Excel</button>
                 </div>
                 {historyPeriod === 'custom' && <div className="grid grid-cols-2 gap-2"><input type="date" value={historyStart} onChange={e => setHistoryStart(e.target.value)} className="border border-gray-200 rounded-lg p-2 text-xs" /><input type="date" value={historyEnd} min={historyStart} onChange={e => setHistoryEnd(e.target.value)} className="border border-gray-200 rounded-lg p-2 text-xs" /></div>}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2"><div className="relative"><Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-gray-400" /><input value={historySearch} onChange={e => setHistorySearch(e.target.value)} placeholder="Cari nama atau username..." className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-xs" /></div><div className="grid grid-cols-3 gap-1.5"><select value={historyType} onChange={e => setHistoryType(e.target.value as typeof historyType)} className="min-w-0 border border-gray-200 rounded-lg px-1.5 text-[10px]"><option value="all">Semua Scan</option><option value="masuk">Masuk</option><option value="pulang">Pulang</option></select><select value={historyStatus} onChange={e => setHistoryStatus(e.target.value as typeof historyStatus)} className="min-w-0 border border-gray-200 rounded-lg px-1.5 text-[10px]"><option value="all">Semua Status</option><option value="normal">Normal</option><option value="late">Terlambat</option><option value="anomaly">Anomali</option></select><select value={historyMethod} onChange={e => setHistoryMethod(e.target.value as typeof historyMethod)} className="min-w-0 border border-gray-200 rounded-lg px-1.5 text-[10px]"><option value="all">Semua Metode</option><option value="gps_self">GPS Karyawan</option><option value="admin_qr">Dibantu Admin</option></select></div></div>
