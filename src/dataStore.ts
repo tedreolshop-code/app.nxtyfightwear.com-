@@ -1612,6 +1612,17 @@ class DataStore {
     }
 
     const pulangClock = att.timestamp.slice(11, 16);
+    // Absen MASUK di sore hari hampir selalu salah pencet (niatnya pulang) dan merusak
+    // data: late_minutes jadi berjam-jam dan bonus kehadiran hari itu gugur. Kejadian
+    // nyata (datang siang karena izin) tetap bisa lewat jalur admin yang wajib beralasan.
+    if (
+      att.type_scan === 'masuk' &&
+      pulangClock >= workSettings.full_day_from &&
+      att.verification_method !== 'admin_qr'
+    ) {
+      throw new Error(`Absen MASUK ditolak: sudah lewat ${workSettings.full_day_from}. Bila memang baru datang, minta admin mencatatkan lewat QR pribadi disertai alasan.`);
+    }
+
     if (
       att.type_scan === 'pulang' &&
       pulangClock >= workSettings.full_day_from && pulangClock < workSettings.end_time &&

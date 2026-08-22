@@ -316,7 +316,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
 
     const emp = employees.find(x => x.id === selectedEmpId);
     if (!emp) return;
-    const effectiveScanType = lockedEmployee ? inferEmployeeScanType(emp.id) : scanType;
+    const effectiveScanType = inferEmployeeScanType(emp.id);
     if (!effectiveScanType) {
       setStatusMessage({ text: 'Absensi hari ini sudah lengkap: masuk dan pulang sudah tercatat.', error: true });
       return;
@@ -501,11 +501,10 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
       emp.id.toLowerCase().includes(searchQuery.toLowerCase())
     )
     .sort((a, b) => a.name.localeCompare(b.name));
-  const automaticScanType = lockedEmployee ? inferEmployeeScanType(lockedEmployee.id) : null;
+  const automaticScanType = selectedEmpId ? inferEmployeeScanType(selectedEmpId) : null;
   // Pulang antara full_day_from dan end_time tetap dihitung 1 hari, tapi alasannya wajib
-  const pendingScanType = lockedEmployee ? automaticScanType : scanType;
   const needsEarlyLeaveReason =
-    pendingScanType === 'pulang' &&
+    automaticScanType === 'pulang' &&
     wibNowISO().slice(11, 16) >= workSettings.full_day_from &&
     wibNowISO().slice(11, 16) < workSettings.end_time;
   const departmentLabel = (departmentId: string) => departmentId === 'dept-eva-foam' ? 'Eva Foam' : departmentId === 'dept-konveksi' ? 'Konveksi' : departmentId;
@@ -931,39 +930,12 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
 
                 {/* Tipe Scan Selector */}
                 <div className="space-y-2 pt-2 border-t border-[#1a422d]/60">
-                  <h4 className="text-xs font-black uppercase text-emerald-300 tracking-wider">{lockedEmployee ? 'Jenis Absensi Otomatis' : 'Langkah 2: Pilih Tipe Scan'}</h4>
-                  {lockedEmployee ? (
-                    <div className={`rounded-xl border p-4 text-center ${automaticScanType === 'masuk' ? 'bg-emerald-950/50 border-emerald-600/40' : automaticScanType === 'pulang' ? 'bg-rose-950/30 border-rose-600/40' : 'bg-gray-900/40 border-gray-600/40'}`}>
-                      <p className="text-[10px] uppercase tracking-wider text-emerald-300">Scan berikutnya tercatat sebagai</p>
-                      <p className="text-lg font-black uppercase mt-1">{automaticScanType || 'Sudah Lengkap'}</p>
-                      <p className="text-[10px] text-emerald-200/60 mt-1">Scan pertama = masuk, scan kedua = pulang.</p>
-                    </div>
-                  ) : <div className="grid grid-cols-2 gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setScanType('masuk')}
-                      className={`py-3 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer border ${
-                        scanType === 'masuk'
-                          ? 'bg-emerald-600 text-white border-emerald-400 shadow-md shadow-black/10'
-                          : 'bg-[var(--color-evergreen-dark)]/40 border-[#1d4631] text-emerald-200/70 hover:bg-[var(--color-evergreen-dark)]'
-                      }`}
-                    >
-                      <Clock className="w-4 h-4 shrink-0 text-emerald-400" />
-                      Scan Masuk Kerja
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setScanType('pulang')}
-                      className={`py-3 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer border ${
-                        scanType === 'pulang'
-                          ? 'bg-rose-700 text-white border-rose-500 shadow-md shadow-black/10'
-                          : 'bg-[var(--color-evergreen-dark)]/40 border-[#1d4631] text-emerald-200/70 hover:bg-[var(--color-evergreen-dark)]'
-                      }`}
-                    >
-                      <Clock className="w-4 h-4 shrink-0 text-rose-400" />
-                      Scan Pulang Kerja
-                    </button>
-                  </div>}
+                  <h4 className="text-xs font-black uppercase text-emerald-300 tracking-wider">Jenis Absensi Otomatis</h4>
+                  <div className={`rounded-xl border p-4 text-center ${automaticScanType === 'masuk' ? 'bg-emerald-950/50 border-emerald-600/40' : automaticScanType === 'pulang' ? 'bg-rose-950/30 border-rose-600/40' : 'bg-gray-900/40 border-gray-600/40'}`}>
+                    <p className="text-[10px] uppercase tracking-wider text-emerald-300">Scan berikutnya tercatat sebagai</p>
+                    <p className="text-lg font-black uppercase mt-1">{!selectedEmpId ? 'Pilih Karyawan' : automaticScanType || 'Sudah Lengkap'}</p>
+                    <p className="text-[10px] text-emerald-200/60 mt-1">Ditentukan sistem: scan pertama = masuk, scan kedua = pulang.</p>
+                  </div>
                 </div>
               </div>
 
@@ -1077,15 +1049,15 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                 <button
                   type="button"
                   onClick={() => handleAttendanceSubmit()}
-                  disabled={!selectedEmpId || (!!lockedEmployee && (!locationVerified || !automaticScanType)) || (!lockedEmployee && pin.length < 4) || isScanning || (needsEarlyLeaveReason && !earlyLeaveReason.trim())}
+                  disabled={!selectedEmpId || !automaticScanType || (!!lockedEmployee && !locationVerified) || (!lockedEmployee && pin.length < 4) || isScanning || (needsEarlyLeaveReason && !earlyLeaveReason.trim())}
                   className={`w-full py-3.5 rounded-xl text-xs uppercase font-extrabold tracking-widest flex items-center justify-center gap-2 border transition-all ${
-                    (!selectedEmpId || (!!lockedEmployee && (!locationVerified || !automaticScanType)) || (!lockedEmployee && pin.length < 4) || isScanning || (needsEarlyLeaveReason && !earlyLeaveReason.trim()))
+                    (!selectedEmpId || !automaticScanType || (!!lockedEmployee && !locationVerified) || (!lockedEmployee && pin.length < 4) || isScanning || (needsEarlyLeaveReason && !earlyLeaveReason.trim()))
                       ? 'bg-emerald-950/60 border-emerald-900/40 text-emerald-200/30 cursor-not-allowed'
                       : 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-transparent shadow-md active:scale-[0.98] cursor-pointer'
                   }`}
                 >
                   <ShieldCheck className="w-4 h-4 shrink-0" />
-                  {isScanning ? 'MEMBACA LOKASI GPS…' : lockedEmployee && automaticScanType ? `KIRIM ABSEN ${automaticScanType.toUpperCase()}` : 'KIRIM SCAN ABSENSI'}
+                  {isScanning ? 'MEMBACA LOKASI GPS…' : automaticScanType ? `KIRIM ABSEN ${automaticScanType.toUpperCase()}` : 'KIRIM SCAN ABSENSI'}
                 </button>
               </div>
 
