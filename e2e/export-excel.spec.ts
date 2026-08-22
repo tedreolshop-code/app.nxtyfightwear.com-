@@ -50,17 +50,18 @@ test('Pembelian: Export PO menghasilkan .xlsx', async ({ page }) => {
 
 test('Marketplace: Export penjualan menghasilkan .xlsx', async ({ page }) => {
   await isolateAsOwner(page);
-  // Modul marketplace memakai rentang tanggal bawaan 2026-05-01 s/d 2026-07-31
-  await page.addInitScript(() => {
-    const tgl = '2026-07-15';
+  await page.addInitScript((tgl) => {
     localStorage.setItem('nxty_marketplace_item_sales', JSON.stringify([{
       id: 's1', date: tgl, created_at: `${tgl}T09:00:00+07:00`, order_number: 'INV-001',
       marketplace_ref: 'Shopee', description: 'Matras 2cm', qty: 2, price: 150000,
       subtotal: 300000, admin_fee: 15000, total: 285000, admin_staff: 'Siti',
       status: 'terkirim', department_id: 'dept-eva-foam',
     }]));
-  });
+  }, hariIni);
   await page.goto('/');
   await page.locator('#nav-tab-penjualan').click();
+
+  // Filter bawaan = bulan berjalan, jadi penjualan hari ini langsung tampil tanpa ubah tanggal
+  await expect(page.getByText('INV-001').first()).toBeVisible();
   await klikUnduh(page, page.getByRole('button', { name: 'Export ke Excel' }));
 });

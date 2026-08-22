@@ -22,6 +22,12 @@ export const employmentStatusOf = (employee?: { employment_status?: EmploymentSt
  * Jumlah hari kerja dalam satu bulan 'YYYY-MM' (Minggu libur, sama seperti penilaian
  * bonus kehadiran). Dipakai untuk menghitung sisa hari kerja bulan berjalan.
  */
+/** Tanggal terakhir bulan dari tanggal "YYYY-MM-DD", mis. "2026-08-22" -> "2026-08-31". */
+export const lastDayOfMonth = (date: string): string => {
+  const [year, mon] = date.split('-').map(Number);
+  return `${date.slice(0, 7)}-${String(new Date(year, mon, 0).getDate()).padStart(2, '0')}`;
+};
+
 export const workingDaysInMonth = (month: string, effectiveFrom?: string): number => {
   const [year, mon] = month.split('-').map(Number);
   const daysInMonth = new Date(year, mon, 0).getDate();

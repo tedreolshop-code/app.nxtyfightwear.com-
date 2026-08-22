@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { MarketplaceSale, MarketplaceItemSale, MarketplaceSaleStatus, Product, divisionLabel, DIVISIONS } from '../types';
+import { MarketplaceSale, MarketplaceItemSale, MarketplaceSaleStatus, Product, divisionLabel, DIVISIONS, lastDayOfMonth } from '../types';
 import { DivisionFilter, matchesDivision } from './DivisionFilter';
-import { dataStore, wibNowISO } from '../dataStore';
+import { dataStore, wibNowISO, wibTodayStr } from '../dataStore';
 import { uploadPackingPhoto, deletePackingPhoto } from '../packingPhoto';
 import { exportExcel } from '../exportExcel';
 import { brandName, brandLegalName } from '../brand';
@@ -62,8 +62,9 @@ export const MarketplaceSalesModule: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
 
   // Filtering states for Detailed Item Sales
-  const [startDate, setStartDate] = useState<string>('2026-05-01'); // Match MEI 2026 in user picture
-  const [endDate, setEndDate] = useState<string>('2026-07-31');
+  // Bawaan: bulan berjalan (tanggal 1 s/d akhir bulan), bukan periode tetap.
+  const [startDate, setStartDate] = useState<string>(() => `${wibTodayStr().slice(0, 7)}-01`);
+  const [endDate, setEndDate] = useState<string>(() => lastDayOfMonth(wibTodayStr()));
   const [filterMarketplace, setFilterMarketplace] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
