@@ -1651,7 +1651,10 @@ class DataStore {
     const newAttendance: Attendance = {
       ...att,
       ...attendanceMetrics,
-      id: uuid(),
+      // Id deterministik: satu baris per karyawan/tanggal/jenis scan. Primary key di
+      // Supabase yang jadi penjaga terakhir bila dua perangkat scan bersamaan —
+      // pemeriksaan di atas hanya melihat data lokal yang bisa saja belum ter-sync.
+      id: `att-${att.employee_id}-${dateStr}-${att.type_scan}`,
       employee_name: emp.name,
       distance_meters: Math.round(distance * 10) / 10,
       is_mock_location_flag: false,

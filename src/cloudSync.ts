@@ -221,7 +221,9 @@ const upsertAttendanceRow = async (record: AttendanceRecordLike): Promise<boolea
   try {
     const { error } = await client
       .from(ATT_TABLE)
-      .upsert({ id: record.id, value: record }, { onConflict: 'id' });
+      // ignoreDuplicates: id absensi bersifat deterministik (karyawan+tanggal+jenis scan),
+      // jadi baris pertama yang masuk yang menang — scan ganda dari perangkat lain ditolak DB.
+      .upsert({ id: record.id, value: record }, { onConflict: 'id', ignoreDuplicates: true });
     if (error) throw error;
     if (status !== 'online') setStatus('online');
     return true;
