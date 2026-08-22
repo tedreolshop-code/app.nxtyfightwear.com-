@@ -531,7 +531,7 @@ class DataStore {
     workingDays: number; presentDays: number; qualifiedDays: number; dailyRate: number;
     lateMinutesNet: number; halfDays: number;
     absentDates: string[]; halfDayDates: string[]; lateDates: string[]; earlyLeaveDates: string[];
-    status: 'aman' | 'gugur'; reasons: string[]; amount: number; potentialAmount: number;
+    reasons: string[]; amount: number; potentialAmount: number;
   } => {
     const employee = this.getEmployees().find(e => e.id === employeeId);
     const settings = this.getWorkSettings();
@@ -619,8 +619,6 @@ class DataStore {
       halfDayDates,
       lateDates,
       earlyLeaveDates,
-      // 'aman' = seluruh hari kerja yang dinilai layak semua (tanpa hari hilang)
-      status: reasons.length === 0 && workingDates.length > 0 ? 'aman' : 'gugur',
       reasons,
       amount: paidDays * dailyRate,
       potentialAmount: workingDates.length * dailyRate,

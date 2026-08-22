@@ -43,22 +43,25 @@ const nextMonthFirstDate = (month: string) => {
 export const AttendanceBonusBalanceCard: React.FC<{ employee: Employee }> = ({ employee }) => {
   const currentMonth = wibTodayStr().slice(0, 7);
   const result = dataStore.evaluateAttendanceBonus(employee.id, currentMonth);
-  const aman = result.status === 'aman';
+  // Hijau = tidak ada hari hilang. Kuning = ada yang hilang tapi saldo tetap tumbuh.
+  // Merah hanya bila benar-benar nol — bonus ini akumulasi harian, bukan hangus sebulan.
+  const hariHilang = result.workingDays - result.qualifiedDays;
+  const nada = result.amount <= 0 ? 'merah' : hariHilang > 0 ? 'kuning' : 'hijau';
   // Saldo = akumulasi hari layak x tarif harian; hari telat hanya kehilangan hari itu
   const accrued = result.amount;
   const totalWorkingDays = workingDaysInMonth(currentMonth, dataStore.getWorkSettings().attendance_effective_from);
 
   return (
-    <div className={`rounded-xl border p-4 space-y-1.5 ${aman ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'}`}>
+    <div className={`rounded-xl border p-4 space-y-1.5 ${nada === 'hijau' ? 'bg-emerald-50 border-emerald-200' : nada === 'kuning' ? 'bg-amber-50 border-amber-200' : 'bg-rose-50 border-rose-200'}`}>
       <div className="flex items-center justify-between gap-2">
-        <span className={`text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${aman ? 'text-emerald-700' : 'text-rose-700'}`}>
+        <span className={`text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${nada === 'hijau' ? 'text-emerald-700' : nada === 'kuning' ? 'text-amber-700' : 'text-rose-700'}`}>
           <Award className="w-4 h-4" /> Saldo Bonus Kehadiran
         </span>
-        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${aman ? 'bg-emerald-600 text-white' : 'bg-amber-500 text-white'}`}>
+        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${nada === 'hijau' ? 'bg-emerald-600 text-white' : nada === 'kuning' ? 'bg-amber-500 text-white' : 'bg-rose-500 text-white'}`}>
           {result.qualifiedDays}/{result.workingDays} HARI
         </span>
       </div>
-      <p className={`text-2xl font-black font-mono ${aman ? 'text-emerald-800' : 'text-rose-400'}`}>
+      <p className={`text-2xl font-black font-mono ${nada === 'merah' ? 'text-rose-400' : 'text-emerald-800'}`}>
         {formatIDR(accrued)}
       </p>
       <p className={`text-xs ${accrued > 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
@@ -202,7 +205,7 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
         return { emp, result, accrued: result.amount };
       })
       .sort((a, b) => a.emp.name.localeCompare(b.emp.name, 'id'));
-    const aman = rows.filter(r => r.result.status === 'aman');
+    const tanpaCatatan = rows.filter(r => r.result.reasons.length === 0 && r.result.workingDays > 0);
     const assessedDays = rows[0]?.result.workingDays ?? 0;
     // Diagnosa "kenapa saldonya nol", supaya tidak perlu menebak:
     // (a) karyawan yang nilai bonusnya belum diatur, (b) hari kerja yang tidak punya
@@ -225,7 +228,7 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
     }
     return {
       rows,
-      amanCount: aman.length,
+      amanCount: tanpaCatatan.length,
       // Saldo berjalan seluruh karyawan sampai kemarin
       accruedTotal: rows.reduce((sum, r) => sum + r.accrued, 0),
       // Potensi bila semua hari kerja bulan ini layak
@@ -403,14 +406,14 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
         </button>
 
         {/* Posisi hari ini per karyawan — supaya tidak perlu menunggu awal bulan.
-            Angka bonus di sini bukan uang yang sudah pasti: satu telat atau absen
-            menggugurkan bonus sebulan penuh, jadi baris bisa berubah kapan saja. */}
+            Angkanya saldo berjalan: tiap hari layak menambah, hari yang hilang hanya
+            mengurangi hari itu. Masih bisa bertambah sampai akhir bulan. */}
         <details open className="border border-gray-200 rounded-lg overflow-hidden">
           <summary className="cursor-pointer select-none bg-gray-50 px-3 py-2 text-[11px] font-bold text-gray-700 flex items-center gap-1.5">
             <CalendarCheck2 className="w-3.5 h-3.5 text-[var(--color-evergreen)]" />
             Posisi hari ini · {todayLabel()}
             <span className="font-normal text-gray-400">
-              ({running.amanCount}/{running.employeeCount} aman · sisa {running.remainingDays} hari kerja)
+              ({running.amanCount}/{running.employeeCount} tanpa hari hilang · sisa {running.remainingDays} hari kerja)
             </span>
           </summary>
 
@@ -492,8 +495,8 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
                 <th className="py-2.5 px-3 text-center">Telat (Net)</th>
                 <th className="py-2.5 px-3 text-center">½ Hari</th>
                 <th className="py-2.5 px-3">Keterangan</th>
-                <th className="py-2.5 px-3 text-center">Status</th>
-                <th className="py-2.5 px-3 text-right">Bonus</th>
+                <th className="py-2.5 px-3 text-center">Hari Layak</th>
+                <th className="py-2.5 px-3 text-right">Bonus Terkumpul</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-emerald-200">
@@ -522,18 +525,25 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
                     {result.reasons.length > 0 ? result.reasons.join(' · ') : 'Kehadiran penuh, tanpa telat'}
                   </td>
                   <td className="py-2.5 px-3 text-center">
-                    {result.status === 'aman' ? (
+                    {result.reasons.length === 0 && result.workingDays > 0 ? (
                       <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                        <CheckCircle2 className="w-3 h-3" /> {isFutureOrCurrent ? 'AMAN' : 'LOLOS'}
+                        <CheckCircle2 className="w-3 h-3" /> PENUH {result.qualifiedDays}/{result.workingDays}
+                      </span>
+                    ) : result.amount > 0 ? (
+                      <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                        {result.qualifiedDays}/{result.workingDays} HARI
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 bg-rose-100 text-rose-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                        <XCircle className="w-3 h-3" /> GUGUR
+                        <XCircle className="w-3 h-3" /> TIDAK ADA
                       </span>
                     )}
                   </td>
-                  <td className={`py-2.5 px-3 text-right font-mono font-black ${result.status === 'aman' ? 'text-emerald-700' : 'text-rose-300 line-through'}`}>
-                    {formatIDR(emp.default_attendance_bonus ?? dataStore.getWorkSettings().monthly_bonus_amount)}
+                  <td className={`py-2.5 px-3 text-right font-mono font-black ${result.amount > 0 ? 'text-emerald-700' : 'text-rose-300'}`}>
+                    {formatIDR(result.amount)}
+                    <span className="block text-[9px] font-normal text-gray-400">
+                      {result.qualifiedDays} x {formatIDR(result.dailyRate)}
+                    </span>
                   </td>
                 </tr>
               ))}
@@ -542,7 +552,7 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
               <tfoot>
                 <tr className="border-t border-gray-200 bg-emerald-50/40 font-bold">
                   <td colSpan={6} className="py-2.5 px-3 text-right text-[11px] uppercase tracking-wide text-emerald-800">
-                    Total akan cair ({evaluations.filter(e => e.result.status === 'aman').length} dari {evaluations.length} karyawan):
+                    Total akan cair ({evaluations.filter(e => e.result.amount > 0).length} dari {evaluations.length} karyawan):
                   </td>
                   <td className="py-2.5 px-3 text-right font-mono text-emerald-800">{formatIDR(totalCair)}</td>
                 </tr>
