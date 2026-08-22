@@ -62,13 +62,15 @@ test('pengeluaran bisa difilter per divisi, biaya bersama punya ember sendiri', 
 
 test('penjualan marketplace bisa difilter per divisi', async ({ page }) => {
   await isolateAsOwner(page);
-  await page.addInitScript((div) => {
+  // Filter tanggal modul ini bawaannya bulan berjalan, jadi seed pakai bulan berjalan
+  const bulanIni = new Date().toISOString().slice(0, 7);
+  await page.addInitScript(({ div, bulanIni }) => {
     localStorage.setItem('nxty_marketplace_item_sales', JSON.stringify([
-      { id: 's1', date: '2026-07-20', order_number: 'MP/1', marketplace_ref: 'Shopee', description: 'Matras Eva', qty: 1, price: 100000, subtotal: 100000, admin_fee: 0, total: 100000, admin_staff: 'Admin', department_id: div.EVA },
-      { id: 's2', date: '2026-07-21', order_number: 'MP/2', marketplace_ref: 'Shopee', description: 'Samsak Konveksi', qty: 1, price: 200000, subtotal: 200000, admin_fee: 0, total: 200000, admin_staff: 'Admin', department_id: div.KONVEKSI },
-      { id: 's3', date: '2026-07-22', order_number: 'MP/3', marketplace_ref: 'Shopee', description: 'Barang custom', qty: 1, price: 50000, subtotal: 50000, admin_fee: 0, total: 50000, admin_staff: 'Admin' },
+      { id: 's1', date: `${bulanIni}-05`, order_number: 'MP/1', marketplace_ref: 'Shopee', description: 'Matras Eva', qty: 1, price: 100000, subtotal: 100000, admin_fee: 0, total: 100000, admin_staff: 'Admin', department_id: div.EVA },
+      { id: 's2', date: `${bulanIni}-06`, order_number: 'MP/2', marketplace_ref: 'Shopee', description: 'Samsak Konveksi', qty: 1, price: 200000, subtotal: 200000, admin_fee: 0, total: 200000, admin_staff: 'Admin', department_id: div.KONVEKSI },
+      { id: 's3', date: `${bulanIni}-07`, order_number: 'MP/3', marketplace_ref: 'Shopee', description: 'Barang custom', qty: 1, price: 50000, subtotal: 50000, admin_fee: 0, total: 50000, admin_staff: 'Admin' },
     ]));
-  }, { EVA, KONVEKSI });
+  }, { div: { EVA, KONVEKSI }, bulanIni });
   await page.goto('/');
   await page.locator('#nav-tab-penjualan').click();
 

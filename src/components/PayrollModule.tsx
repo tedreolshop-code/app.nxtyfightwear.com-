@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Employee, PayrollWeekly, CashAdvance, Attendance, AttendanceAdjustment, CashAdvanceTransaction } from '../types';
+import { Employee, PayrollWeekly, CashAdvance, Attendance, AttendanceAdjustment, CashAdvanceTransaction, divisionLabel, terbilang } from '../types';
 import { dataStore, wibNowISO } from '../dataStore';
-import { brandName, brandLegalName } from '../brand';
+import { brandName, brandLegalName, brandInitials } from '../brand';
 import { exportExcel } from '../exportExcel';
 import { Printer, Landmark, DollarSign, Plus, CheckCircle2, Sliders, History, Trash2, X, Calculator, Edit2, FileSpreadsheet, Wallet, Award } from 'lucide-react';
 import { AttendanceBonusPanel, AttendanceBonusBalanceCard, AttendanceBonusHistoryList } from './AttendanceBonusPanel';
@@ -21,13 +21,11 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
   const [adjustments, setAdjustments] = useState<AttendanceAdjustment[]>([]);
   
   // Calibration
-  const [calibration, setCalibration] = useState({ offset_x: 0, offset_y: 0 });
 
   // Calculator modal state
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
 
   // Calibration settings modal state
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Date Range Filter states
   const [filterStartDate, setFilterStartDate] = useState('');
@@ -75,8 +73,6 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
 
   // Preview states
   const [previewPayroll, setPreviewPayroll] = useState<PayrollWeekly | null>(null);
-  const [paperColor, setPaperColor] = useState<'white' | 'pink'>('pink');
-  const [inkColor, setInkColor] = useState<'charcoal' | 'blue'>('blue');
 
   useEffect(() => {
     loadData();
@@ -94,7 +90,6 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     setCashAdvanceTransactions(dataStore.getCashAdvanceTransactions());
     setAttendance(dataStore.getAttendance());
     setAdjustments(dataStore.getAttendanceAdjustments());
-    setCalibration(dataStore.getCalibration());
   };
 
   const applyDefaultWeeklyPeriod = () => {
@@ -350,11 +345,6 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     loadData();
   };
 
-  const handleUpdateCalibration = (e: React.FormEvent) => {
-    e.preventDefault();
-    dataStore.setCalibration(calibration);
-    alert('Kalibrasi cetak berhasil disimpan!');
-  };
 
   // Label bulan 'YYYY-MM' -> "Juli 2026", untuk judul kelompok arsip
   const monthLabelId = (month: string) => {
@@ -364,109 +354,51 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
 
   const handlePrint = (pay: PayrollWeekly) => {
     setPreviewPayroll(pay);
-    setPaperColor('pink');
-    setInkColor('blue');
   };
 
   const getDeptName = (empId: string) => {
     const emp = employees.find(e => e.id === empId);
-    if (!emp) return 'PRODUKSI';
-    if (emp.department_id === 'dept-eva-foam') return 'EVA FOAM';
-    if (emp.department_id === 'dept-konveksi') return 'DEPARTEMEN KONVEKSI';
-    return 'PRODUKSI';
+    return divisionLabel(emp?.department_id, 'Umum').toUpperCase();
   };
 
-  const getPeriodMonthYear = (startStr: string) => {
-    try {
-      const d = new Date(startStr);
-      const months = [
-        'JANUARI', 'FEBRUARI', 'MARET', 'APRIL', 'MEI', 'JUNI',
-        'JULI', 'AGUSTUS', 'SEPTEMBER', 'OKTOBER', 'NOVEMBER', 'DESEMBER'
-      ];
-      return `${months[d.getMonth()]} ${d.getFullYear()}`;
-    } catch (e) {
-      return 'APRIL 2026';
-    }
+  const NAMA_BULAN = [
+    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+  ];
+  const NAMA_HARI = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+
+  /** "2026-08-22" -> "22 Agustus 2026". Tanggal tak valid dikembalikan apa adanya. */
+  const formatTanggalPanjang = (tgl: string) => {
+    const [tahun, bulan, hari] = (tgl || '').split('-').map(Number);
+    if (!tahun || !bulan || !hari) return tgl || '-';
+    return `${hari} ${NAMA_BULAN[bulan - 1]} ${tahun}`;
   };
 
-  const getAttendanceLogsForPayroll = (pay: PayrollWeekly) => {
-    const dates: string[] = [];
-    const start = new Date(pay.period_start);
-    const end = new Date(pay.period_end);
-    
-    let current = new Date(start);
-    let loopCount = 0;
-    while (current <= end && loopCount < 15) {
-      dates.push(current.toISOString().split('T')[0]);
-      current.setDate(current.getDate() + 1);
-      loopCount++;
-    }
+  /**
+   * Rekap kehadiran satu periode gaji, MURNI dari catatan absensi asli.
+   * Tidak pernah mengarang jam atau hari hadir: tanggal tanpa scan = tidak hadir.
+   * Jam masuk/pulang sengaja tidak dibawa — slip hanya menampilkan hadir/tidak.
+   */
+  const getAttendanceSummaryForPayroll = (pay: PayrollWeekly) => {
+    const hadirDates = new Set(
+      attendance
+        .filter(a => a.employee_id === pay.employee_id && a.type_scan === 'masuk')
+        .map(a => a.timestamp.slice(0, 10))
+    );
 
-    const logs = dates.map((dateStr, idx) => {
-      const dateObj = new Date(dateStr);
-      const dateNum = dateObj.getDate();
-      
-      const realLogs = attendance.filter(a => {
-        if (a.employee_id !== pay.employee_id) return false;
-        return a.timestamp.startsWith(dateStr);
-      });
-
-      let times: string[] = [];
-      let isPresent = false;
-
-      if (realLogs.length > 0) {
-        times = realLogs.map(rl => {
-          const t = rl.timestamp.split('T')[1];
-          if (!t) return '08:00';
-          return t.substring(0, 5);
-        }).sort();
-        isPresent = true;
-      } else {
-        // Decide worked days to match days_worked count
-        const indicesToWork: number[] = [];
-        for (let i = 0; i < dates.length; i++) {
-          const dObj = new Date(dates[i]);
-          if (dObj.getDay() !== 0) {
-            indicesToWork.push(i);
-          }
-        }
-        if (indicesToWork.length < pay.days_worked) {
-          for (let i = 0; i < dates.length; i++) {
-            const dObj = new Date(dates[i]);
-            if (dObj.getDay() === 0 && !indicesToWork.includes(i)) {
-              indicesToWork.push(i);
-            }
-          }
-        }
-        const workedIndices = indicesToWork.slice(0, pay.days_worked);
-        
-        if (workedIndices.includes(idx)) {
-          isPresent = true;
-          const seed = (pay.employee_id.charCodeAt(0) + idx) % 5;
-          const checkInHour = "07";
-          const checkInMin = (45 + seed * 3).toString().padStart(2, '0');
-          const checkOutHour = (16 + (seed % 2)).toString();
-          const checkOutMin = (10 + (seed * 8) % 50).toString().padStart(2, '0');
-
-          if (seed % 3 === 0) {
-            times = [`${checkInHour}:${checkInMin}`, `${checkInHour}:${checkInMin}`, `${checkOutHour}:${checkOutMin}`, `${checkOutHour}:${checkOutMin}`];
-          } else if (seed % 3 === 1) {
-            times = [`${checkInHour}:${checkInMin}`, `${checkInHour}:${checkInMin}`, `${checkOutHour}:${checkOutMin}`, `${checkOutHour}:${checkOutMin}`, `${checkOutHour}:${(Number(checkOutMin)+1).toString().padStart(2, '0')}`];
-          } else {
-            times = [`${checkInHour}:${checkInMin}`, `${checkOutHour}:${checkOutMin}`, `${checkOutHour}:${checkOutMin}`];
-          }
-        }
-      }
-
-      return {
-        dateNum,
+    const days: { dateStr: string; dateNum: number; dayLabel: string; isPresent: boolean }[] = [];
+    for (const d = new Date(`${pay.period_start}T00:00:00`); days.length < 31; d.setDate(d.getDate() + 1)) {
+      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      if (dateStr > pay.period_end) break;
+      days.push({
         dateStr,
-        times,
-        isPresent
-      };
-    });
+        dateNum: d.getDate(),
+        dayLabel: NAMA_HARI[d.getDay()],
+        isPresent: hadirDates.has(dateStr),
+      });
+    }
 
-    return logs;
+    return { days, hadirCount: days.filter(day => day.isPresent).length };
   };
 
   const formatIDRCompact = (val: number) => {
@@ -474,152 +406,218 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
   };
 
   const renderSlipGajiLayout = (pay: PayrollWeekly) => {
-    const logs = getAttendanceLogsForPayroll(pay);
+    const brand = dataStore.getBrandSettings();
     const emp = employees.find(e => e.id === pay.employee_id);
-    const rateHarian = emp?.rate_harian || (pay.days_worked > 0 ? pay.base_pay / pay.days_worked : 90000);
-    const rateLembur = emp?.rate_lembur_per_jam || 15000;
-    
-    const empAdvances = cashAdvances.filter(c => c.employee_id === pay.employee_id);
-    const totalSisaKasbon = empAdvances.reduce((sum, item) => sum + item.remaining_balance, 0);
-    const totalKasbonSebelum = totalSisaKasbon + pay.cash_advance_deduction;
+    const { days, hadirCount } = getAttendanceSummaryForPayroll(pay);
 
-    const maxRows = Math.max(...logs.map(l => l.times.length), 4);
+    const rateLembur = emp?.rate_lembur_per_jam || 0;
+    const nilaiLembur = pay.overtime_hours * rateLembur;
+    const totalPenerimaan = pay.base_pay + pay.bonus + nilaiLembur;
+
+    const empAdvances = cashAdvances.filter(c => c.employee_id === pay.employee_id);
+    const sisaKasbon = empAdvances.reduce((sum, item) => sum + item.remaining_balance, 0);
+
+    const warna = brand.primary_color || '#1F4B36';
+
+    const Baris = ({ label, qty, nilai, negatif }: { label: string; qty?: string; nilai: number; negatif?: boolean }) => (
+      <tr className="border-b border-slate-100">
+        <td className="py-1.5 pr-2">{label}</td>
+        <td className="py-1.5 px-2 text-center text-slate-500 whitespace-nowrap">{qty || ''}</td>
+        <td className="py-1.5 pl-2 text-right font-semibold tabular-nums whitespace-nowrap">
+          {negatif ? '-' : ''}{formatIDRCompact(nilai)}
+        </td>
+      </tr>
+    );
 
     return (
-      <div className="flex flex-col justify-between h-full space-y-4 font-mono select-text text-xs leading-relaxed" style={{ color: inkColor === 'blue' ? '#1E40AF' : 'black' }}>
-        
-        {/* Header Title */}
-        <div className="text-center space-y-0.5">
-          <h1 className="text-base font-black tracking-widest uppercase">SLIP GAJI</h1>
-          <p className="text-xs font-bold tracking-wider">{getPeriodMonthYear(pay.period_start)}</p>
+      <div className="bg-white text-slate-800 text-[11px] leading-relaxed flex flex-col gap-4 select-text">
+
+        {/* KOP SURAT */}
+        <div className="flex items-start justify-between gap-4 pb-3 border-b-2" style={{ borderColor: warna }}>
+          <div className="flex items-center gap-3 min-w-0">
+            {brand.logo_data_url ? (
+              <img src={brand.logo_data_url} alt="" className="w-14 h-14 object-contain shrink-0" />
+            ) : (
+              <div
+                className="w-14 h-14 shrink-0 rounded flex items-center justify-center text-white font-black text-lg"
+                style={{ backgroundColor: warna }}
+              >
+                {brandInitials(brand.company_name)}
+              </div>
+            )}
+            <div className="min-w-0">
+              <p className="font-black text-base uppercase tracking-wide truncate" style={{ color: warna }}>
+                {brand.company_name}
+              </p>
+              {brand.legal_name && brand.legal_name !== brand.company_name && (
+                <p className="text-[10px] text-slate-500 truncate">{brand.legal_name}</p>
+              )}
+              {brand.tagline && <p className="text-[10px] text-slate-400 truncate">{brand.tagline}</p>}
+            </div>
+          </div>
+
+          <div className="text-right shrink-0">
+            <p className="font-black text-sm uppercase tracking-widest" style={{ color: warna }}>Slip Gaji</p>
+            <p className="text-[10px] text-slate-500">Upah Mingguan</p>
+            <p className="text-[10px] text-slate-400 mt-1">No. {pay.id.toUpperCase()}</p>
+          </div>
         </div>
 
-        {/* Name block */}
-        <div className="flex justify-between items-end border-b border-dashed pb-1" style={{ borderColor: 'currentColor' }}>
-          <div>
-            <span className="font-bold">Nama:</span> <span className="font-black text-sm uppercase">{pay.employee_name}</span>
+        {/* IDENTITAS & PERIODE */}
+        <div className="grid grid-cols-2 gap-x-6 gap-y-1">
+          <div className="space-y-1">
+            <div className="flex gap-2">
+              <span className="w-20 shrink-0 text-slate-500">Nama</span>
+              <span className="font-bold uppercase">: {pay.employee_name}</span>
+            </div>
+            <div className="flex gap-2">
+              <span className="w-20 shrink-0 text-slate-500">Divisi</span>
+              <span className="font-semibold">: {getDeptName(pay.employee_id)}</span>
+            </div>
           </div>
-          <div className="text-[9px] opacity-75">
-            ID: {pay.id.toUpperCase()} | {getDeptName(pay.employee_id)}
+          <div className="space-y-1">
+            <div className="flex gap-2">
+              <span className="w-20 shrink-0 text-slate-500">Periode</span>
+              <span className="font-semibold">
+                : {formatTanggalPanjang(pay.period_start)} &ndash; {formatTanggalPanjang(pay.period_end)}
+              </span>
+            </div>
+            <div className="flex gap-2">
+              <span className="w-20 shrink-0 text-slate-500">Status</span>
+              <span className="font-semibold">: {pay.payment_status === 'paid' ? 'Lunas' : 'Belum Dibayar'}</span>
+            </div>
           </div>
         </div>
 
-        {/* Attendance Grid */}
-        <div className="my-1">
-          <table className="w-full text-center border-collapse text-[10px]" style={{ borderColor: 'currentColor' }}>
+        {/* REKAP KEHADIRAN — murni dari absensi, tanpa detail jam */}
+        <div>
+          <div className="flex items-baseline justify-between mb-1">
+            <p className="font-bold text-[10px] uppercase tracking-wider text-slate-500">Rekap Kehadiran</p>
+            <p className="text-[10px] text-slate-500">
+              Hadir <span className="font-black text-slate-800">{hadirCount}</span> dari {days.length} hari
+              <span className="text-slate-400"> &middot; sumber: catatan absensi</span>
+            </p>
+          </div>
+          <table className="w-full border-collapse text-center text-[10px]">
             <thead>
-              <tr className="border-t border-b" style={{ borderColor: 'currentColor' }}>
-                {logs.map((log, i) => (
-                  <th key={i} className="py-0.5 font-bold border-l border-r" style={{ borderColor: 'currentColor', width: `${100 / logs.length}%` }}>
-                    {log.dateNum}
+              <tr className="bg-slate-50">
+                {days.map(day => (
+                  <th key={day.dateStr} className="border border-slate-200 py-0.5 font-semibold text-slate-500">
+                    <span className="block text-[8px] font-normal text-slate-400">{day.dayLabel}</span>
+                    {day.dateNum}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {[...Array(maxRows)].map((_, rowIndex) => (
-                <tr key={rowIndex} className="h-4">
-                  {logs.map((log, colIndex) => {
-                    const val = log.times[rowIndex] || "";
-                    return (
-                      <td key={colIndex} className="py-0.5 border-l border-r font-mono text-[9px]" style={{ borderColor: 'currentColor' }}>
-                        {val}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-              {/* Bottom Status Row */}
-              <tr className="border-t border-b" style={{ borderColor: 'currentColor' }}>
-                {logs.map((log, i) => (
-                  <td key={i} className="py-0.5 font-bold border-l border-r font-mono" style={{ borderColor: 'currentColor' }}>
-                    {log.isPresent ? '1' : '0'}
+              <tr>
+                {days.map(day => (
+                  <td
+                    key={day.dateStr}
+                    className={`border border-slate-200 py-1 font-black ${day.isPresent ? '' : 'text-slate-300'}`}
+                    style={day.isPresent ? { color: warna } : undefined}
+                  >
+                    {day.isPresent ? 'H' : '–'}
                   </td>
                 ))}
               </tr>
             </tbody>
           </table>
+          {hadirCount !== pay.days_worked && (
+            <p className="text-[9px] text-amber-700 mt-1">
+              Catatan: hari dibayar ({pay.days_worked}) berbeda dengan hari hadir tercatat ({hadirCount}).
+            </p>
+          )}
         </div>
 
-        {/* Financial Breakdown */}
-        <div className="grid grid-cols-12 gap-2 pt-2 border-t border-dashed" style={{ borderColor: 'currentColor' }}>
-          
-          {/* Left Rates Column */}
-          <div className="col-span-5 space-y-1 text-[10px]">
-            <div className="flex justify-between">
-              <span>Gaji</span>
-              <span className="font-bold">{formatIDRCompact(rateHarian)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Bonus</span>
-              <span className="font-bold">{formatIDRCompact(pay.bonus)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Lembur</span>
-              <span className="font-bold">{formatIDRCompact(rateLembur)}</span>
-            </div>
-            <div className="flex justify-between border-t border-dotted pt-0.5 mt-0.5" style={{ borderColor: 'currentColor' }}>
-              <span>Kasbon</span>
-              <span className="font-bold">{formatIDRCompact(totalKasbonSebelum)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>sisa</span>
-              <span className="font-bold">{formatIDRCompact(totalSisaKasbon)}</span>
-            </div>
+        {/* RINCIAN UPAH */}
+        <div className="grid grid-cols-2 gap-6">
+          <div>
+            <p className="font-bold text-[10px] uppercase tracking-wider text-slate-500 mb-1">Penerimaan</p>
+            <table className="w-full border-collapse">
+              <tbody>
+                <Baris label="Upah harian" qty={`${pay.days_worked} hari`} nilai={pay.base_pay} />
+                <Baris label="Lembur" qty={`${pay.overtime_hours} jam`} nilai={nilaiLembur} />
+                <Baris label="Bonus" nilai={pay.bonus} />
+                <tr className="border-t-2 border-slate-300">
+                  <td className="py-1.5 font-bold" colSpan={2}>Total Penerimaan</td>
+                  <td className="py-1.5 text-right font-black tabular-nums whitespace-nowrap">
+                    {formatIDRCompact(totalPenerimaan)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
 
-          {/* Spacer */}
-          <div className="col-span-1 border-r border-dashed my-0.5" style={{ borderColor: 'currentColor' }} />
-
-          {/* Right Sum Calculations Column */}
-          <div className="col-span-6 space-y-1 text-[10px] relative pl-1">
-            <div className="flex justify-between">
-              <span>Hari kerja</span>
-              <div className="flex justify-between w-24">
-                <span>{pay.days_worked}</span>
-                <span className="font-bold">{formatIDRCompact(pay.base_pay)}</span>
-              </div>
-            </div>
-            <div className="flex justify-between">
-              <span>Bonus</span>
-              <div className="flex justify-between w-24">
-                <span>{pay.bonus > 0 ? '1' : '0'}</span>
-                <span className="font-bold">{formatIDRCompact(pay.bonus)}</span>
-              </div>
-            </div>
-            <div className="flex justify-between">
-              <span>Lembur</span>
-              <div className="flex justify-between w-24">
-                <span>{pay.overtime_hours}</span>
-                <span className="font-bold">{formatIDRCompact(pay.overtime_hours * rateLembur)}</span>
-              </div>
-            </div>
-            <div className="flex justify-between text-red-800" style={{ color: inkColor === 'blue' ? '#991B1B' : 'inherit' }}>
-              <span>potongan</span>
-              <div className="flex justify-between w-24">
-                <span>-</span>
-                <span className="font-bold">-{formatIDRCompact(pay.cash_advance_deduction)}</span>
-              </div>
-            </div>
-
-            {/* Total Block */}
-            <div className="border-t-2 border-b-2 py-0.5 mt-1 flex justify-between font-black text-xs" style={{ borderColor: 'currentColor', borderStyle: 'double' }}>
-              <span>Total</span>
-              <span>{formatIDRCompact(pay.total_pay)}</span>
-            </div>
-
-            {/* Signature Placement on the bottom right */}
-            <div className="absolute -bottom-1.5 right-1 w-20 h-10 pointer-events-none opacity-85 flex flex-col items-center justify-center">
-              <svg className="w-14 h-7" viewBox="0 0 100 50" fill="none" style={{ stroke: inkColor === 'blue' ? '#1E40AF' : 'black' }}>
-                <path d="M15 35 C 25 15, 35 45, 48 20 C 62 2, 58 48, 78 28 C 88 18, 92 32, 98 22 M18 32 L85 24" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-            </div>
+          <div>
+            <p className="font-bold text-[10px] uppercase tracking-wider text-slate-500 mb-1">Potongan</p>
+            <table className="w-full border-collapse">
+              <tbody>
+                <Baris label="Angsuran kasbon" nilai={pay.cash_advance_deduction} negatif />
+                <tr className="border-b border-slate-100">
+                  <td className="py-1.5 pr-2 text-slate-500" colSpan={2}>Sisa kasbon setelah potongan</td>
+                  <td className="py-1.5 pl-2 text-right tabular-nums whitespace-nowrap text-slate-500">
+                    {formatIDRCompact(sisaKasbon)}
+                  </td>
+                </tr>
+                <tr className="border-t-2 border-slate-300">
+                  <td className="py-1.5 font-bold" colSpan={2}>Total Potongan</td>
+                  <td className="py-1.5 text-right font-black tabular-nums whitespace-nowrap">
+                    -{formatIDRCompact(pay.cash_advance_deduction)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
-
         </div>
 
+        {/* TOTAL DITERIMA */}
+        <div className="rounded-lg px-4 py-3 text-white flex items-center justify-between gap-4" style={{ backgroundColor: warna }}>
+          <div className="min-w-0">
+            <p className="text-[10px] uppercase tracking-widest opacity-80">Total Diterima</p>
+            <p className="text-[9px] italic opacity-90 capitalize truncate">{terbilang(pay.total_pay)}</p>
+          </div>
+          <p className="text-xl font-black tabular-nums whitespace-nowrap">{formatIDRCompact(pay.total_pay)}</p>
+        </div>
+
+        {/* TANDA TANGAN — sengaja kosong, diisi manual saat serah terima */}
+        <div className="grid grid-cols-2 gap-6 pt-2 text-center text-[10px]">
+          <div>
+            <p className="text-slate-500">Diterima oleh,</p>
+            <div className="h-14 border-b border-slate-300 mx-6" />
+            <p className="mt-1 font-semibold uppercase">{pay.employee_name}</p>
+            <p className="text-slate-400">Karyawan</p>
+          </div>
+          <div>
+            <p className="text-slate-500">Dibayarkan oleh,</p>
+            <div className="h-14 border-b border-slate-300 mx-6" />
+            <p className="mt-1 font-semibold uppercase">&nbsp;</p>
+            <p className="text-slate-400">Bagian Keuangan</p>
+          </div>
+        </div>
+
+        <p className="text-[9px] text-slate-400 text-center border-t border-slate-100 pt-2">
+          Dokumen ini diterbitkan oleh sistem {brand.company_name}. Simpan sebagai bukti pembayaran upah.
+        </p>
       </div>
     );
+  };
+
+  /**
+   * Ukuran @page global masih continuous form (dipakai faktur & order dot matrix).
+   * Slip gaji dicetak di A4, jadi aturannya ditimpa sementara lewat <style> yang
+   * disisipkan terakhir, lalu dibuang lagi setelah dialog cetak selesai.
+   */
+  const withA4PageSize = (cetak: () => void) => {
+    const style = document.createElement('style');
+    style.textContent = '@media print { @page { size: A4 portrait; margin: 15mm; } }';
+    document.head.appendChild(style);
+    const bersihkan = () => {
+      style.remove();
+      window.removeEventListener('afterprint', bersihkan);
+    };
+    window.addEventListener('afterprint', bersihkan);
+    cetak();
   };
 
   const triggerSystemPrintPayroll = (pay: PayrollWeekly) => {
@@ -634,9 +632,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     setPayrolls(updatedPayrolls);
 
     setActivePrintPayroll(pay);
-    setTimeout(() => {
-      window.print();
-    }, 150);
+    setTimeout(() => withA4PageSize(() => window.print()), 150);
   };
 
   const formatIDR = (val: number) => {
@@ -849,9 +845,9 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                 {/* Modal Header Toolbar */}
                 <div className="bg-slate-50 border-b border-slate-100 p-4 sm:px-6 flex flex-wrap items-center justify-between gap-4">
                   <div className="flex items-center gap-2">
-                    <div className="w-2.5 h-2.5 bg-pink-500 rounded-full animate-pulse" />
+                    <div className="w-2.5 h-2.5 bg-emerald-600 rounded-full animate-pulse" />
                     <span className="font-bold text-xs sm:text-sm text-slate-800 uppercase tracking-wider">
-                      Live Preview Cetak Slip Gaji (Continuous Form 2-Lapis)
+                      Pratinjau Slip Gaji (A4)
                     </span>
                   </div>
                   
@@ -864,7 +860,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                     </button>
                     <button
                       onClick={() => triggerSystemPrintPayroll(previewPayroll)}
-                      className="bg-pink-700 text-white px-4 py-1.5 rounded-lg text-xs font-semibold hover:bg-pink-800 transition-all flex items-center gap-1.5 shadow-md"
+                      className="bg-emerald-800 text-white px-4 py-1.5 rounded-lg text-xs font-semibold hover:bg-emerald-900 transition-all flex items-center gap-1.5 shadow-md"
                     >
                       <Printer className="w-3.5 h-3.5" />
                       Cetak Sekarang
@@ -872,143 +868,17 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                   </div>
                 </div>
 
-                {/* Modal Configuration / Calibration Panel */}
-                <div className="bg-slate-100/50 border-b border-slate-200 p-4 sm:px-6 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs font-sans">
-                  {/* Paper Customization */}
-                  <div className="space-y-1.5">
-                    <span className="font-semibold text-slate-500 block uppercase text-[10px]">Pilihan Kertas &amp; Tinta</span>
-                    <div className="flex gap-2">
-                      <div className="flex items-center gap-1">
-                        <span className="text-slate-600 text-[10px]">Kertas:</span>
-                        <button
-                          onClick={() => setPaperColor('white')}
-                          className={`px-2 py-1 rounded border text-[10px] font-semibold ${paperColor === 'white' ? 'bg-white border-slate-400 text-slate-800' : 'bg-slate-200/50 border-transparent text-slate-500'}`}
-                        >
-                          Putih
-                        </button>
-                        <button
-                          onClick={() => setPaperColor('pink')}
-                          className={`px-2 py-1 rounded border text-[10px] font-semibold ${paperColor === 'pink' ? 'bg-pink-100 border-pink-400 text-pink-800' : 'bg-slate-200/50 border-transparent text-slate-500'}`}
-                        >
-                          Pink
-                        </button>
-                      </div>
-                      <div className="flex items-center gap-1 ml-auto">
-                        <span className="text-slate-600 text-[10px]">Tinta:</span>
-                        <button
-                          onClick={() => setInkColor('charcoal')}
-                          className={`px-2 py-1 rounded border text-[10px] font-semibold ${inkColor === 'charcoal' ? 'bg-slate-800 border-slate-900 text-white' : 'bg-slate-200/50 border-transparent text-slate-500'}`}
-                        >
-                          Hitam
-                        </button>
-                        <button
-                          onClick={() => setInkColor('blue')}
-                          className={`px-2 py-1 rounded border text-[10px] font-semibold ${inkColor === 'blue' ? 'bg-blue-800 border-blue-900 text-white' : 'bg-slate-200/50 border-transparent text-slate-500'}`}
-                        >
-                          Biru
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Calibration Controls */}
-                  <div className="md:col-span-2 grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <div className="flex justify-between items-center">
-                        <span className="font-semibold text-slate-500 uppercase text-[10px]">Geser Horisontal (X)</span>
-                        <span className="font-mono text-slate-700 font-bold text-[10px]">{calibration.offset_x} mm</span>
-                      </div>
-                      <input
-                        type="range"
-                        min="-30"
-                        max="30"
-                        value={calibration.offset_x}
-                        onChange={(e) => {
-                          const newX = Number(e.target.value);
-                          const updated = { ...calibration, offset_x: newX };
-                          setCalibration(updated);
-                          dataStore.setCalibration(updated);
-                        }}
-                        className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-pink-700"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <div className="flex justify-between items-center">
-                        <span className="font-semibold text-slate-500 uppercase text-[10px]">Geser Vertikal (Y)</span>
-                        <span className="font-mono text-slate-700 font-bold text-[10px]">{calibration.offset_y} mm</span>
-                      </div>
-                      <input
-                        type="range"
-                        min="-30"
-                        max="30"
-                        value={calibration.offset_y}
-                        onChange={(e) => {
-                          const newY = Number(e.target.value);
-                          const updated = { ...calibration, offset_y: newY };
-                          setCalibration(updated);
-                          dataStore.setCalibration(updated);
-                        }}
-                        className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-pink-700"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Virtual Continuous Form Paper Area */}
-                <div className="p-4 sm:p-6 bg-slate-200 max-h-[60dvh] overflow-auto overscroll-contain flex justify-center">
-                  
-                  {/* Virtual Continuous Form Container */}
-                  <div 
-                    style={{
-                      backgroundColor: paperColor === 'pink' ? '#FCE7F3' : '#FCFCFA',
-                      color: inkColor === 'blue' ? '#1E40AF' : '#1E293B',
-                      borderColor: inkColor === 'blue' ? '#3B82F6' : '#94A3B8',
-                      fontFamily: 'Courier, monospace',
-                      transform: `translate(${calibration.offset_x}px, ${calibration.offset_y}px)`,
-                    }}
-                    className="w-[210mm] min-w-[700px] h-[140mm] min-h-[440px] shadow-lg rounded-xs relative flex flex-row border border-dashed transition-all"
-                  >
-                    {/* Left Tractor Feed Margin with Holes */}
-                    <div 
-                      className="w-8 flex flex-col justify-between items-center py-4 select-none"
-                      style={{
-                        borderRight: `1px dashed ${inkColor === 'blue' ? '#93C5FD' : '#CBD5E1'}`,
-                      }}
-                    >
-                      {[...Array(9)].map((_, i) => (
-                        <div key={i} className="w-3.5 h-3.5 rounded-full bg-slate-300 border border-slate-400/40 shadow-inner flex items-center justify-center text-[5px] text-slate-400 font-sans">
-                          ○
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Main Content Pane */}
-                    <div className="flex-1 p-6 relative flex flex-col justify-between select-text text-xs leading-relaxed">
-                      {renderSlipGajiLayout(previewPayroll)}
-                    </div>
-
-                    {/* Right Tractor Feed Margin with Holes */}
-                    <div 
-                      className="w-8 flex flex-col justify-between items-center py-4 select-none"
-                      style={{
-                        borderLeft: `1px dashed ${inkColor === 'blue' ? '#93C5FD' : '#CBD5E1'}`,
-                      }}
-                    >
-                      {[...Array(9)].map((_, i) => (
-                        <div key={i} className="w-3.5 h-3.5 rounded-full bg-slate-300 border border-slate-400/40 shadow-inner flex items-center justify-center text-[5px] text-slate-400 font-sans">
-                          ○
-                        </div>
-                      ))}
-                    </div>
-
+                {/* Lembar A4 */}
+                <div className="p-4 sm:p-6 bg-slate-200 max-h-[65dvh] overflow-auto overscroll-contain flex justify-center">
+                  <div className="w-[210mm] min-w-[640px] min-h-[297mm] bg-white shadow-lg p-[15mm] box-border">
+                    {renderSlipGajiLayout(previewPayroll)}
                   </div>
                 </div>
 
                 {/* Modal Bottom Information */}
                 <div className="bg-slate-50 p-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between text-[11px] text-slate-500 gap-2 font-sans">
-                  <span>● Slip Gaji 2-lapis dicetak menggunakan Continuous Form (lembar 1 putih, lembar 2 pink).</span>
-                  <span className="font-semibold text-slate-700">Gunakan browser print (Ctrl+P) untuk konfigurasi layout kertas printer.</span>
+                  <span>● Slip gaji dicetak pada kertas A4 biasa (printer inkjet/laser) atau disimpan sebagai PDF.</span>
+                  <span className="font-semibold text-slate-700">Pilih &quot;Save as PDF&quot; di dialog cetak bila ingin dikirim ke karyawan.</span>
                 </div>
 
               </div>
@@ -1017,15 +887,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
 
           {/* 2. Print-Only Container */}
           {activePrintPayroll && (
-            <div className="print-only" style={{
-              transform: `translate(${calibration.offset_x}mm, ${calibration.offset_y}mm)`,
-              fontFamily: 'Courier, monospace',
-              color: 'black',
-              width: '210mm',
-              height: '140mm',
-              padding: '10mm',
-              boxSizing: 'border-box'
-            }}>
+            <div className="print-only slip-print-page" style={{ width: '180mm', boxSizing: 'border-box' }}>
               {renderSlipGajiLayout(activePrintPayroll)}
             </div>
           )}
@@ -1225,17 +1087,9 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
           <div className="p-4 bg-emerald-50/40 border-b border-emerald-800/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h3 className="font-bold text-xs text-emerald-950 uppercase tracking-wide">Buku Register Slip Gaji Mingguan</h3>
-              <p className="text-[10px] text-emerald-800/70">Daftar slip gaji terdaftar, siap dicetak menggunakan continuous form (dot matrix)</p>
+              <p className="text-[10px] text-emerald-800/70">Daftar slip gaji terdaftar, siap dicetak pada kertas A4 atau disimpan sebagai PDF</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setIsSettingsOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold shadow-xs transition-all cursor-pointer"
-              >
-                <Sliders className="w-3.5 h-3.5 text-slate-500" />
-                <span>Kalibrasi Cetak</span>
-              </button>
               <button
                 type="button"
                 onClick={handleExportPayrollExcel}
@@ -1598,9 +1452,9 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
             {/* Modal Header Toolbar */}
             <div className="bg-slate-50 border-b border-slate-100 p-4 sm:px-6 flex flex-wrap items-center justify-between gap-4">
               <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 bg-pink-500 rounded-full animate-pulse" />
+                <div className="w-2.5 h-2.5 bg-emerald-600 rounded-full animate-pulse" />
                 <span className="font-bold text-xs sm:text-sm text-slate-800 uppercase tracking-wider">
-                  Live Preview Cetak Slip Gaji (Continuous Form 2-Lapis)
+                  Pratinjau Slip Gaji (A4)
                 </span>
               </div>
               
@@ -1613,7 +1467,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                 </button>
                 <button
                   onClick={() => triggerSystemPrintPayroll(previewPayroll)}
-                  className="bg-pink-700 text-white px-4 py-1.5 rounded-lg text-xs font-semibold hover:bg-pink-800 transition-all flex items-center gap-1.5 shadow-md"
+                  className="bg-emerald-800 text-white px-4 py-1.5 rounded-lg text-xs font-semibold hover:bg-emerald-900 transition-all flex items-center gap-1.5 shadow-md"
                 >
                   <Printer className="w-3.5 h-3.5" />
                   Cetak Sekarang
@@ -1621,144 +1475,17 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
               </div>
             </div>
 
-            {/* Modal Configuration / Calibration Panel */}
-            <div className="bg-slate-100/50 border-b border-slate-200 p-4 sm:px-6 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-              {/* Paper Customization */}
-              <div className="space-y-1.5">
-                <span className="font-semibold text-slate-500 block uppercase text-[10px]">Pilihan Kertas & Tinta</span>
-                <div className="flex gap-2">
-                  <div className="flex items-center gap-1">
-                    <span className="text-slate-600 text-[10px]">Kertas:</span>
-                    <button
-                      onClick={() => setPaperColor('white')}
-                      className={`px-2 py-1 rounded border text-[10px] font-semibold ${paperColor === 'white' ? 'bg-white border-slate-400 text-slate-800' : 'bg-slate-200/50 border-transparent text-slate-500'}`}
-                    >
-                      Putih
-                    </button>
-                    <button
-                      onClick={() => setPaperColor('pink')}
-                      className={`px-2 py-1 rounded border text-[10px] font-semibold ${paperColor === 'pink' ? 'bg-pink-100 border-pink-400 text-pink-800' : 'bg-slate-200/50 border-transparent text-slate-500'}`}
-                    >
-                      Pink
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-1 ml-auto">
-                    <span className="text-slate-600 text-[10px]">Tinta:</span>
-                    <button
-                      onClick={() => setInkColor('charcoal')}
-                      className={`px-2 py-1 rounded border text-[10px] font-semibold ${inkColor === 'charcoal' ? 'bg-slate-800 border-slate-900 text-white' : 'bg-slate-200/50 border-transparent text-slate-500'}`}
-                    >
-                      Hitam
-                    </button>
-                    <button
-                      onClick={() => setInkColor('blue')}
-                      className={`px-2 py-1 rounded border text-[10px] font-semibold ${inkColor === 'blue' ? 'bg-blue-800 border-blue-900 text-white' : 'bg-slate-200/50 border-transparent text-slate-500'}`}
-                    >
-                      Biru
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Calibration Controls */}
-              <div className="md:col-span-2 grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <div className="flex justify-between items-center">
-                    <span className="font-semibold text-slate-500 uppercase text-[10px]">Geser Horisontal (X)</span>
-                    <span className="font-mono text-slate-700 font-bold text-[10px]">{calibration.offset_x} mm</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="-30"
-                    max="30"
-                    value={calibration.offset_x}
-                    onChange={(e) => {
-                      const newX = Number(e.target.value);
-                      const updated = { ...calibration, offset_x: newX };
-                      setCalibration(updated);
-                      dataStore.setCalibration(updated);
-                    }}
-                    className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-pink-700"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <div className="flex justify-between items-center">
-                    <span className="font-semibold text-slate-500 uppercase text-[10px]">Geser Vertikal (Y)</span>
-                    <span className="font-mono text-slate-700 font-bold text-[10px]">{calibration.offset_y} mm</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="-30"
-                    max="30"
-                    value={calibration.offset_y}
-                    onChange={(e) => {
-                      const newY = Number(e.target.value);
-                      const updated = { ...calibration, offset_y: newY };
-                      setCalibration(updated);
-                      dataStore.setCalibration(updated);
-                    }}
-                    className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-pink-700"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Virtual Continuous Form Paper Area */}
-            <div className="p-4 sm:p-6 bg-slate-200 max-h-[60dvh] overflow-auto overscroll-contain flex justify-center">
-              
-              {/* Virtual Continuous Form Container */}
-              <div 
-                style={{
-                  backgroundColor: paperColor === 'pink' ? '#FCE7F3' : '#FCFCFA',
-                  color: inkColor === 'blue' ? '#1E40AF' : '#1E293B',
-                  borderColor: inkColor === 'blue' ? '#3B82F6' : '#94A3B8',
-                  fontFamily: 'Courier, monospace',
-                  transform: `translate(${calibration.offset_x}px, ${calibration.offset_y}px)`,
-                }}
-                className="w-[210mm] min-w-[700px] h-[140mm] min-h-[440px] shadow-lg rounded-xs relative flex flex-row border border-dashed transition-all"
-              >
-                
-                {/* Left Tractor Feed Margin with Holes */}
-                <div 
-                  className="w-8 flex flex-col justify-between items-center py-4 select-none"
-                  style={{
-                    borderRight: `1px dashed ${inkColor === 'blue' ? '#93C5FD' : '#CBD5E1'}`,
-                  }}
-                >
-                  {[...Array(9)].map((_, i) => (
-                    <div key={i} className="w-3.5 h-3.5 rounded-full bg-slate-300 border border-slate-400/40 shadow-inner flex items-center justify-center text-[5px] text-slate-400 font-sans">
-                      ○
-                    </div>
-                  ))}
-                </div>
-
-                {/* Main Content Pane */}
-                <div className="flex-1 p-6 relative flex flex-col justify-between select-text text-xs leading-relaxed">
-                  {renderSlipGajiLayout(previewPayroll)}
-                </div>
-
-                {/* Right Tractor Feed Margin with Holes */}
-                <div 
-                  className="w-8 flex flex-col justify-between items-center py-4 select-none"
-                  style={{
-                    borderLeft: `1px dashed ${inkColor === 'blue' ? '#93C5FD' : '#CBD5E1'}`,
-                  }}
-                >
-                  {[...Array(9)].map((_, i) => (
-                    <div key={i} className="w-3.5 h-3.5 rounded-full bg-slate-300 border border-slate-400/40 shadow-inner flex items-center justify-center text-[5px] text-slate-400 font-sans">
-                      ○
-                    </div>
-                  ))}
-                </div>
-
+            {/* Lembar A4 */}
+            <div className="p-4 sm:p-6 bg-slate-200 max-h-[65dvh] overflow-auto overscroll-contain flex justify-center">
+              <div className="w-[210mm] min-w-[640px] min-h-[297mm] bg-white shadow-lg p-[15mm] box-border">
+                {renderSlipGajiLayout(previewPayroll)}
               </div>
             </div>
 
             {/* Modal Bottom Information */}
             <div className="bg-slate-50 p-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between text-[11px] text-slate-500 gap-2">
-              <span>● Slip Gaji 2-lapis dicetak menggunakan Continuous Form (lembar 1 putih, lembar 2 pink).</span>
-              <span className="font-semibold text-slate-700">Gunakan browser print (Ctrl+P) untuk konfigurasi layout kertas printer.</span>
+              <span>● Slip gaji dicetak pada kertas A4 biasa (printer inkjet/laser) atau disimpan sebagai PDF.</span>
+              <span className="font-semibold text-slate-700">Pilih &quot;Save as PDF&quot; di dialog cetak bila ingin dikirim ke karyawan.</span>
             </div>
 
           </div>
@@ -2065,111 +1792,8 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
         </div>
       )}
 
-      {/* CALIBRATION SETTINGS MODAL */}
-      {isSettingsOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 no-print animate-fade-in overflow-y-auto overscroll-contain">
-          <div className="bg-white rounded-2xl w-full max-w-md border border-slate-300 overflow-hidden shadow-2xl animate-scale-up my-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="bg-emerald-800 px-6 py-4 flex items-center justify-between text-white">
-              <h3 className="font-bold text-sm flex items-center gap-2 uppercase tracking-wide">
-                <Sliders className="w-4 h-4 text-slate-100 animate-pulse" /> Kalibrasi Cetak Dot Matrix
-              </h3>
-              <button 
-                type="button"
-                onClick={() => setIsSettingsOpen(false)} 
-                className="text-white/80 hover:text-white hover:bg-white/10 p-1.5 rounded-full transition-all cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleUpdateCalibration} className="p-6 space-y-5 text-xs text-left">
-              <p className="text-[11px] text-gray-500 leading-relaxed">
-                Atur offset pergeseran cetak dalam milimeter (mm) untuk printer continuous form (dot matrix). Pengaturan ini disimpan secara lokal di browser Anda.
-              </p>
-
-              <div className="space-y-4">
-                <div className="space-y-1">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="font-bold text-gray-700 uppercase tracking-wider text-[10px]">Geser X (Kanan/Kiri)</span>
-                    <span className="font-mono text-emerald-800 font-extrabold text-sm">{calibration.offset_x} mm</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="-30"
-                    max="30"
-                    value={calibration.offset_x}
-                    onChange={(e) => {
-                      const newX = Number(e.target.value);
-                      const updated = { ...calibration, offset_x: newX };
-                      setCalibration(updated);
-                      dataStore.setCalibration(updated);
-                    }}
-                    className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-800"
-                  />
-                  <div className="flex justify-between text-[9px] text-gray-400 font-mono">
-                    <span>-30 mm (Kiri)</span>
-                    <span>0 mm (Normal)</span>
-                    <span>+30 mm (Kanan)</span>
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="font-bold text-gray-700 uppercase tracking-wider text-[10px]">Geser Y (Atas/Bawah)</span>
-                    <span className="font-mono text-emerald-800 font-extrabold text-sm">{calibration.offset_y} mm</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="-30"
-                    max="30"
-                    value={calibration.offset_y}
-                    onChange={(e) => {
-                      const newY = Number(e.target.value);
-                      const updated = { ...calibration, offset_y: newY };
-                      setCalibration(updated);
-                      dataStore.setCalibration(updated);
-                    }}
-                    className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-800"
-                  />
-                  <div className="flex justify-between text-[9px] text-gray-400 font-mono">
-                    <span>-30 mm (Atas)</span>
-                    <span>0 mm (Normal)</span>
-                    <span>+30 mm (Bawah)</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setIsSettingsOpen(false)}
-                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-lg transition-colors cursor-pointer text-xs"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-emerald-800 hover:bg-emerald-900 text-white font-bold rounded-lg transition-colors shadow-sm cursor-pointer text-xs"
-                >
-                  Terapkan Offset
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* 2. Print-Only Container (Identical layout to images, triggered on system print) */}
       {activePrintPayroll && (
-        <div className="print-only" style={{
-          transform: `translate(${calibration.offset_x}mm, ${calibration.offset_y}mm)`,
-          fontFamily: 'Courier, monospace',
-          color: 'black',
-          width: '210mm',
-          height: '140mm',
-          padding: '10mm',
-          boxSizing: 'border-box'
-        }}>
+        <div className="print-only slip-print-page" style={{ width: '180mm', boxSizing: 'border-box' }}>
           {renderSlipGajiLayout(activePrintPayroll)}
         </div>
       )}
