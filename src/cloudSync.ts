@@ -270,6 +270,23 @@ export const clearAttendanceInCloud = (): void => {
   });
 };
 
+/**
+ * Ambil SEMUA baris tabel per-baris. Supabase/PostgREST membatasi 1000 baris per
+ * request, jadi tarik bertahap sampai habis — tanpa ini absensi lama/baru bisa
+ * "hilang" begitu jumlah baris melewati 1000.
+ */
+const fetchAllRows = async (table: string): Promise<{ id: string; value: unknown }[]> => {
+  const PAGE = 1000;
+  const all: { id: string; value: unknown }[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await client!.from(table).select('id, value').range(from, from + PAGE - 1);
+    if (error) throw error;
+    all.push(...((data || []) as { id: string; value: unknown }[]));
+    if (!data || data.length < PAGE) break;
+  }
+  return all;
+};
+
 const sortAttendance = (rows: AttendanceRecordLike[]) =>
   rows.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
 
@@ -316,9 +333,8 @@ export const initCloudSync = async (): Promise<void> => {
     // Absensi: tarik semua baris dari cloud, gabung dengan lokal berdasarkan id,
     // lalu push balik scan yang hanya ada di lokal (mis. direkam saat offline).
     try {
-      const { data: attRows, error: attErr } = await client.from(ATT_TABLE).select('id, value');
-      if (attErr) throw attErr;
-      const cloudRecs = (attRows || [])
+      const attRows = await fetchAllRows(ATT_TABLE);
+      const cloudRecs = attRows
         .map(r => r.value as AttendanceRecordLike)
         .filter(r => r && r.id);
       const cloudIds = new Set(cloudRecs.map(r => r.id));
@@ -337,9 +353,8 @@ export const initCloudSync = async (): Promise<void> => {
     // langsung ke database dan tidak bisa "hilang kembali ke data awal".
     for (const cfg of PER_ROW) {
       try {
-        const { data: rows, error: rowErr } = await client.from(cfg.table).select('id, value');
-        if (rowErr) throw rowErr;
-        const cloudRows = (rows || [])
+        const rows = await fetchAllRows(cfg.table);
+        const cloudRows = rows
           .map(r => r.value as RowLike)
           .filter(r => r && r.id);
         cfg.ready = true;
