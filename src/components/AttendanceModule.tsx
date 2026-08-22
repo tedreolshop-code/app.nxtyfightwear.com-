@@ -218,6 +218,10 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
   const [selectedEmpId, setSelectedEmpId] = useState('');
   const [pin, setPin] = useState('');
   const [earlyLeaveReason, setEarlyLeaveReason] = useState('');
+  // Alasan pulang cepat: satu ketukan, bukan mengetik sambil diantre
+  const EARLY_LEAVE_CHOICES = ['Sakit', 'Izin keluarga', 'Urusan kantor', 'Lainnya'];
+  const [earlyLeaveChoice, setEarlyLeaveChoice] = useState('');
+  const [rejectOverlay, setRejectOverlay] = useState<{ judul: string; pesan: string } | null>(null);
   const [scanType, setScanType] = useState<AttendanceType>('masuk');
   
   // Status pembacaan GPS saat kirim scan
@@ -319,6 +323,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
     const effectiveScanType = inferEmployeeScanType(emp.id);
     if (!effectiveScanType) {
       setStatusMessage({ text: 'Absensi hari ini sudah lengkap: masuk dan pulang sudah tercatat.', error: true });
+      setRejectOverlay({ judul: 'SUDAH LENGKAP', pesan: 'Absen masuk dan pulang Anda hari ini sudah tercatat. Tidak perlu scan lagi.' });
       return;
     }
 
@@ -348,8 +353,8 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
     }
 
     // Pulang cepat (>= full_day_from tapi sebelum end_time) tetap 1 hari, tapi wajib beralasan
-    if (effectiveScanType === 'pulang' && needsEarlyLeaveReason && !earlyLeaveReason.trim()) {
-      setStatusMessage({ text: `Pulang sebelum ${workSettings.end_time} tetap dihitung 1 hari kerja, tapi alasannya wajib diisi.`, error: true });
+    if (effectiveScanType === 'pulang' && needsEarlyLeaveReason && !finalEarlyLeaveReason) {
+      setStatusMessage({ text: `Pulang sebelum ${workSettings.end_time} tetap dihitung 1 hari kerja, tapi alasannya wajib dipilih.`, error: true });
       return;
     }
 
@@ -372,7 +377,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
             device_token: deviceToken!,
             note: `Kiosk Terminal Scan (GPS perangkat, akurasi ±${Math.round(pos.coords.accuracy)} m)`,
             verification_method: 'gps_self',
-            early_leave_reason: earlyLeaveReason.trim() || undefined
+            early_leave_reason: finalEarlyLeaveReason || undefined
           });
 
           // Launch Big Success Overlay (Auto disappears in 3 seconds)
@@ -389,6 +394,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
           // Clear states for next check-in (portal karyawan tetap terkunci ke dirinya)
           setPin('');
           setEarlyLeaveReason('');
+          setEarlyLeaveChoice('');
           setLocationVerified(false);
           setSelectedEmpId(lockedEmployee ? lockedEmployee.id : '');
           loadData();
@@ -398,7 +404,9 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
             setSuccessOverlay(null);
           }, 3500);
         } catch (err: any) {
-          setStatusMessage({ text: err.message || 'Gagal menyimpan absensi.', error: true });
+          const pesan = err.message || 'Gagal menyimpan absensi.';
+          setStatusMessage({ text: pesan, error: true });
+          setRejectOverlay({ judul: 'ABSENSI DITOLAK', pesan });
         } finally {
           setIsScanning(false);
         }
@@ -507,6 +515,8 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
     automaticScanType === 'pulang' &&
     wibNowISO().slice(11, 16) >= workSettings.full_day_from &&
     wibNowISO().slice(11, 16) < workSettings.end_time;
+  const finalEarlyLeaveReason =
+    earlyLeaveChoice === 'Lainnya' ? earlyLeaveReason.trim() : earlyLeaveChoice;
   const departmentLabel = (departmentId: string) => departmentId === 'dept-eva-foam' ? 'Eva Foam' : departmentId === 'dept-konveksi' ? 'Konveksi' : departmentId;
 
   const todayWib = wibNowISO().slice(0, 10);
@@ -725,6 +735,31 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
             </div>
             <div><label className="text-xs font-bold text-gray-700">Alasan bantuan</label><textarea value={assistanceReason} onChange={e => setAssistanceReason(e.target.value)} rows={2} className="mt-1 w-full border border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:border-emerald-600" /></div>
             <button type="button" disabled={!assistedEmployee || !assistanceReason.trim() || !assistingAdmin} onClick={submitAssistedAttendance} className="w-full py-3 rounded-xl bg-[var(--color-evergreen)] disabled:bg-gray-300 text-white text-xs font-black uppercase cursor-pointer disabled:cursor-not-allowed">Konfirmasi Absensi Dibantu Admin</button>
+          </div>
+        </div>
+      )}
+
+      {/* Penolakan tampil sebesar keberhasilan — teks merah kecil tidak pernah dibaca saat antre */}
+      {rejectOverlay && (
+        <div className="fixed inset-0 bg-[#2b0d0d]/85 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-fade-in no-print">
+          <div className="bg-white rounded-3xl p-8 max-w-md w-full border border-rose-500/30 text-center space-y-6 shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 inset-x-0 h-2 bg-rose-600" />
+            <div className="mx-auto w-16 h-16 rounded-full bg-rose-50 flex items-center justify-center text-rose-600">
+              <AlertTriangle className="w-8 h-8" />
+            </div>
+            <div className="space-y-2">
+              <span className="text-[10px] uppercase font-black tracking-widest text-rose-600 bg-rose-50 px-3 py-1 rounded-full">
+                {rejectOverlay.judul}
+              </span>
+              <p className="text-sm font-bold text-gray-900 leading-relaxed">{rejectOverlay.pesan}</p>
+            </div>
+            <p className="text-xs text-gray-500">Absensi Anda TIDAK tercatat. Temui admin bila keadaannya memang begitu.</p>
+            <button
+              onClick={() => setRejectOverlay(null)}
+              className="w-full bg-rose-600 text-white text-xs py-3 rounded-xl font-black uppercase tracking-wider cursor-pointer hover:bg-rose-700"
+            >
+              Mengerti
+            </button>
           </div>
         </div>
       )}
@@ -1033,15 +1068,33 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                 {needsEarlyLeaveReason && (
                   <div className="bg-amber-950/40 border border-amber-900/40 rounded-xl p-2.5 space-y-1.5">
                     <p className="text-[10px] font-bold text-amber-300 leading-tight">
-                      Pulang sebelum {workSettings.end_time} tetap dihitung 1 hari kerja. Alasan wajib diisi.
+                      Pulang sebelum {workSettings.end_time} tetap dihitung 1 hari kerja. Alasan wajib dipilih.
                     </p>
-                    <textarea
-                      value={earlyLeaveReason}
-                      onChange={e => setEarlyLeaveReason(e.target.value)}
-                      rows={2}
-                      placeholder="Contoh: izin ke klinik, dipanggil pulang keluarga"
-                      className="w-full bg-[#122f21]/60 border border-amber-900/30 rounded-lg p-2 text-[11px] text-emerald-50 placeholder:text-emerald-200/30 focus:outline-none"
-                    />
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {EARLY_LEAVE_CHOICES.map(pilihan => (
+                        <button
+                          key={pilihan}
+                          type="button"
+                          onClick={() => { setEarlyLeaveChoice(pilihan); if (pilihan !== 'Lainnya') setEarlyLeaveReason(''); }}
+                          className={`py-2 rounded-lg text-[11px] font-bold border cursor-pointer transition-all ${
+                            earlyLeaveChoice === pilihan
+                              ? 'bg-amber-500 text-slate-950 border-amber-400'
+                              : 'bg-[#122f21]/60 text-amber-200/80 border-amber-900/30 hover:bg-[#163a29]'
+                          }`}
+                        >
+                          {pilihan}
+                        </button>
+                      ))}
+                    </div>
+                    {earlyLeaveChoice === 'Lainnya' && (
+                      <textarea
+                        value={earlyLeaveReason}
+                        onChange={e => setEarlyLeaveReason(e.target.value)}
+                        rows={2}
+                        placeholder="Tulis alasannya"
+                        className="w-full bg-[#122f21]/60 border border-amber-900/30 rounded-lg p-2 text-[11px] text-emerald-50 placeholder:text-emerald-200/30 focus:outline-none"
+                      />
+                    )}
                   </div>
                 )}
 
@@ -1049,9 +1102,9 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                 <button
                   type="button"
                   onClick={() => handleAttendanceSubmit()}
-                  disabled={!selectedEmpId || !automaticScanType || (!!lockedEmployee && !locationVerified) || (!lockedEmployee && pin.length < 4) || isScanning || (needsEarlyLeaveReason && !earlyLeaveReason.trim())}
+                  disabled={!selectedEmpId || !automaticScanType || (!!lockedEmployee && !locationVerified) || (!lockedEmployee && pin.length < 4) || isScanning || (needsEarlyLeaveReason && !finalEarlyLeaveReason)}
                   className={`w-full py-3.5 rounded-xl text-xs uppercase font-extrabold tracking-widest flex items-center justify-center gap-2 border transition-all ${
-                    (!selectedEmpId || !automaticScanType || (!!lockedEmployee && !locationVerified) || (!lockedEmployee && pin.length < 4) || isScanning || (needsEarlyLeaveReason && !earlyLeaveReason.trim()))
+                    (!selectedEmpId || !automaticScanType || (!!lockedEmployee && !locationVerified) || (!lockedEmployee && pin.length < 4) || isScanning || (needsEarlyLeaveReason && !finalEarlyLeaveReason))
                       ? 'bg-emerald-950/60 border-emerald-900/40 text-emerald-200/30 cursor-not-allowed'
                       : 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-transparent shadow-md active:scale-[0.98] cursor-pointer'
                   }`}
