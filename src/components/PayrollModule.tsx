@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Employee, PayrollWeekly, CashAdvance, Attendance, AttendanceAdjustment, CashAdvanceTransaction, divisionLabel, terbilang } from '../types';
-import { dataStore, wibNowISO } from '../dataStore';
+import { dataStore, wibNowISO, dayFraction } from '../dataStore';
 import { brandName, brandLegalName, brandInitials } from '../brand';
 import { exportExcel } from '../exportExcel';
 import { Printer, Landmark, DollarSign, Plus, CheckCircle2, Sliders, History, Trash2, X, Calculator, Edit2, FileSpreadsheet, Wallet, Award } from 'lucide-react';
@@ -116,10 +116,8 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
       });
 
       const uniqueDates = new Set(empAtt.map(a => a.timestamp.split('T')[0]));
-      const dayFractions = Array.from(uniqueDates).map(date => {
-        const checkout = empAtt.find(log => log.timestamp.startsWith(date) && log.type_scan === 'pulang');
-        return checkout?.work_fraction ?? 1;
-      });
+      const dayFractions = Array.from(uniqueDates).map(date =>
+        dayFraction(empAtt.filter(log => log.timestamp.startsWith(date)), dataStore.getWorkSettings()));
       const computedDaysWorked = dayFractions.length ? dayFractions.reduce((sum, value) => sum + value, 0) : 6;
       setDaysWorked(computedDaysWorked);
 
@@ -654,10 +652,8 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
         return d >= runningPeriod.start && d <= runningPeriod.end;
       });
       const myPeriodDates = Array.from(new Set(myPeriodAtt.map(a => a.timestamp.split('T')[0])));
-      const myDayFractions = myPeriodDates.map(date => {
-        const checkout = myPeriodAtt.find(log => log.timestamp.startsWith(date) && log.type_scan === 'pulang');
-        return checkout?.work_fraction ?? 1;
-      });
+      const myDayFractions = myPeriodDates.map(date =>
+        dayFraction(myPeriodAtt.filter(log => log.timestamp.startsWith(date)), dataStore.getWorkSettings()));
       const myRunningDays = myDayFractions.reduce((sum, value) => sum + value, 0);
       const myPeriodAdjustments = adjustments.filter(item => item.employee_id === loggedEmployee.id && item.date >= runningPeriod.start && item.date <= runningPeriod.end && item.type !== 'ignored');
       const myRunningOvertimeHours = myPeriodAdjustments.filter(item => item.type === 'overtime').reduce((sum, item) => sum + (item.overtime_minutes || 0), 0) / 60;

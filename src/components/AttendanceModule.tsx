@@ -418,7 +418,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
 
   const saveWorkSettings = () => {
     if (!workSettings.start_time || !workSettings.end_time || workSettings.end_time <= workSettings.start_time) return alert('Jam kerja tidak valid.');
-    if (workSettings.half_day_max_hours <= 0) return alert('Batas setengah hari harus lebih dari nol.');
+    if (!workSettings.half_day_start || !workSettings.half_day_end || workSettings.half_day_end < workSettings.half_day_start) return alert('Jendela setengah hari tidak valid.');
     const attendanceRadius = Math.round(Number(workSettings.attendance_radius_meters) || 0);
     if (attendanceRadius < 10) return alert('Radius absensi minimal 10 meter.');
     const updatedSettings = { ...workSettings, attendance_radius_meters: attendanceRadius };
@@ -663,7 +663,8 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
             <div className="grid grid-cols-2 gap-3">
               <div><label className="text-xs font-bold">Jam Masuk</label><input type="time" value={workSettings.start_time} onChange={e => setWorkSettings({...workSettings, start_time:e.target.value})} className="w-full mt-1 border rounded-lg p-2" /></div>
               <div><label className="text-xs font-bold">Jam Pulang</label><input type="time" value={workSettings.end_time} onChange={e => setWorkSettings({...workSettings, end_time:e.target.value})} className="w-full mt-1 border rounded-lg p-2" /></div>
-              <div><label className="text-xs font-bold">Batas Setengah Hari (jam)</label><input type="number" min="1" step="0.5" value={workSettings.half_day_max_hours || ''} onChange={e => setWorkSettings({...workSettings, half_day_max_hours:Number(e.target.value)})} className="w-full mt-1 border rounded-lg p-2" /></div>
+              <div><label className="text-xs font-bold">Setengah Hari — Mulai</label><input type="time" value={workSettings.half_day_start} onChange={e => setWorkSettings({...workSettings, half_day_start:e.target.value})} className="w-full mt-1 border rounded-lg p-2" /></div>
+              <div><label className="text-xs font-bold">Setengah Hari — Sampai</label><input type="time" value={workSettings.half_day_end} onChange={e => setWorkSettings({...workSettings, half_day_end:e.target.value})} className="w-full mt-1 border rounded-lg p-2" /></div>
               <div><label className="text-xs font-bold">Radius Absensi (meter)</label><input type="number" min="10" step="5" value={workSettings.attendance_radius_meters || ''} onChange={e => setWorkSettings({...workSettings, attendance_radius_meters:Number(e.target.value)})} className="w-full mt-1 border rounded-lg p-2" /></div>
               <div><label className="text-xs font-bold">Bonus Kehadiran / Hari (bawaan)</label><input type="number" min="0" value={workSettings.monthly_bonus_amount || ''} onChange={e => setWorkSettings({...workSettings, monthly_bonus_amount:Number(e.target.value)})} className="w-full mt-1 border rounded-lg p-2" /></div>
               <div><label className="text-xs font-bold">Minimum Kehadiran Bonus (hari)</label><input type="number" min="1" value={workSettings.monthly_bonus_min_days || ''} onChange={e => setWorkSettings({...workSettings, monthly_bonus_min_days:Number(e.target.value)})} className="w-full mt-1 border rounded-lg p-2" /></div>

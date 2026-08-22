@@ -239,7 +239,9 @@ export interface WorkSettings {
   start_time: string;
   end_time: string;
   timezone: 'Asia/Jakarta';
-  half_day_max_hours: number;
+  // Jendela jam pulang yang dihitung setengah hari (mis. 12:00-12:15)
+  half_day_start: string;
+  half_day_end: string;
   attendance_radius_meters: number;
   // Tarif bonus kehadiran per hari bawaan, dipakai bila karyawan belum punya tarif sendiri.
   // Namanya masih 'monthly' karena kunci penyimpanannya sudah dipakai data lama.

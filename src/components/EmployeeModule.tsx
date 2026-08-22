@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Employee, Department, PayrollWeekly, CashAdvance, Attendance, UserRole, EmploymentStatus, EMPLOYMENT_STATUSES, employmentStatusOf, isEligibleForAttendanceBonus, divisionLabel } from '../types';
-import { dataStore, hashPin, currentWeeklyPayrollPeriod } from '../dataStore';
+import { dataStore, hashPin, currentWeeklyPayrollPeriod, dayFraction } from '../dataStore';
 import { employeeChangeLog, ChangeEntry } from '../employeeChangeLog';
 import { QRCodeSVG } from 'qrcode.react';
 import { Users, Plus, ShieldCheck, Key, Lock, LogIn, LogOut, Check, Save, DollarSign, X, Calendar, Clock, Printer, Trash2, History, Calculator, QrCode, Pencil } from 'lucide-react';
@@ -244,10 +244,8 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
     // 1. Calculate unique dates worked
     const uniqueDates = Array.from(new Set(scans.map(s => s.timestamp.split('T')[0])));
     const daysCount = uniqueDates.length
-      ? uniqueDates.reduce((sum, date) => {
-          const checkout = scans.find(scan => scan.timestamp.startsWith(date) && scan.type_scan === 'pulang');
-          return sum + (checkout?.work_fraction ?? 1);
-        }, 0)
+      ? uniqueDates.reduce((sum, date) =>
+          sum + dayFraction(scans.filter(scan => scan.timestamp.startsWith(date)), dataStore.getWorkSettings()), 0)
       : 6;
 
     // Lembur tersimpan sudah dikurangi menit keterlambatan pada hari yang sama.

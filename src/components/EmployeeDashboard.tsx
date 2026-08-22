@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { dataStore, wibTodayStr, currentWeeklyPayrollPeriod } from '../dataStore';
+import { dataStore, wibTodayStr, currentWeeklyPayrollPeriod, dayFraction } from '../dataStore';
 import { brandName, brandLegalName } from '../brand';
 import { Employee, Attendance, PayrollWeekly, AttendanceAdjustment } from '../types';
 import { Clock, Calendar, FileText, CheckCircle2, Fingerprint, MapPin, ExternalLink, Wallet } from 'lucide-react';
@@ -91,7 +91,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
   });
   const myPeriodDates = Array.from(new Set(myPeriodAtt.map(a => a.timestamp.split('T')[0])));
   const myRunningDays = myPeriodDates
-    .map(date => myPeriodAtt.find(log => log.timestamp.startsWith(date) && log.type_scan === 'pulang')?.work_fraction ?? 1)
+    .map(date => dayFraction(myPeriodAtt.filter(log => log.timestamp.startsWith(date)), dataStore.getWorkSettings()))
     .reduce((sum: number, value) => sum + value, 0);
   const myPeriodAdjustments: AttendanceAdjustment[] = dataStore.getAttendanceAdjustments()
     .filter(item => item.employee_id === loggedEmployee.id && item.date >= runningPeriod.start && item.date <= runningPeriod.end && item.type !== 'ignored');

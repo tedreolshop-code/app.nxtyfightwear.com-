@@ -259,11 +259,26 @@ export const stagesForProduct = (product?: { department_id: string; production_s
   return DEFAULT_PRODUCTION_STAGES[product?.department_id || ''] || DEFAULT_PRODUCTION_STAGES['dept-konveksi'];
 };
 
+/**
+ * Porsi hari kerja dari seluruh log absensi satu tanggal.
+ *   0   = tidak ada scan pulang -> tidak dibayar otomatis, perlu koreksi manual owner
+ *   0.5 = scan pulang di jendela setengah hari (half_day_start..half_day_end)
+ *   1   = scan pulang di luar jendela itu
+ * Scan pulang TERAKHIR yang menentukan, supaya scan ganda tidak ambigu.
+ */
+export const dayFraction = (dayLogs: Attendance[], settings: WorkSettings): 0 | 0.5 | 1 => {
+  const pulang = dayLogs.filter(a => a.type_scan === 'pulang').map(a => a.timestamp.slice(11, 16)).sort();
+  const last = pulang[pulang.length - 1];
+  if (!last) return 0;
+  return last >= settings.half_day_start && last <= settings.half_day_end ? 0.5 : 1;
+};
+
 const INITIAL_WORK_SETTINGS: WorkSettings = {
   start_time: '08:00',
   end_time: '16:00',
   timezone: 'Asia/Jakarta',
-  half_day_max_hours: 4,
+  half_day_start: '12:00',
+  half_day_end: '12:15',
   attendance_radius_meters: 100,
   monthly_bonus_amount: 0,
   monthly_bonus_min_days: 20,
@@ -568,11 +583,11 @@ class DataStore {
       const lateNet = Math.max(0, lateRaw - (compensationByDate.get(date) || 0));
       lateMinutesNet += lateNet;
 
-      const pulang = dayLogs.filter(a => a.type_scan === 'pulang');
-      const halfDay = pulang.some(a => a.work_fraction === 0.5);
-      if (halfDay) halfDayDates.push(date);
+      const fraction = dayFraction(dayLogs, settings);
+      if (fraction === 0.5) halfDayDates.push(date);
+      const lastPulang = dayLogs.filter(a => a.type_scan === 'pulang').map(a => a.timestamp.slice(11, 16)).sort().pop();
       // Pulang sah: pada/setelah jam pulang dan bukan setengah hari
-      const pulangSah = pulang.some(a => a.timestamp.slice(11, 16) >= endTime && a.work_fraction !== 0.5);
+      const pulangSah = fraction === 1 && !!lastPulang && lastPulang >= endTime;
 
       if (lateNet > 0) { lateDates.push(date); continue; }
       if (!pulangSah) { earlyLeaveDates.push(date); continue; }
@@ -1616,7 +1631,7 @@ class DataStore {
         const overtimeHours = overtimeMinutesAfterLate > 0 ? Math.ceil(overtimeMinutesAfterLate / 60) : 0; // dibulatkan ke atas per jam
         attendanceMetrics = {
           worked_minutes: workedMinutes,
-          work_fraction: workedMinutes <= workSettings.half_day_max_hours * 60 ? 0.5 : 1,
+          work_fraction: timestampClock >= workSettings.half_day_start && timestampClock <= workSettings.half_day_end ? 0.5 : 1,
           late_compensation_minutes: lateCompensationMinutes,
           overtime_minutes: overtimeHours * 60
         };
