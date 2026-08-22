@@ -693,7 +693,6 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
               <div><label className="text-xs font-bold">Dihitung 1 Hari Sejak Jam</label><input type="time" value={workSettings.full_day_from} onChange={e => setWorkSettings({...workSettings, full_day_from:e.target.value})} className="w-full mt-1 border rounded-lg p-2" /><p className="text-[10px] text-gray-400 mt-0.5">Pulang antara jam ini dan jam pulang wajib beralasan.</p></div>
               <div><label className="text-xs font-bold">Radius Absensi (meter)</label><input type="number" min="10" step="5" value={workSettings.attendance_radius_meters || ''} onChange={e => setWorkSettings({...workSettings, attendance_radius_meters:Number(e.target.value)})} className="w-full mt-1 border rounded-lg p-2" /></div>
               <div><label className="text-xs font-bold">Bonus Kehadiran / Hari (bawaan)</label><input type="number" min="0" value={workSettings.monthly_bonus_amount || ''} onChange={e => setWorkSettings({...workSettings, monthly_bonus_amount:Number(e.target.value)})} className="w-full mt-1 border rounded-lg p-2" /></div>
-              <div><label className="text-xs font-bold">Minimum Kehadiran Bonus (hari)</label><input type="number" min="1" value={workSettings.monthly_bonus_min_days || ''} onChange={e => setWorkSettings({...workSettings, monthly_bonus_min_days:Number(e.target.value)})} className="w-full mt-1 border rounded-lg p-2" /></div>
             </div>
             <div>
               <label className="text-xs font-bold">Absensi Mulai Berlaku</label>

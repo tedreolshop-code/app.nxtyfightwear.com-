@@ -282,7 +282,6 @@ const INITIAL_WORK_SETTINGS: WorkSettings = {
   full_day_from: '14:00',
   attendance_radius_meters: 100,
   monthly_bonus_amount: 0,
-  monthly_bonus_min_days: 20,
   location_qr_token: 'ari-hq-' + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2),
   production_handoff_mode: 'hybrid'
 };

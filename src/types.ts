@@ -250,7 +250,6 @@ export interface WorkSettings {
   // Tarif bonus kehadiran per hari bawaan, dipakai bila karyawan belum punya tarif sendiri.
   // Namanya masih 'monthly' karena kunci penyimpanannya sudah dipakai data lama.
   monthly_bonus_amount: number;
-  monthly_bonus_min_days: number;
   location_qr_token: string;
   // Tanggal (YYYY-MM-DD) sejak absensi benar-benar dipakai. Hari kerja sebelum tanggal
   // ini tidak dinilai untuk bonus, supaya masa sebelum sistem dipakai tidak terhitung
