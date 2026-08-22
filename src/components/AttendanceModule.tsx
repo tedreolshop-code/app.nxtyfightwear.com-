@@ -413,11 +413,11 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
       },
       (err) => {
         setIsScanning(false);
-        if (err.code === err.PERMISSION_DENIED) {
-          setStatusMessage({ text: 'Akses lokasi ditolak. Izinkan akses lokasi untuk situs ini di pengaturan browser, lalu coba lagi.', error: true });
-        } else {
-          setStatusMessage({ text: `Gagal membaca lokasi GPS (${err.message}). Pastikan GPS aktif lalu coba lagi.`, error: true });
-        }
+        const pesan = err.code === err.PERMISSION_DENIED
+          ? 'Akses lokasi ditolak. Izinkan akses lokasi untuk situs ini di pengaturan browser, lalu coba lagi.'
+          : `Gagal membaca lokasi GPS (${err.message}). Pastikan GPS aktif lalu coba lagi.`;
+        setStatusMessage({ text: pesan, error: true });
+        setRejectOverlay({ judul: 'LOKASI GAGAL DIBACA', pesan });
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
