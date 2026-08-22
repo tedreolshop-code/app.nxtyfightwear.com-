@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Employee, PayrollWeekly, CashAdvance, Attendance, AttendanceAdjustment, CashAdvanceTransaction } from '../types';
 import { dataStore, wibNowISO } from '../dataStore';
 import { brandName, brandLegalName } from '../brand';
+import { exportExcel } from '../exportExcel';
 import { Printer, Landmark, DollarSign, Plus, CheckCircle2, Sliders, History, Trash2, X, Calculator, Edit2, FileSpreadsheet, Wallet, Award } from 'lucide-react';
 import { AttendanceBonusPanel, AttendanceBonusBalanceCard, AttendanceBonusHistoryList } from './AttendanceBonusPanel';
 import { currentWeeklyPayrollPeriod } from '../dataStore';
@@ -253,28 +254,26 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     loadData();
   };
 
-  const handleExportPayrollCSV = () => {
-    const list = dataStore.getPayrollWeekly();
-    if (list.length === 0) {
-      alert("Tidak ada data payroll untuk diekspor!");
-      return;
-    }
-
-    let csvContent = "\uFEFF"; // UTF-8 BOM
-    csvContent += "ID Slip,Nama Karyawan,Awal Periode,Akhir Periode,Hari Kerja,Jam Lembur,Gaji Pokok,Bonus,Potongan Kasbon,Total Bersih (THP),Sudah Cetak,Status Bayar\n";
-
-    list.forEach(p => {
-      csvContent += `"${p.id}","${p.employee_name}","${p.period_start}","${p.period_end}",${p.days_worked},${p.overtime_hours},${p.base_pay},${p.bonus},${p.cash_advance_deduction},${p.total_pay},"${p.is_printed ? 'Ya' : 'Belum'}","${p.payment_status === 'paid' ? 'Lunas' : 'Belum Dibayar'}"\n`;
-    });
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `Rekap_Gaji_Mingguan_ARI_SPORTINDO_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleExportPayrollExcel = () => {
+    const rows = dataStore.getPayrollWeekly().map(p => ({
+      'ID Slip': p.id,
+      'Nama Karyawan': p.employee_name,
+      'Awal Periode': p.period_start,
+      'Akhir Periode': p.period_end,
+      'Hari Kerja': p.days_worked,
+      'Jam Lembur': p.overtime_hours,
+      'Gaji Pokok': p.base_pay,
+      Bonus: p.bonus,
+      'Potongan Kasbon': p.cash_advance_deduction,
+      'Total Bersih (THP)': p.total_pay,
+      'Sudah Cetak': p.is_printed ? 'Ya' : 'Belum',
+      'Status Bayar': p.payment_status === 'paid' ? 'Lunas' : 'Belum Dibayar',
+    }));
+    void exportExcel(`Rekap_Gaji_Mingguan_${new Date().toISOString().split('T')[0]}`, [{
+      name: 'Rekap Gaji Mingguan',
+      rows,
+      currencyColumns: ['Gaji Pokok', 'Bonus', 'Potongan Kasbon', 'Total Bersih (THP)'],
+    }]);
   };
 
   const handleTogglePaymentStatus = (pay: PayrollWeekly) => {
@@ -1239,11 +1238,11 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
               </button>
               <button
                 type="button"
-                onClick={handleExportPayrollCSV}
+                onClick={handleExportPayrollExcel}
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-gray-50 text-emerald-800 border border-emerald-800/30 rounded-lg text-xs font-bold shadow-xs transition-all cursor-pointer"
               >
                 <FileSpreadsheet className="w-3.5 h-3.5" />
-                <span>Ekspor Rekap (Excel/CSV)</span>
+                <span>Ekspor Rekap (Excel)</span>
               </button>
               <button
                 type="button"

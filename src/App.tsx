@@ -381,7 +381,7 @@ export default function App() {
     };
   }, [permittedMenus, karyawanSubTab]);
 
-  // Ekspor CSV (dipakai halaman Laporan)
+  // Ekspor Excel (dipakai halaman Laporan)
   const handleExportAll = (type: 'attendance' | 'invoices' | 'payroll' | 'expenses') => {
     if (type === 'attendance') {
       downloadExcel('Laporan_Kehadiran_Lengkap', 'Absensi', dataStore.getAttendance() as any[]);
@@ -887,7 +887,7 @@ export default function App() {
             {/* PENGATURAN BRAND (owner): nama, logo, warna tema — white label */}
             {activeTab === 'pengaturan' && <BrandSettingsModule />}
 
-            {/* LAPORAN (owner): rekap periode + ekspor CSV */}
+            {/* LAPORAN (owner): rekap periode + ekspor Excel */}
             {activeTab === 'laporan' && (
               <div className="space-y-5">
                 <div className="bg-white p-5 rounded-xl border border-gray-200 space-y-4">

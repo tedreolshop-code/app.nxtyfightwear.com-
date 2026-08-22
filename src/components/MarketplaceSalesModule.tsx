@@ -3,6 +3,7 @@ import { MarketplaceSale, MarketplaceItemSale, MarketplaceSaleStatus, Product, d
 import { DivisionFilter, matchesDivision } from './DivisionFilter';
 import { dataStore, wibNowISO } from '../dataStore';
 import { uploadPackingPhoto, deletePackingPhoto } from '../packingPhoto';
+import { exportExcel } from '../exportExcel';
 import { brandName, brandLegalName } from '../brand';
 import { 
   ShoppingBag, 
@@ -595,58 +596,61 @@ export const MarketplaceSalesModule: React.FC = () => {
   const topSellingItemName = sortedPopularItems[0]?.name || '-';
   const topSellingItemQty = sortedPopularItems[0]?.qty || 0;
 
-  // EXPORT TO EXCEL (CSV implementation)
+  // Export laporan penjualan marketplace ke Excel (.xlsx)
   const handleExportToExcel = () => {
     if (filteredItemSales.length === 0) {
       alert('Tidak ada data penjualan untuk diexport!');
       return;
     }
 
-    // Creating identical column list as the Excel picture:
-    // TGL | No | No pesenan | Ref | Deskripsi | QTY | Harga | Subtotal | Biaya | Total
-    let csvContent = '\uFEFF'; // UTF-8 BOM for Excel compatibility with Indonesian character accents
-    csvContent += brandName() + '\n';
-    csvContent += 'Laporan Penjualan Barang - Marketplace\n';
-    csvContent += `Periode Filter: ${startDate || 'Semua'} s/d ${endDate || 'Semua'}\n\n`;
-    csvContent += 'TGL,No,No pesenan,Ref,Status,Deskripsi,QTY,Harga,Subtotal,Biaya,Total,Input Oleh\n';
-
-    // Export dikelompokkan per pesanan: No & Biaya admin hanya di baris pertama tiap pesanan (tidak per barang)
+    type Baris = Record<string, string | number>;
+    const rows: Baris[] = [];
+    // Dikelompokkan per pesanan: No & biaya admin hanya di baris pertama tiap pesanan
     orderGroups.forEach((group, groupIdx) => {
       group.items.forEach((item, itemIdx) => {
-        const cleanDesc = item.description.replace(/"/g, '""');
         const isFirst = itemIdx === 0;
-        const row = [
-          isFirst ? item.date : '',
-          isFirst ? groupIdx + 1 : '',
-          isFirst ? `="${item.order_number}"` : '', // Forces Excel to treat order number as string
-          isFirst ? item.marketplace_ref : '',
-          STATUS_META[saleStatus(item)].label.toUpperCase(),
-          `"${cleanDesc}"`,
-          item.qty,
-          item.price,
-          item.subtotal,
-          isFirst ? (group.fee > 0 ? `-${group.fee}` : '0') : '',
-          isFirst ? group.total : '',
-          `"${item.admin_staff}"`
-        ].join(',');
-        csvContent += row + '\n';
+        rows.push({
+          TGL: isFirst ? item.date : '',
+          No: isFirst ? groupIdx + 1 : '',
+          'No Pesanan': isFirst ? item.order_number : '',
+          Ref: isFirst ? item.marketplace_ref : '',
+          Status: STATUS_META[saleStatus(item)].label.toUpperCase(),
+          Deskripsi: item.description,
+          QTY: item.qty,
+          Harga: item.price,
+          Subtotal: item.subtotal,
+          Biaya: isFirst ? (group.fee > 0 ? -group.fee : 0) : '',
+          Total: isFirst ? group.total : '',
+          'Input Oleh': item.admin_staff,
+        });
       });
     });
 
-    // Append Summary Row (cancel & retur tidak ikut dijumlah)
-    csvContent += `\n,,,TOTAL EFEKTIF (tanpa cancel/retur),,,${totalItemQty},,,${totalItemAdminFee > 0 ? `-${totalItemAdminFee}` : '0'},${totalItemNetOmset},\n`;
+    const kosong = (isi: Partial<Baris>): Baris => ({
+      TGL: '', No: '', 'No Pesanan': '', Ref: '', Status: '', Deskripsi: '',
+      QTY: '', Harga: '', Subtotal: '', Biaya: '', Total: '', 'Input Oleh': '', ...isi,
+    });
+    // Baris ringkasan (cancel & retur tidak ikut dijumlah)
+    rows.push(kosong({}));
+    rows.push(kosong({
+      Deskripsi: 'TOTAL EFEKTIF (tanpa cancel/retur)',
+      QTY: totalItemQty,
+      Biaya: totalItemAdminFee > 0 ? -totalItemAdminFee : 0,
+      Total: totalItemNetOmset,
+    }));
     if (lostSales.length > 0) {
-      csvContent += `,,,CANCEL/RETUR,,,${lostSales.reduce((s, i) => s + i.qty, 0)},,,,-${lostNet},\n`;
+      rows.push(kosong({
+        Deskripsi: 'CANCEL/RETUR',
+        QTY: lostSales.reduce((s, i) => s + i.qty, 0),
+        Total: -lostNet,
+      }));
     }
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `Laporan_Penjualan_Marketplace_${startDate}_sd_${endDate}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    void exportExcel(`Laporan_Penjualan_Marketplace_${startDate}_sd_${endDate}`, [{
+      name: 'Penjualan Marketplace',
+      rows,
+      currencyColumns: ['Harga', 'Subtotal', 'Biaya', 'Total'],
+    }]);
   };
 
   return (
@@ -1076,7 +1080,7 @@ export const MarketplaceSalesModule: React.FC = () => {
                   <button
                     onClick={handleExportToExcel}
                     className="flex items-center gap-1 px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[11px] font-bold transition-all shadow-sm"
-                    title="Export ke Excel (Format .CSV)"
+                    title="Export ke Excel (.xlsx)"
                   >
                     <FileSpreadsheet className="w-3.5 h-3.5" />
                     Export ke Excel

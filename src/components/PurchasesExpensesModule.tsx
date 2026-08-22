@@ -4,6 +4,7 @@ import { DivisionFilter, matchesDivision } from './DivisionFilter';
 import { PaymentLedger, LedgerRow } from './PaymentLedger';
 import { dataStore, wibTodayStr } from '../dataStore';
 import { brandName, brandLegalName } from '../brand';
+import { exportExcel } from '../exportExcel';
 import { 
   ShoppingCart, 
   Plus, 
@@ -677,39 +678,49 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
     alert('Detail Purchase Order disalin ke papan klip!');
   };
 
-  // Export spreadsheet row to CSV
-  const handleExportPoCSV = () => {
-    const headers = ['NO', 'Tanggal', 'No PO', 'Supplier', 'Deskripsi Barang', 'QTY', 'Harga Satuan', 'Subtotal', 'Grand Total PO', 'Status', 'Staff'];
-    const rows: string[][] = [];
+  // Export pengeluaran harian (mengikuti filter aktif) ke Excel (.xlsx)
+  const handleExportExpenseExcel = () => {
+    const rows = sortedExpenses.map((e, idx) => ({
+      NO: idx + 1,
+      Tanggal: formatDateExcel(e.date),
+      Deskripsi: e.description,
+      Kategori: e.category,
+      Divisi: divisionLabel(e.department_id),
+      Jumlah: e.amount,
+      Admin: e.admin_name || 'Admin',
+    }));
+    void exportExcel('Pengeluaran_Harian', [{
+      name: 'Pengeluaran Harian',
+      rows,
+      currencyColumns: ['Jumlah'],
+    }]);
+  };
 
+  // Export baris spreadsheet PO ke Excel (.xlsx)
+  const handleExportPoExcel = () => {
+    const rows: Record<string, string | number>[] = [];
     sortedPurchases.forEach((po) => {
       po.items.forEach((item, idx) => {
-        rows.push([
-          (idx + 1).toString(),
-          formatDateExcel(po.date),
-          po.po_number,
-          po.supplier,
-          item.description,
-          item.qty.toString(),
-          item.price.toString(),
-          item.subtotal.toString(),
-          idx === 0 ? po.total_price.toString() : '',
-          po.status,
-          po.admin_staff || 'Admin'
-        ]);
+        rows.push({
+          NO: idx + 1,
+          Tanggal: formatDateExcel(po.date),
+          'No PO': po.po_number,
+          Supplier: po.supplier,
+          'Deskripsi Barang': item.description,
+          QTY: item.qty,
+          'Harga Satuan': item.price,
+          Subtotal: item.subtotal,
+          'Grand Total PO': idx === 0 ? po.total_price : '',
+          Status: po.status,
+          Staff: po.admin_staff || 'Admin',
+        });
       });
     });
-
-    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
-      + [headers.join(','), ...rows.map(r => r.map(val => `"${val.replace(/"/g, '""')}"`).join(','))].join('\n');
-    
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `PO_ARI_Sportindo_Spreadsheet.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    void exportExcel('PO_Spreadsheet', [{
+      name: 'Purchase Order',
+      rows,
+      currencyColumns: ['Harga Satuan', 'Subtotal', 'Grand Total PO'],
+    }]);
   };
 
   return (
@@ -1315,9 +1326,9 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                     </button>
                   </div>
 
-                  {/* Export CSV - Beautiful Solid Evergreen Button */}
+                  {/* Export Excel - Beautiful Solid Evergreen Button */}
                   <button
-                    onClick={handleExportPoCSV}
+                    onClick={handleExportPoExcel}
                     className="px-3 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white font-bold rounded-lg text-xs flex items-center gap-1 transition-colors border border-emerald-950 shadow-xs"
                     title="Download Excel PO"
                   >
@@ -1715,7 +1726,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
           {activeTab === 'expenses' && (
             <div className="bg-white rounded-2xl border border-emerald-800/20 p-5 shadow-xs space-y-4">
               
-              {/* Controls (Search, Filters, CSV download) */}
+              {/* Controls (Search, Filters, unduh Excel) */}
               <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
                 
                 <div className="flex flex-wrap items-center gap-2 flex-1">
@@ -1768,13 +1779,13 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                   </button>
                 </div>
 
-                {/* CSV Download - Upgraded to beautiful Solid Evergreen button */}
+                {/* Excel Download - Upgraded to beautiful Solid Evergreen button */}
                 <button
-                  onClick={handleExportPoCSV} // standard csv download helper
+                  onClick={handleExportExpenseExcel} // unduh Excel (.xlsx)
                   className="px-3 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 transition-colors border border-emerald-950 self-start md:self-auto shadow-xs"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  Excel CSV
+                  Excel
                 </button>
               </div>
 
