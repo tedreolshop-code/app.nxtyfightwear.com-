@@ -223,6 +223,8 @@ export interface Attendance {
   late_compensation_minutes?: number;
   worked_minutes?: number;
   work_fraction?: 0.5 | 1;
+  // Wajib diisi bila scan pulang antara full_day_from dan end_time (pulang cepat tetap dibayar penuh)
+  early_leave_reason?: string;
   overtime_minutes?: number;
 }
 
@@ -239,9 +241,11 @@ export interface WorkSettings {
   start_time: string;
   end_time: string;
   timezone: 'Asia/Jakarta';
-  // Jendela jam pulang yang dihitung setengah hari (mis. 12:00-12:15)
+  // Scan pulang sebelum half_day_start = 0 hari (perlu koreksi manual).
+  // half_day_start s/d sebelum full_day_from = 0,5 hari. full_day_from ke atas = 1 hari,
+  // tapi bila masih sebelum end_time wajib disertai alasan.
   half_day_start: string;
-  half_day_end: string;
+  full_day_from: string;
   attendance_radius_meters: number;
   // Tarif bonus kehadiran per hari bawaan, dipakai bila karyawan belum punya tarif sendiri.
   // Namanya masih 'monthly' karena kunci penyimpanannya sudah dipakai data lama.

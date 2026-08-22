@@ -217,6 +217,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
   // Selected Employee & Scan Details
   const [selectedEmpId, setSelectedEmpId] = useState('');
   const [pin, setPin] = useState('');
+  const [earlyLeaveReason, setEarlyLeaveReason] = useState('');
   const [scanType, setScanType] = useState<AttendanceType>('masuk');
   
   // Status pembacaan GPS saat kirim scan
@@ -346,6 +347,12 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
       localStorage.setItem(`nxty_device_token_${emp.id}`, deviceToken);
     }
 
+    // Pulang cepat (>= full_day_from tapi sebelum end_time) tetap 1 hari, tapi wajib beralasan
+    if (effectiveScanType === 'pulang' && needsEarlyLeaveReason && !earlyLeaveReason.trim()) {
+      setStatusMessage({ text: `Pulang sebelum ${workSettings.end_time} tetap dihitung 1 hari kerja, tapi alasannya wajib diisi.`, error: true });
+      return;
+    }
+
     if (!navigator.geolocation) {
       setStatusMessage({ text: 'Perangkat/browser ini tidak mendukung GPS. Gunakan browser lain.', error: true });
       return;
@@ -364,7 +371,8 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
             selfie_url: '',
             device_token: deviceToken!,
             note: `Kiosk Terminal Scan (GPS perangkat, akurasi ±${Math.round(pos.coords.accuracy)} m)`,
-            verification_method: 'gps_self'
+            verification_method: 'gps_self',
+            early_leave_reason: earlyLeaveReason.trim() || undefined
           });
 
           // Launch Big Success Overlay (Auto disappears in 3 seconds)
@@ -380,6 +388,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
 
           // Clear states for next check-in (portal karyawan tetap terkunci ke dirinya)
           setPin('');
+          setEarlyLeaveReason('');
           setLocationVerified(false);
           setSelectedEmpId(lockedEmployee ? lockedEmployee.id : '');
           loadData();
@@ -418,7 +427,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
 
   const saveWorkSettings = () => {
     if (!workSettings.start_time || !workSettings.end_time || workSettings.end_time <= workSettings.start_time) return alert('Jam kerja tidak valid.');
-    if (!workSettings.half_day_start || !workSettings.half_day_end || workSettings.half_day_end < workSettings.half_day_start) return alert('Jendela setengah hari tidak valid.');
+    if (!workSettings.half_day_start || !workSettings.full_day_from || workSettings.full_day_from <= workSettings.half_day_start || workSettings.full_day_from > workSettings.end_time) return alert('Ambang setengah hari tidak valid: jam masuk hitungan penuh harus setelah ambang setengah hari dan tidak melewati jam pulang.');
     const attendanceRadius = Math.round(Number(workSettings.attendance_radius_meters) || 0);
     if (attendanceRadius < 10) return alert('Radius absensi minimal 10 meter.');
     const updatedSettings = { ...workSettings, attendance_radius_meters: attendanceRadius };
@@ -473,6 +482,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
         assisted_by_id: assistingAdmin.id,
         assisted_by_name: assistingAdmin.name,
         assistance_reason: assistanceReason.trim(),
+        early_leave_reason: assistanceReason.trim(),
         note: `Absensi dibantu admin melalui QR pribadi. Alasan: ${assistanceReason.trim()}`
       });
       setStatusMessage({ text: `Absensi ${scanType} ${assistedEmployee.name} berhasil dicatat dengan bantuan ${assistingAdmin.name}.`, error: false });
@@ -492,6 +502,12 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
     )
     .sort((a, b) => a.name.localeCompare(b.name));
   const automaticScanType = lockedEmployee ? inferEmployeeScanType(lockedEmployee.id) : null;
+  // Pulang antara full_day_from dan end_time tetap dihitung 1 hari, tapi alasannya wajib
+  const pendingScanType = lockedEmployee ? automaticScanType : scanType;
+  const needsEarlyLeaveReason =
+    pendingScanType === 'pulang' &&
+    wibNowISO().slice(11, 16) >= workSettings.full_day_from &&
+    wibNowISO().slice(11, 16) < workSettings.end_time;
   const departmentLabel = (departmentId: string) => departmentId === 'dept-eva-foam' ? 'Eva Foam' : departmentId === 'dept-konveksi' ? 'Konveksi' : departmentId;
 
   const todayWib = wibNowISO().slice(0, 10);
@@ -572,6 +588,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
       'Pengganti Telat (menit)': log.late_compensation_minutes || 0,
       'Durasi Kerja (menit)': log.worked_minutes || 0,
       'Porsi Hari': log.work_fraction ?? '',
+      'Alasan Pulang Cepat': log.early_leave_reason ?? '',
       'Lembur (menit)': log.overtime_minutes || 0,
       Metode: log.verification_method || 'gps_self',
       'Dibantu Oleh': log.assisted_by_name || '',
@@ -663,8 +680,8 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
             <div className="grid grid-cols-2 gap-3">
               <div><label className="text-xs font-bold">Jam Masuk</label><input type="time" value={workSettings.start_time} onChange={e => setWorkSettings({...workSettings, start_time:e.target.value})} className="w-full mt-1 border rounded-lg p-2" /></div>
               <div><label className="text-xs font-bold">Jam Pulang</label><input type="time" value={workSettings.end_time} onChange={e => setWorkSettings({...workSettings, end_time:e.target.value})} className="w-full mt-1 border rounded-lg p-2" /></div>
-              <div><label className="text-xs font-bold">Setengah Hari — Mulai</label><input type="time" value={workSettings.half_day_start} onChange={e => setWorkSettings({...workSettings, half_day_start:e.target.value})} className="w-full mt-1 border rounded-lg p-2" /></div>
-              <div><label className="text-xs font-bold">Setengah Hari — Sampai</label><input type="time" value={workSettings.half_day_end} onChange={e => setWorkSettings({...workSettings, half_day_end:e.target.value})} className="w-full mt-1 border rounded-lg p-2" /></div>
+              <div><label className="text-xs font-bold">Setengah Hari Mulai Jam</label><input type="time" value={workSettings.half_day_start} onChange={e => setWorkSettings({...workSettings, half_day_start:e.target.value})} className="w-full mt-1 border rounded-lg p-2" /><p className="text-[10px] text-gray-400 mt-0.5">Pulang sebelum jam ini = 0 hari, perlu koreksi manual.</p></div>
+              <div><label className="text-xs font-bold">Dihitung 1 Hari Sejak Jam</label><input type="time" value={workSettings.full_day_from} onChange={e => setWorkSettings({...workSettings, full_day_from:e.target.value})} className="w-full mt-1 border rounded-lg p-2" /><p className="text-[10px] text-gray-400 mt-0.5">Pulang antara jam ini dan jam pulang wajib beralasan.</p></div>
               <div><label className="text-xs font-bold">Radius Absensi (meter)</label><input type="number" min="10" step="5" value={workSettings.attendance_radius_meters || ''} onChange={e => setWorkSettings({...workSettings, attendance_radius_meters:Number(e.target.value)})} className="w-full mt-1 border rounded-lg p-2" /></div>
               <div><label className="text-xs font-bold">Bonus Kehadiran / Hari (bawaan)</label><input type="number" min="0" value={workSettings.monthly_bonus_amount || ''} onChange={e => setWorkSettings({...workSettings, monthly_bonus_amount:Number(e.target.value)})} className="w-full mt-1 border rounded-lg p-2" /></div>
               <div><label className="text-xs font-bold">Minimum Kehadiran Bonus (hari)</label><input type="number" min="1" value={workSettings.monthly_bonus_min_days || ''} onChange={e => setWorkSettings({...workSettings, monthly_bonus_min_days:Number(e.target.value)})} className="w-full mt-1 border rounded-lg p-2" /></div>
@@ -1040,13 +1057,29 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                   </div>
                 )}
 
+                {/* Alasan wajib bila pulang sebelum jam pulang tapi tetap dibayar 1 hari */}
+                {needsEarlyLeaveReason && (
+                  <div className="bg-amber-950/40 border border-amber-900/40 rounded-xl p-2.5 space-y-1.5">
+                    <p className="text-[10px] font-bold text-amber-300 leading-tight">
+                      Pulang sebelum {workSettings.end_time} tetap dihitung 1 hari kerja. Alasan wajib diisi.
+                    </p>
+                    <textarea
+                      value={earlyLeaveReason}
+                      onChange={e => setEarlyLeaveReason(e.target.value)}
+                      rows={2}
+                      placeholder="Contoh: izin ke klinik, dipanggil pulang keluarga"
+                      className="w-full bg-[#122f21]/60 border border-amber-900/30 rounded-lg p-2 text-[11px] text-emerald-50 placeholder:text-emerald-200/30 focus:outline-none"
+                    />
+                  </div>
+                )}
+
                 {/* MAIN KIOSK SCAN SUBMIT TRIGGER */}
                 <button
                   type="button"
                   onClick={() => handleAttendanceSubmit()}
-                  disabled={!selectedEmpId || (!!lockedEmployee && (!locationVerified || !automaticScanType)) || (!lockedEmployee && pin.length < 4) || isScanning}
+                  disabled={!selectedEmpId || (!!lockedEmployee && (!locationVerified || !automaticScanType)) || (!lockedEmployee && pin.length < 4) || isScanning || (needsEarlyLeaveReason && !earlyLeaveReason.trim())}
                   className={`w-full py-3.5 rounded-xl text-xs uppercase font-extrabold tracking-widest flex items-center justify-center gap-2 border transition-all ${
-                    (!selectedEmpId || (!!lockedEmployee && (!locationVerified || !automaticScanType)) || (!lockedEmployee && pin.length < 4) || isScanning)
+                    (!selectedEmpId || (!!lockedEmployee && (!locationVerified || !automaticScanType)) || (!lockedEmployee && pin.length < 4) || isScanning || (needsEarlyLeaveReason && !earlyLeaveReason.trim()))
                       ? 'bg-emerald-950/60 border-emerald-900/40 text-emerald-200/30 cursor-not-allowed'
                       : 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-transparent shadow-md active:scale-[0.98] cursor-pointer'
                   }`}
@@ -1348,6 +1381,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                               {(log.late_minutes || 0) > 0 && <span className="font-bold text-amber-700">Terlambat {log.late_minutes} menit</span>}
                               {(log.late_compensation_minutes || 0) > 0 && <span className="font-bold text-emerald-700">Pengganti telat {log.late_compensation_minutes} menit</span>}
                               {log.work_fraction === 0.5 && <span className="font-bold text-rose-700">Setengah Hari</span>}
+                              {log.early_leave_reason && <span className="font-bold text-amber-700">Pulang cepat: {log.early_leave_reason}</span>}
                               {(log.overtime_minutes || 0) > 0 && <span className="font-bold text-sky-700">Lembur {log.overtime_minutes} menit</span>}
                               <span className="flex items-center gap-1 font-mono text-[10px]">
                                 <MapPin className="w-3.5 h-3.5 text-gray-400" />

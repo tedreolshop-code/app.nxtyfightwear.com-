@@ -260,17 +260,18 @@ export const stagesForProduct = (product?: { department_id: string; production_s
 };
 
 /**
- * Porsi hari kerja dari seluruh log absensi satu tanggal.
- *   0   = tidak ada scan pulang -> tidak dibayar otomatis, perlu koreksi manual owner
- *   0.5 = scan pulang di jendela setengah hari (half_day_start..half_day_end)
- *   1   = scan pulang di luar jendela itu
+ * Porsi hari kerja dari seluruh log absensi satu tanggal, murni dari JAM SCAN PULANG.
+ *   0   = tidak ada scan pulang, atau pulang sebelum half_day_start (12:00)
+ *         -> tidak dibayar otomatis, perlu koreksi manual owner
+ *   0.5 = pulang antara half_day_start dan sebelum full_day_from (12:00-13:59)
+ *   1   = pulang pada/setelah full_day_from (14:00). Bila masih sebelum end_time,
+ *         recordAttendance mewajibkan early_leave_reason.
  * Scan pulang TERAKHIR yang menentukan, supaya scan ganda tidak ambigu.
  */
 export const dayFraction = (dayLogs: Attendance[], settings: WorkSettings): 0 | 0.5 | 1 => {
-  const pulang = dayLogs.filter(a => a.type_scan === 'pulang').map(a => a.timestamp.slice(11, 16)).sort();
-  const last = pulang[pulang.length - 1];
-  if (!last) return 0;
-  return last >= settings.half_day_start && last <= settings.half_day_end ? 0.5 : 1;
+  const last = dayLogs.filter(a => a.type_scan === 'pulang').map(a => a.timestamp.slice(11, 16)).sort().pop();
+  if (!last || last < settings.half_day_start) return 0;
+  return last < settings.full_day_from ? 0.5 : 1;
 };
 
 const INITIAL_WORK_SETTINGS: WorkSettings = {
@@ -278,7 +279,7 @@ const INITIAL_WORK_SETTINGS: WorkSettings = {
   end_time: '16:00',
   timezone: 'Asia/Jakarta',
   half_day_start: '12:00',
-  half_day_end: '12:15',
+  full_day_from: '14:00',
   attendance_radius_meters: 100,
   monthly_bonus_amount: 0,
   monthly_bonus_min_days: 20,
@@ -1610,6 +1611,15 @@ class DataStore {
       throw new Error(`Absen ditolak: lokasi Anda ${Math.round(distance)} m dari ${dept.name}. Batas radius absensi adalah ${allowedRadius} m.`);
     }
 
+    const pulangClock = att.timestamp.slice(11, 16);
+    if (
+      att.type_scan === 'pulang' &&
+      pulangClock >= workSettings.full_day_from && pulangClock < workSettings.end_time &&
+      !att.early_leave_reason?.trim()
+    ) {
+      throw new Error(`Pulang sebelum ${workSettings.end_time} tetap dihitung 1 hari, tapi wajib disertai alasan.`);
+    }
+
     const status: Attendance['status'] = 'normal';
     const clockMinutes = (value: string) => {
       const [hours, minutes] = value.split(':').map(Number);
@@ -1631,7 +1641,7 @@ class DataStore {
         const overtimeHours = overtimeMinutesAfterLate > 0 ? Math.ceil(overtimeMinutesAfterLate / 60) : 0; // dibulatkan ke atas per jam
         attendanceMetrics = {
           worked_minutes: workedMinutes,
-          work_fraction: timestampClock >= workSettings.half_day_start && timestampClock <= workSettings.half_day_end ? 0.5 : 1,
+          work_fraction: timestampClock < workSettings.full_day_from ? 0.5 : 1,
           late_compensation_minutes: lateCompensationMinutes,
           overtime_minutes: overtimeHours * 60
         };
