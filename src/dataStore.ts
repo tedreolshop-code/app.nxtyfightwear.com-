@@ -536,7 +536,6 @@ class DataStore {
     const settings = this.getWorkSettings();
     // Nilai ini adalah tarif PER HARI layak, bukan per bulan
     const dailyRate = Math.round(Number(employee?.default_attendance_bonus ?? settings.monthly_bonus_amount) || 0);
-    const endTime = settings.end_time || '16:00';
 
     const today = wibTodayStr();
     const [year, mon] = month.split('-').map(Number);
@@ -586,9 +585,10 @@ class DataStore {
 
       const fraction = dayFraction(dayLogs, settings);
       if (fraction === 0.5) halfDayDates.push(date);
-      const lastPulang = dayLogs.filter(a => a.type_scan === 'pulang').map(a => a.timestamp.slice(11, 16)).sort().pop();
-      // Pulang sah: pada/setelah jam pulang dan bukan setengah hari
-      const pulangSah = fraction === 1 && !!lastPulang && lastPulang >= endTime;
+      // Bonus gugur hanya bila harinya tidak penuh (setengah hari, atau tanpa scan pulang
+      // yang sah). Pulang cepat yang tetap dihitung 1 hari — sudah wajib beralasan saat
+      // scan — tidak menggugurkan bonus.
+      const pulangSah = fraction === 1;
 
       if (lateNet > 0) { lateDates.push(date); continue; }
       if (!pulangSah) { earlyLeaveDates.push(date); continue; }
@@ -603,7 +603,7 @@ class DataStore {
     if (!eligible) reasons.push('Masih berstatus training');
     if (lateDates.length > 0) reasons.push(`Telat ${lateDates.length} hari (${ringkas(lateDates)})`);
     if (absentDates.length > 0) reasons.push(`Tidak hadir ${absentDates.length} hari (${ringkas(absentDates)})`);
-    if (earlyLeaveDates.length > 0) reasons.push(`Pulang sebelum ${endTime} atau tanpa scan pulang ${earlyLeaveDates.length} hari (${ringkas(earlyLeaveDates)})`);
+    if (earlyLeaveDates.length > 0) reasons.push(`Hari tidak penuh (setengah hari atau tanpa scan pulang) ${earlyLeaveDates.length} hari (${ringkas(earlyLeaveDates)})`);
 
     // Training tidak berhak, jadi tidak ada hari yang dihitung
     const paidDays = eligible ? qualifiedDays : 0;
