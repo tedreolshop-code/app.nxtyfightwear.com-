@@ -521,7 +521,9 @@ class DataStore {
    * Satu hari layak bila ketiganya terpenuhi:
    *   1. ada scan MASUK,
    *   2. tidak telat (setelah kompensasi yang disetujui),
-   *   3. ada scan PULANG pada/setelah jam pulang dan bukan setengah hari.
+   *   3. harinya penuh menurut dayFraction() — bukan setengah hari, dan ada scan pulang.
+   *      Pulang cepat yang tetap dihitung 1 hari (sudah wajib beralasan saat scan)
+   *      TIDAK menggugurkan bonus.
    *
    * Minggu tidak dihitung hari kerja. Untuk bulan berjalan, hari ini belum dinilai.
    * Hari sebelum attendance_effective_from dilewati (masa sebelum absensi dipakai).
