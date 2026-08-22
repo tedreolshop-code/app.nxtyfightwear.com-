@@ -944,7 +944,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                 {!lockedEmployee && (
                 <>
                 <div className="text-center">
-                  <h4 className="text-[10px] font-black uppercase tracking-wider text-amber-400">Langkah 3: Masukkan PIN 4-Digit</h4>
+                  <h4 className="text-[10px] font-black uppercase tracking-wider text-amber-400">Langkah 2: Masukkan PIN 4-Digit</h4>
                 </div>
 
                 {/* PIN Display Panel */}
