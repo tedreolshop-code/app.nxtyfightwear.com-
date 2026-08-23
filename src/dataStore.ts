@@ -32,7 +32,7 @@ import {
   ,PackingTask
   ,AttendanceAdjustment
   ,CashAdvanceTransaction
-  ,AttendanceBonusPayout, isEligibleForAttendanceBonus, PaymentEntry, purchaseRemaining, orderRemaining } from './types';
+  ,AttendanceBonusPayout, isEligibleForAttendanceBonus, PaymentEntry, purchaseRemaining, orderRemaining, clockMinutes, checkoutMetrics } from './types';
 import { pushKeyToCloud, pushAttendanceToCloud, clearAttendanceInCloud } from './cloudSync';
 
 // Helper to generate UUIDs
@@ -1552,6 +1552,58 @@ class DataStore {
     this.setPayrollWeekly(payrolls);
   };
 
+  /**
+   * Koreksi admin: catatkan scan PULANG yang tidak pernah dilakukan karyawan
+   * (mis. lupa scan saat pulang Sabtu). Tanpa GPS — dipertanggungjawabkan lewat
+   * alasan wajib + audit log, dan hanya untuk hari yang scan masuknya sudah ada.
+   */
+  recordMissingCheckout = (employeeId: string, date: string, time: string, reason: string): Attendance => {
+    const trimmedReason = reason.trim();
+    if (!trimmedReason) throw new Error('Koreksi ditolak: alasan wajib diisi.');
+    if (!/^\d{2}:\d{2}$/.test(time)) throw new Error('Koreksi ditolak: jam pulang tidak valid.');
+    if (date > wibTodayStr()) throw new Error('Koreksi ditolak: tanggal belum terjadi.');
+
+    const emp = this.getEmployees().find(e => e.id === employeeId);
+    if (!emp) throw new Error('Karyawan tidak ditemukan.');
+
+    const logs = this.getAttendance();
+    const dayLogs = logs.filter(l => l.employee_id === employeeId && l.timestamp.slice(0, 10) === date);
+    const checkIn = dayLogs.find(l => l.type_scan === 'masuk');
+    if (!checkIn) throw new Error(`Koreksi ditolak: ${emp.name} tidak punya scan MASUK pada ${date}.`);
+    if (dayLogs.some(l => l.type_scan === 'pulang')) throw new Error(`Koreksi ditolak: scan PULANG ${date} sudah ada.`);
+    if (time < checkIn.timestamp.slice(11, 16)) throw new Error('Koreksi ditolak: jam pulang lebih awal dari jam masuk.');
+
+    const actor = this.getCurrentActor();
+    const timestamp = `${date}T${time}:00+07:00`;
+    const record: Attendance = {
+      id: `att-${employeeId}-${date}-pulang`,
+      employee_id: employeeId,
+      employee_name: emp.name,
+      timestamp,
+      type_scan: 'pulang',
+      // Koreksi manual tidak punya titik GPS; dipakai koordinat departemen sebagai penanda.
+      latitude: 0,
+      longitude: 0,
+      distance_meters: 0,
+      selfie_url: '',
+      device_token: 'koreksi-admin',
+      is_mock_location_flag: false,
+      status: 'normal',
+      verification_method: 'admin_qr',
+      assisted_by_id: actor.id,
+      assisted_by_name: actor.name,
+      assistance_reason: trimmedReason,
+      early_leave_reason: time < this.getWorkSettings().end_time ? trimmedReason : undefined,
+      ...checkoutMetrics(checkIn, timestamp, this.getWorkSettings()),
+    };
+
+    logs.unshift(record);
+    this.setAttendance(logs);
+    pushAttendanceToCloud(record);
+    this.logAudit('update', 'attendance', `Koreksi scan pulang ${emp.name} ${date} jam ${time} — ${trimmedReason}`);
+    return record;
+  };
+
   recordAttendance = (att: Omit<Attendance, 'id' | 'employee_name' | 'status' | 'is_mock_location_flag' | 'distance_meters'>): Attendance => {
     const attendanceLogs = this.getAttendance();
     const employees = this.getEmployees();
@@ -1631,31 +1683,13 @@ class DataStore {
     }
 
     const status: Attendance['status'] = 'normal';
-    const clockMinutes = (value: string) => {
-      const [hours, minutes] = value.split(':').map(Number);
-      return hours * 60 + minutes;
-    };
     const timestampClock = att.timestamp.slice(11, 16);
     let attendanceMetrics: Partial<Attendance> = {};
     if (att.type_scan === 'masuk') {
       attendanceMetrics.late_minutes = Math.max(0, clockMinutes(timestampClock) - clockMinutes(workSettings.start_time));
     } else {
       const checkIn = sameDayLogs.find(log => log.type_scan === 'masuk');
-      if (checkIn) {
-        const workedMinutes = Math.max(0, Math.round((new Date(att.timestamp).getTime() - new Date(checkIn.timestamp).getTime()) / 60000));
-        const lateMinutes = checkIn.late_minutes ?? Math.max(0, clockMinutes(checkIn.timestamp.slice(11, 16)) - clockMinutes(workSettings.start_time));
-        const OVERTIME_GRACE_MINUTES = 60; // toleransi 1 jam setelah end_time (mis. pulang jam 16:00 -> lembur baru mulai lewat 17:00)
-        const pastGraceMinutes = Math.max(0, clockMinutes(timestampClock) - clockMinutes(workSettings.end_time) - OVERTIME_GRACE_MINUTES);
-        const lateCompensationMinutes = Math.min(lateMinutes, pastGraceMinutes);
-        const overtimeMinutesAfterLate = Math.max(0, pastGraceMinutes - lateCompensationMinutes);
-        const overtimeHours = overtimeMinutesAfterLate > 0 ? Math.ceil(overtimeMinutesAfterLate / 60) : 0; // dibulatkan ke atas per jam
-        attendanceMetrics = {
-          worked_minutes: workedMinutes,
-          work_fraction: timestampClock < workSettings.full_day_from ? 0.5 : 1,
-          late_compensation_minutes: lateCompensationMinutes,
-          overtime_minutes: overtimeHours * 60
-        };
-      }
+      if (checkIn) attendanceMetrics = checkoutMetrics(checkIn, att.timestamp, workSettings);
     }
 
     const newAttendance: Attendance = {

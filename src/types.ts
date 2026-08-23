@@ -731,3 +731,33 @@ export interface Asset {
   status: 'baik' | 'diservis' | 'rusak';
   notes?: string;
 }
+
+export const clockMinutes = (value: string): number => {
+  const [hours, minutes] = value.split(':').map(Number);
+  return hours * 60 + minutes;
+};
+
+/**
+ * Metrik satu scan pulang (durasi kerja, porsi hari, pengganti telat, lembur).
+ * Dipakai scan normal DAN koreksi admin — supaya keduanya tidak pernah beda rumus.
+ */
+export const checkoutMetrics = (
+  checkIn: Attendance,
+  checkoutTimestamp: string,
+  settings: WorkSettings
+): Partial<Attendance> => {
+  const clock = checkoutTimestamp.slice(11, 16);
+  const workedMinutes = Math.max(0, Math.round((new Date(checkoutTimestamp).getTime() - new Date(checkIn.timestamp).getTime()) / 60000));
+  const lateMinutes = checkIn.late_minutes ?? Math.max(0, clockMinutes(checkIn.timestamp.slice(11, 16)) - clockMinutes(settings.start_time));
+  const OVERTIME_GRACE_MINUTES = 60; // toleransi 1 jam setelah end_time (mis. pulang jam 16:00 -> lembur baru mulai lewat 17:00)
+  const pastGraceMinutes = Math.max(0, clockMinutes(clock) - clockMinutes(settings.end_time) - OVERTIME_GRACE_MINUTES);
+  const lateCompensationMinutes = Math.min(lateMinutes, pastGraceMinutes);
+  const overtimeMinutesAfterLate = Math.max(0, pastGraceMinutes - lateCompensationMinutes);
+  const overtimeHours = overtimeMinutesAfterLate > 0 ? Math.ceil(overtimeMinutesAfterLate / 60) : 0; // dibulatkan ke atas per jam
+  return {
+    worked_minutes: workedMinutes,
+    work_fraction: clock < settings.full_day_from ? 0.5 : 1,
+    late_compensation_minutes: lateCompensationMinutes,
+    overtime_minutes: overtimeHours * 60,
+  };
+};

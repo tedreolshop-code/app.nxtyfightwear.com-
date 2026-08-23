@@ -213,6 +213,8 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
   const [historyStatus, setHistoryStatus] = useState<'all' | 'normal' | 'late' | 'anomaly'>('all');
   const [historyMethod, setHistoryMethod] = useState<'all' | 'gps_self' | 'admin_qr'>('all');
   const [historyPage, setHistoryPage] = useState(1);
+  // Koreksi scan pulang yang terlewat: { 'empId|tanggal': { time, reason } }
+  const [correctionDraft, setCorrectionDraft] = useState<Record<string, { time: string; reason: string }>>({});
 
   // Selected Employee & Scan Details
   const [selectedEmpId, setSelectedEmpId] = useState('');
@@ -557,6 +559,37 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
   const notCheckedOutToday = employees.filter(employee => todayCheckInIds.has(employee.id) && !todayCheckOutIds.has(employee.id));
   const assistedPeriodLogs = periodLogs.filter(log => (log.verification_method || 'gps_self') === 'admin_qr');
   const latePeriodLogs = periodLogs.filter(log => (log.late_minutes || 0) > 0);
+  // Hari dengan scan MASUK tapi tanpa scan PULANG, 30 hari terakhir sampai kemarin
+  // (hari ini belum selesai, jadi belum dianggap terlewat).
+  const missingCheckouts = (() => {
+    const sejak = new Date(new Date(`${todayWib}T00:00:00+07:00`).getTime() - 30 * 86400000).toISOString().slice(0, 10);
+    const perHari = new Map<string, { employee_id: string; employee_name: string; date: string; masuk: string; pulang: boolean }>();
+    attendanceLogs.forEach(log => {
+      const date = log.timestamp.slice(0, 10);
+      if (date < sejak || date >= todayWib) return;
+      const key = `${log.employee_id}|${date}`;
+      const row = perHari.get(key) || { employee_id: log.employee_id, employee_name: log.employee_name, date, masuk: '', pulang: false };
+      if (log.type_scan === 'masuk') row.masuk = log.timestamp.slice(11, 16);
+      if (log.type_scan === 'pulang') row.pulang = true;
+      perHari.set(key, row);
+    });
+    return [...perHari.values()]
+      .filter(row => row.masuk && !row.pulang)
+      .sort((a, b) => b.date.localeCompare(a.date) || a.employee_name.localeCompare(b.employee_name));
+  })();
+
+  const submitCorrection = (row: { employee_id: string; employee_name: string; date: string }) => {
+    const key = `${row.employee_id}|${row.date}`;
+    const draft = correctionDraft[key] || { time: '', reason: '' };
+    try {
+      dataStore.recordMissingCheckout(row.employee_id, row.date, draft.time, draft.reason);
+      setCorrectionDraft(prev => { const next = { ...prev }; delete next[key]; return next; });
+      loadData();
+      setStatusMessage({ text: `Scan pulang ${row.employee_name} ${row.date} berhasil dikoreksi.`, error: false });
+    } catch (err) {
+      setStatusMessage({ text: err instanceof Error ? err.message : 'Koreksi gagal.', error: true });
+    }
+  };
   const pendingAttendanceSync = (() => {
     try {
       return JSON.parse(localStorage.getItem('nxty_attendance_pending') || '[]') as Attendance[];
@@ -1248,7 +1281,30 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
 
           {adminAttendanceTab === 'correction' && (
             <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4 shadow-xs text-left">
-              <div><h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider">Koreksi & Bantuan Admin</h3><p className="text-[10px] text-gray-400">Daftar absensi yang dibuat lewat bantuan admin, lengkap dengan alasan.</p></div>
+              <div><h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider">Scan Pulang Terlewat</h3><p className="text-[10px] text-gray-400">Hari yang ada scan masuk tapi tidak ada scan pulang (30 hari terakhir). Tanpa scan pulang, hari itu dihitung 0 hari — gaji dan bonus kehadirannya ikut hilang.</p></div>
+              <div className="space-y-2">{missingCheckouts.length === 0 ? <p className="p-10 text-center text-xs text-gray-400 bg-gray-50 border border-dashed rounded-xl">Tidak ada scan pulang yang terlewat. Bagus.</p> : missingCheckouts.map(row => {
+                const key = `${row.employee_id}|${row.date}`;
+                const draft = correctionDraft[key] || { time: '', reason: '' };
+                const ubah = (patch: Partial<{ time: string; reason: string }>) => setCorrectionDraft(prev => ({ ...prev, [key]: { ...draft, ...patch } }));
+                return (
+                  <div key={key} className="rounded-xl border border-rose-100 bg-rose-50/60 p-3 text-xs space-y-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                      <div>
+                        <p className="font-black text-gray-900">{row.employee_name}</p>
+                        <p className="text-gray-500">{row.date} · masuk {row.masuk} · <b className="text-rose-600">tanpa scan pulang</b></p>
+                      </div>
+                      <span className="rounded-full bg-white border border-rose-200 px-2 py-1 text-[10px] font-black text-rose-700">0 hari</span>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input type="time" value={draft.time} onChange={e => ubah({ time: e.target.value })} className="border rounded-lg p-2 bg-white" aria-label="Jam pulang sebenarnya" />
+                      <input type="text" value={draft.reason} onChange={e => ubah({ reason: e.target.value })} placeholder="Alasan koreksi (wajib)" className="flex-1 border rounded-lg p-2 bg-white" />
+                      <button onClick={() => submitCorrection(row)} disabled={!draft.time || !draft.reason.trim()} className="rounded-lg bg-[var(--color-evergreen)] text-white font-bold px-4 py-2 disabled:opacity-40">Catat Pulang</button>
+                    </div>
+                  </div>
+                );
+              })}</div>
+
+              <div className="pt-2 border-t border-gray-100"><h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider">Bantuan Admin</h3><p className="text-[10px] text-gray-400">Daftar absensi yang dibuat lewat bantuan admin, lengkap dengan alasan.</p></div>
               <div className="space-y-2">{assistedPeriodLogs.length === 0 ? <p className="p-10 text-center text-xs text-gray-400 bg-gray-50 border border-dashed rounded-xl">Belum ada absensi dibantu admin pada periode ini.</p> : assistedPeriodLogs.map(log => <div key={log.id} className="rounded-xl border border-amber-100 bg-amber-50/60 p-3 text-xs"><div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"><div><p className="font-black text-gray-900">{log.employee_name}</p><p className="text-gray-500">{log.timestamp.slice(0, 10)} · {log.timestamp.slice(11, 16)} · {log.type_scan}</p></div><span className="rounded-full bg-white border border-amber-200 px-2 py-1 text-[10px] font-black text-amber-800">Dibantu {log.assisted_by_name || '-'}</span></div><p className="mt-2 text-gray-600">Alasan: {log.assistance_reason || '-'}</p></div>)}</div>
             </div>
           )}
