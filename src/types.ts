@@ -1,3 +1,39 @@
+/**
+ * Kode divisi untuk nomor induk: huruf/angka saja, huruf besar, tanpa spasi.
+ * Kata "DEPARTEMEN" dibuang supaya 'Departemen Konveksi' -> 'KONVEKSI' dan
+ * 'Eva Foam' -> 'EVAFOAM', sesuai format yang dipakai perusahaan.
+ */
+export const departmentCode = (name?: string): string =>
+  (name || '')
+    .toUpperCase()
+    .replace(/DEPARTEMEN/g, '')
+    .replace(/[^A-Z0-9]/g, '') || 'UMUM';
+
+/** Awalan perusahaan pada nomor induk. */
+export const EMPLOYEE_NUMBER_PREFIX = 'AR';
+
+/**
+ * Nomor induk berikutnya untuk satu divisi, mis. 'AR-KONVEKSI-026'.
+ *
+ * Urut PER DIVISI, dan nomor bekas karyawan yang keluar TIDAK dipakai ulang:
+ * selalu satu di atas nomor tertinggi yang pernah terbit di divisi itu — termasuk
+ * milik karyawan non-aktif — supaya satu nomor tidak pernah menunjuk dua orang.
+ */
+export const nextEmployeeNumber = (
+  employees: Array<{ employee_number?: string }>,
+  departmentName: string | undefined,
+  digits = 3
+): string => {
+  const prefix = `${EMPLOYEE_NUMBER_PREFIX}-${departmentCode(departmentName)}-`;
+  const tertinggi = employees.reduce((max, e) => {
+    const nomor = e.employee_number || '';
+    if (!nomor.startsWith(prefix)) return max;
+    const angka = Number(nomor.slice(prefix.length));
+    return Number.isFinite(angka) ? Math.max(max, angka) : max;
+  }, 0);
+  return `${prefix}${String(tertinggi + 1).padStart(digits, '0')}`;
+};
+
 export interface Department {
   id: string;
   name: string;
@@ -89,6 +125,12 @@ export interface Employee {
   access_role?: UserRole; // Akses sistem karyawan ini (owner/admin/gudang); kosong = karyawan biasa
   photo_url?: string; // Foto profil (data URL kecil, diunggah dari halaman Profil Saya)
   attendance_qr_token?: string; // Token acak untuk kartu QR absensi; bukan PIN atau data pribadi
+  // Nomor induk karyawan, mis. 'AR-KONVEKSI-001'. TIDAK ikut berubah saat pindah
+  // divisi: nomor induk adalah pegangan seumur kerja, divisi punya kolomnya sendiri.
+  employee_number?: string;
+  // Tanggal mulai bekerja 'YYYY-MM-DD'. Kehadiran sebelum tanggal ini tidak dinilai,
+  // supaya karyawan baru tidak tercatat mangkir pada hari sebelum dia masuk.
+  join_date?: string;
 }
 
 export type AttendanceWorkStatus = 'hadir' | 'terlambat' | 'izin' | 'sakit' | 'cuti' | 'alpha' | 'lembur' | 'pulang_cepat';

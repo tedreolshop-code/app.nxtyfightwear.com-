@@ -26,6 +26,8 @@ const TRACKED: Record<string, { label: string; format: Formatter }> = {
       || String(value ?? '-'),
   },
   department_id: { label: 'Divisi', format: value => divisionLabel(value as string) },
+  employee_number: { label: 'Nomor induk', format: value => String(value ?? '-') },
+  join_date: { label: 'Tanggal masuk', format: value => String(value ?? '-') },
   status_aktif: { label: 'Status aktif', format: value => (value ? 'Aktif' : 'Nonaktif') },
   role: { label: 'Jabatan', format: value => (value === 'leader' ? 'Leader' : 'Karyawan') },
 };

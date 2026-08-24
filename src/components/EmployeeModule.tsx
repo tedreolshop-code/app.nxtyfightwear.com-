@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Employee, Department, PayrollWeekly, CashAdvance, Attendance, UserRole, EmploymentStatus, EMPLOYMENT_STATUSES, employmentStatusOf, isEligibleForAttendanceBonus, divisionLabel } from '../types';
+import { Employee, Department, PayrollWeekly, CashAdvance, Attendance, UserRole, EmploymentStatus, EMPLOYMENT_STATUSES, employmentStatusOf, isEligibleForAttendanceBonus, divisionLabel, nextEmployeeNumber } from '../types';
 import { dataStore, hashPin, currentWeeklyPayrollPeriod, dayFraction } from '../dataStore';
 import { employeeChangeLog, ChangeEntry } from '../employeeChangeLog';
 import { QRCodeSVG } from 'qrcode.react';
@@ -86,6 +86,8 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
   const [allowedTabs, setAllowedTabs] = useState<string[]>(['attendance', 'production', 'warehouse']);
   const [accessRole, setAccessRole] = useState('');
   const [username, setUsername] = useState('');
+  const [employeeNumber, setEmployeeNumber] = useState('');
+  const [joinDate, setJoinDate] = useState('');
   // Mode edit: id karyawan yang sedang diedit (null = form tambah baru)
   const [editEmpId, setEditEmpId] = useState<string | null>(null);
   const [statusAktif, setStatusAktif] = useState(true);
@@ -409,6 +411,8 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
     setAccessRole('');
     setStatusAktif(true);
     setEmploymentStatus('karyawan');
+    setEmployeeNumber('');
+    setJoinDate('');
     setEditEmpId(null);
     setShowAddForm(false);
   };
@@ -431,7 +435,30 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
     setAllowedTabs(emp.allowed_tabs?.length ? emp.allowed_tabs : defaultTabsForAccessRole(emp.access_role || ''));
     setStatusAktif(emp.status_aktif);
     setEmploymentStatus(employmentStatusOf(emp));
+    setEmployeeNumber(emp.employee_number || '');
+    setJoinDate(emp.join_date || '');
     setShowAddForm(true);
+  };
+
+  // Karyawan tanpa nomor induk, diurutkan per divisi lalu nama — supaya penerbitan
+  // massal menghasilkan urutan yang bisa ditebak dan enak dicocokkan dengan arsip.
+  const tanpaNomorInduk = employees.filter(emp => !emp.employee_number);
+
+  const terbitkanNomorInduk = () => {
+    const daftar = [...tanpaNomorInduk].sort((a, b) =>
+      (divisionLabel(a.department_id) || '').localeCompare(divisionLabel(b.department_id) || '') || a.name.localeCompare(b.name)
+    );
+    if (!window.confirm(`Terbitkan nomor induk untuk ${daftar.length} karyawan yang belum punya?\n\nNomor diurutkan per divisi berdasarkan nama, dan masih bisa diubah lewat Edit.`)) return;
+
+    // Nomor terbit berurutan: tiap nomor baru ikut jadi acuan nomor berikutnya
+    let semua = dataStore.getEmployees();
+    daftar.forEach(emp => {
+      const nomor = nextEmployeeNumber(semua, departments.find(d => d.id === emp.department_id)?.name);
+      semua = semua.map(item => (item.id === emp.id ? { ...item, employee_number: nomor } : item));
+    });
+    dataStore.setEmployees(semua);
+    showNotification(`${daftar.length} nomor induk berhasil diterbitkan.`, 'success');
+    loadData();
   };
 
   // Hapus permanen (riwayat absensi/payroll lama tetap tersimpan atas nama karyawan tsb)
@@ -479,6 +506,9 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
           phone_number: phoneNumber,
           status_aktif: statusAktif,
           employment_status: employmentStatus,
+          // Nomor induk sengaja dibiarkan apa adanya walau divisi berganti
+          employee_number: employeeNumber.trim() || undefined,
+          join_date: joinDate || undefined,
           allowed_tabs: allowedTabs,
           access_role: (accessRole || undefined) as Employee['access_role'],
           ...(pin ? { pin: hashPin(pin), pin_hashed: true } : {})
@@ -500,6 +530,8 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
         default_weekly_cash_advance_deduction: defaultWeeklyKasbonDeduction,
         status_aktif: true,
         employment_status: employmentStatus,
+        employee_number: employeeNumber.trim() || nextEmployeeNumber(dataStore.getEmployees(), departments.find(d => d.id === departmentId)?.name),
+        join_date: joinDate || undefined,
         phone_number: phoneNumber,
         pin: hashPin(pin),
         pin_hashed: true,
@@ -669,12 +701,23 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
           <p className="text-xs text-gray-400">Atur data karyawan, tarif harian, PIN login, dan menu yang bisa dibuka.</p>
         </div>
 
+        <div className="flex items-center gap-2">
+        {tanpaNomorInduk.length > 0 && (
+          <button
+            onClick={terbitkanNomorInduk}
+            className="bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+            title="Isikan nomor induk untuk karyawan yang belum punya"
+          >
+            Terbitkan No. Induk ({tanpaNomorInduk.length})
+          </button>
+        )}
         <button
           onClick={openCreateEmployeeModal}
           className="bg-[var(--color-evergreen)] hover:bg-[var(--color-evergreen-dark)] text-white px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 shadow-sm cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5" /> Tambah Karyawan Baru
         </button>
+        </div>
       </div>
 
       {showAddForm && (
@@ -734,6 +777,42 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                       placeholder="mis. budi"
                       required
                     />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Nomor Induk Karyawan</label>
+                    <div className="flex gap-1.5">
+                      <input
+                        type="text"
+                        value={employeeNumber}
+                        onChange={(e) => setEmployeeNumber(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ''))}
+                        className="w-full bg-white border border-gray-200 rounded px-3 py-1.5 text-xs text-gray-800 font-mono focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600/20"
+                        placeholder={departmentId ? nextEmployeeNumber(employees, departments.find(d => d.id === departmentId)?.name) : 'AR-DIVISI-001'}
+                      />
+                      <button
+                        type="button"
+                        disabled={!departmentId}
+                        onClick={() => setEmployeeNumber(nextEmployeeNumber(employees, departments.find(d => d.id === departmentId)?.name))}
+                        className="shrink-0 px-2.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold disabled:opacity-40 cursor-pointer"
+                        title="Isikan nomor urut berikutnya untuk divisi ini"
+                      >
+                        Otomatis
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-0.5">Tetap sama walau pindah divisi. Kosongkan untuk diisi otomatis.</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Tanggal Masuk Kerja</label>
+                    <input
+                      type="date"
+                      value={joinDate}
+                      onChange={(e) => setJoinDate(e.target.value)}
+                      className="w-full bg-white border border-gray-200 rounded px-3 py-1.5 text-xs text-gray-800 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600/20"
+                    />
+                    <p className="text-[10px] text-gray-400 mt-0.5">Kehadiran sebelum tanggal ini tidak dinilai.</p>
                   </div>
                 </div>
 
@@ -1005,6 +1084,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
             <thead>
               <tr className="bg-evergreen text-white font-bold uppercase tracking-wider text-[10px]">
                 <th className="p-3">Nama Karyawan</th>
+                <th className="p-3">No. Induk</th>
                 <th className="p-3">Departemen</th>
                 <th className="p-3 text-center">Peran / Role</th>
                 <th className="p-3 text-center">Status Kerja</th>
@@ -1017,7 +1097,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
             <tbody>
               {visibleEmployees.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="p-6 text-center text-xs text-gray-400">
+                  <td colSpan={10} className="p-6 text-center text-xs text-gray-400">
                     Tidak ada karyawan yang cocok dengan pencarian / filter.
                   </td>
                 </tr>
@@ -1040,6 +1120,10 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                           )}
                         </div>
                       </div>
+                    </td>
+                    <td className="p-3">
+                      <span className="font-mono text-[11px] text-gray-700">{emp.employee_number || <span className="text-gray-300">belum ada</span>}</span>
+                      {emp.join_date && <span className="block text-[10px] text-gray-400">masuk {emp.join_date}</span>}
                     </td>
                     <td className="p-3">
                       <span className={`px-2 py-0.5 border rounded text-[10px] font-bold ${deptBadgeClass(deptObj?.id)}`}>

@@ -549,6 +549,9 @@ class DataStore {
       if (new Date(`${dateStr}T00:00:00Z`).getUTCDay() === 0) continue; // Minggu libur
       if (isCurrentMonth && dateStr >= today) continue; // hari ini belum selesai
       if (settings.attendance_effective_from && dateStr < settings.attendance_effective_from) continue;
+      // Hari sebelum karyawan ini masuk kerja bukan hari kerja DIA — tanpa ini karyawan
+      // baru tercatat mangkir sepanjang tanggal sebelum dia bergabung.
+      if (employee?.join_date && dateStr < employee.join_date) continue;
       workingDates.push(dateStr);
     }
 
