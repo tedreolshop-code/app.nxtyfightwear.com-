@@ -771,7 +771,10 @@ export const WarehouseInventoryModule: React.FC<WarehouseInventoryModuleProps> =
                             {mov.type.replace(/_/g, ' ')}
                           </span>
                         </td>
-                        <td className="p-3 text-gray-700 font-sans border-r border-emerald-100/30 truncate max-w-[200px]" title={mov.reference}>
+                        {/* Keterangan dibungkus, bukan dipotong: isinya memuat nomor order DAN
+                            nama barang (mis. "Produksi ORD/2026/07/001 - Matras Beladiri Eva
+                            Foam 2cm"), sehingga pemotongan justru menghapus nama barangnya. */}
+                        <td className="p-3 text-gray-700 font-sans border-r border-emerald-100/30 break-words" title={mov.reference}>
                           {mov.reference}
                         </td>
                         <td className="p-3 text-right border-r border-emerald-100/30">

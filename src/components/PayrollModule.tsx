@@ -573,7 +573,9 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
         <div className="rounded-lg px-4 py-3 text-white flex items-center justify-between gap-4" style={{ backgroundColor: warna }}>
           <div className="min-w-0">
             <p className="text-[10px] uppercase tracking-widest opacity-80">Total Diterima</p>
-            <p className="text-[9px] italic opacity-90 capitalize truncate">{terbilang(pay.total_pay)}</p>
+            {/* Terbilang dibungkus, tidak dipotong: pada slip gaji ini bagian formal,
+                dan angka seperti Rp 987.654 menghasilkan 74 huruf. */}
+            <p className="text-[9px] italic opacity-90 capitalize leading-tight break-words">{terbilang(pay.total_pay)}</p>
           </div>
           <p className="text-xl font-black tabular-nums whitespace-nowrap">{formatIDRCompact(pay.total_pay)}</p>
         </div>
