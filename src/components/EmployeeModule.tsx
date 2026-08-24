@@ -3,6 +3,7 @@ import { Employee, Department, PayrollWeekly, CashAdvance, Attendance, UserRole,
 import { dataStore, hashPin, currentWeeklyPayrollPeriod, dayFraction } from '../dataStore';
 import { employeeChangeLog, ChangeEntry } from '../employeeChangeLog';
 import { QRCodeSVG } from 'qrcode.react';
+import { EmployeeIdCards, printIdCards } from './EmployeeIdCards';
 import { Users, Plus, ShieldCheck, Key, Lock, LogIn, LogOut, Check, Save, DollarSign, X, Calendar, Clock, Printer, Trash2, History, Calculator, QrCode, Pencil } from 'lucide-react';
 
 // Rapikan nama: tiap kata awalan kapital, sisanya kecil (mis. "BUDI santoso" -> "Budi Santoso")
@@ -702,6 +703,15 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+        {visibleEmployees.length > 0 && (
+          <button
+            onClick={printIdCards}
+            className="bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+            title="Cetak kartu untuk karyawan yang sedang tampil di daftar"
+          >
+            <Printer className="w-3.5 h-3.5" /> Cetak Kartu ({visibleEmployees.length})
+          </button>
+        )}
         {tanpaNomorInduk.length > 0 && (
           <button
             onClick={terbitkanNomorInduk}
@@ -719,6 +729,8 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
         </button>
         </div>
       </div>
+
+      <EmployeeIdCards employees={visibleEmployees} />
 
       {showAddForm && (
         <div className="fixed inset-0 z-50 bg-black/60 p-4 flex items-center justify-center no-print">

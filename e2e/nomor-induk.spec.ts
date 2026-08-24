@@ -37,7 +37,7 @@ test('penerbitan massal nomor induk: urut per divisi, format sesuai', async ({ p
 
   // Tombolnya hilang setelah semua punya nomor, dan nomornya tampil di tabel
   await expect(page.getByRole('button', { name: /Terbitkan No\. Induk/ })).toHaveCount(0);
-  await expect(page.getByText('AR-KONVEKSI-001')).toBeVisible();
+  await expect(page.getByRole('table').getByText('AR-KONVEKSI-001')).toBeVisible();
 });
 
 test('karyawan baru dapat nomor berikutnya dan tanggal masuk tersimpan', async ({ page }) => {
