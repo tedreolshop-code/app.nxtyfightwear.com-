@@ -728,7 +728,7 @@ export const MarketplaceSalesModule: React.FC = () => {
               </div>
               <div className="space-y-0.5 flex-1 min-w-0">
                 <span className="text-[11px] text-gray-400 font-bold uppercase tracking-wider block">Item Terlaris</span>
-                <p className="text-sm font-black text-gray-800 truncate" title={topSellingItemName}>
+                <p className="text-sm font-black text-gray-800 leading-tight line-clamp-2" title={topSellingItemName}>
                   {topSellingItemName}
                 </p>
                 <span className="text-[10px] text-indigo-500 font-semibold block font-mono">
@@ -1578,7 +1578,7 @@ export const MarketplaceSalesModule: React.FC = () => {
             <div className="flex items-start justify-between gap-2 mb-4">
               <div className="min-w-0">
                 <h3 className="text-sm font-bold text-gray-900">Ubah Status Order</h3>
-                <p className="text-[11px] text-gray-500 truncate mt-0.5" title={statusModalItem.description}>
+                <p className="text-[11px] text-gray-500 break-words mt-0.5" title={statusModalItem.description}>
                   {statusModalItem.description}
                 </p>
                 <p className="text-[10px] text-gray-400 font-mono">
