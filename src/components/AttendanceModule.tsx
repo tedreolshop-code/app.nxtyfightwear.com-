@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useId, useRef } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { QRCodeSVG } from 'qrcode.react';
-import { Employee, Attendance, AttendanceType, WorkSettings } from '../types';
+import { Employee, Attendance, AttendanceType, AttendanceFailure, WorkSettings } from '../types';
 import { dataStore, wibNowISO } from '../dataStore';
 import { brandName, brandLegalName } from '../brand';
 import { exportExcel } from '../exportExcel';
@@ -21,7 +21,7 @@ import {
   HelpCircle, 
   Check, 
   Smartphone, 
-  Map, 
+  Map as MapIcon, 
   Users, 
   ShieldCheck, 
   Calendar,
@@ -310,13 +310,34 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
     return null;
   };
 
+  /**
+   * Satu-satunya jalan keluar untuk scan yang gagal: tampilkan pesan DAN tinggalkan
+   * jejak. Semua titik penolakan lewat sini supaya tidak ada kegagalan yang senyap.
+   */
+  const tolakScan = (
+    stage: AttendanceFailure['stage'],
+    pesan: string,
+    opsi?: { employeeId?: string; typeScan?: AttendanceType; overlayJudul?: string; overlayPesan?: string; gps?: { latitude: number; longitude: number; accuracy_meters: number } }
+  ) => {
+    setStatusMessage({ text: pesan, error: true });
+    if (opsi?.overlayJudul) setRejectOverlay({ judul: opsi.overlayJudul, pesan: opsi.overlayPesan || pesan });
+    dataStore.logAttendanceFailure({
+      employee_id: opsi?.employeeId ?? selectedEmpId,
+      type_scan: opsi?.typeScan,
+      stage,
+      reason: pesan,
+      device_token: localStorage.getItem(`nxty_device_token_${opsi?.employeeId ?? selectedEmpId}`) || undefined,
+      ...(opsi?.gps || {}),
+    });
+  };
+
   // Submit scan handler
   const handleAttendanceSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setStatusMessage(null);
 
     if (!selectedEmpId) {
-      setStatusMessage({ text: 'Pilih nama karyawan terlebih dahulu.', error: true });
+      tolakScan('pilih_karyawan', 'Pilih nama karyawan terlebih dahulu.');
       return;
     }
 
@@ -324,25 +345,28 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
     if (!emp) return;
     const effectiveScanType = inferEmployeeScanType(emp.id);
     if (!effectiveScanType) {
-      setStatusMessage({ text: 'Absensi hari ini sudah lengkap: masuk dan pulang sudah tercatat.', error: true });
-      setRejectOverlay({ judul: 'SUDAH LENGKAP', pesan: 'Absen masuk dan pulang Anda hari ini sudah tercatat. Tidak perlu scan lagi.' });
+      tolakScan('ditolak_aturan', 'Absensi hari ini sudah lengkap: masuk dan pulang sudah tercatat.', {
+        employeeId: emp.id,
+        overlayJudul: 'SUDAH LENGKAP',
+        overlayPesan: 'Absen masuk dan pulang Anda hari ini sudah tercatat. Tidak perlu scan lagi.',
+      });
       return;
     }
 
     if (lockedEmployee && !locationVerified) {
-      setStatusMessage({ text: 'Scan QR lokasi pabrik terlebih dahulu sebelum absen.', error: true });
+      tolakScan('qr_lokasi', 'Scan QR lokasi pabrik terlebih dahulu sebelum absen.', { employeeId: emp.id, typeScan: effectiveScanType });
       return;
     }
 
     // Karyawan yang login lewat portal sudah terverifikasi PIN — tidak perlu PIN ulang
     if (!lockedEmployee) {
       if (!pin) {
-        setStatusMessage({ text: 'PIN verifikasi harus diisi.', error: true });
+        tolakScan('pin', 'PIN verifikasi harus diisi.', { employeeId: emp.id, typeScan: effectiveScanType });
         return;
       }
 
       if (!dataStore.verifyEmployeePin(emp.id, pin)) {
-        setStatusMessage({ text: 'PIN salah! Silakan coba lagi.', error: true });
+        tolakScan('pin', 'PIN salah.', { employeeId: emp.id, typeScan: effectiveScanType });
         return;
       }
     }
@@ -356,12 +380,12 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
 
     // Pulang cepat (>= full_day_from tapi sebelum end_time) tetap 1 hari, tapi wajib beralasan
     if (effectiveScanType === 'pulang' && needsEarlyLeaveReason && !finalEarlyLeaveReason) {
-      setStatusMessage({ text: `Pulang sebelum ${workSettings.end_time} tetap dihitung 1 hari kerja, tapi alasannya wajib dipilih.`, error: true });
+      tolakScan('alasan_pulang_cepat', `Pulang sebelum ${workSettings.end_time} tetap dihitung 1 hari kerja, tapi alasannya wajib dipilih.`, { employeeId: emp.id, typeScan: effectiveScanType });
       return;
     }
 
     if (!navigator.geolocation) {
-      setStatusMessage({ text: 'Perangkat/browser ini tidak mendukung GPS. Gunakan browser lain.', error: true });
+      tolakScan('gps', 'Perangkat/browser ini tidak mendukung GPS. Gunakan browser lain.', { employeeId: emp.id, typeScan: effectiveScanType });
       return;
     }
 
@@ -407,8 +431,12 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
           }, 3500);
         } catch (err: any) {
           const pesan = err.message || 'Gagal menyimpan absensi.';
-          setStatusMessage({ text: pesan, error: true });
-          setRejectOverlay({ judul: 'ABSENSI DITOLAK', pesan });
+          tolakScan('ditolak_aturan', pesan, {
+            employeeId: emp.id,
+            typeScan: effectiveScanType,
+            overlayJudul: 'ABSENSI DITOLAK',
+            gps: { latitude: pos.coords.latitude, longitude: pos.coords.longitude, accuracy_meters: Math.round(pos.coords.accuracy) },
+          });
         } finally {
           setIsScanning(false);
         }
@@ -418,8 +446,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
         const pesan = err.code === err.PERMISSION_DENIED
           ? 'Akses lokasi ditolak. Izinkan akses lokasi untuk situs ini di pengaturan browser, lalu coba lagi.'
           : `Gagal membaca lokasi GPS (${err.message}). Pastikan GPS aktif lalu coba lagi.`;
-        setStatusMessage({ text: pesan, error: true });
-        setRejectOverlay({ judul: 'LOKASI GAGAL DIBACA', pesan });
+        tolakScan('gps', pesan, { employeeId: emp.id, typeScan: effectiveScanType, overlayJudul: 'LOKASI GAGAL DIBACA' });
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
@@ -427,7 +454,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
 
   const handleLocationQr = (rawValue: string) => {
     if (rawValue !== `ARI-LOCATION:${workSettings.location_qr_token}`) {
-      setStatusMessage({ text: 'QR lokasi tidak valid atau sudah diganti.', error: true });
+      tolakScan('qr_lokasi', 'QR lokasi tidak valid atau sudah diganti.');
       return;
     }
     setLocationVerified(true);
@@ -577,6 +604,18 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
       .filter(row => row.masuk && !row.pulang)
       .sort((a, b) => b.date.localeCompare(a.date) || a.employee_name.localeCompare(b.employee_name));
   })();
+
+  // Jejak scan gagal, 7 hari terakhir — sumber jawaban saat ada keluhan "tidak bisa absen"
+  const recentFailures = (() => {
+    const sejak = new Date(new Date(`${todayWib}T00:00:00+07:00`).getTime() - 7 * 86400000).toISOString().slice(0, 10);
+    return dataStore.getAttendanceFailures()
+      .filter(f => f.timestamp.slice(0, 10) >= sejak)
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  })();
+  const failureByStage = recentFailures.reduce<Record<string, number>>((acc, f) => {
+    acc[f.stage] = (acc[f.stage] || 0) + 1;
+    return acc;
+  }, {});
 
   const submitCorrection = (row: { employee_id: string; employee_name: string; date: string }) => {
     const key = `${row.employee_id}|${row.date}`;
@@ -1304,6 +1343,24 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                 );
               })}</div>
 
+              <div className="pt-2 border-t border-gray-100"><h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider">Scan Gagal (7 Hari Terakhir)</h3><p className="text-[10px] text-gray-400">Tiap percobaan absen yang ditolak beserta sebabnya. Kosong = tidak ada yang gagal mencoba di perangkat ini.</p></div>
+              {recentFailures.length > 0 && (
+                <div className="flex flex-wrap gap-2">{Object.entries(failureByStage).sort((a, b) => b[1] - a[1]).map(([stage, jumlah]) => (
+                  <span key={stage} className="rounded-full bg-slate-100 border border-slate-200 px-2.5 py-1 text-[10px] font-black text-slate-700">{stage.replace(/_/g, ' ')}: {jumlah}</span>
+                ))}</div>
+              )}
+              <div className="space-y-2 max-h-96 overflow-y-auto">{recentFailures.length === 0 ? <p className="p-10 text-center text-xs text-gray-400 bg-gray-50 border border-dashed rounded-xl">Belum ada scan gagal yang tercatat.</p> : recentFailures.slice(0, 100).map(f => (
+                <div key={f.id} className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 text-xs">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                    <p className="font-black text-gray-900">{f.employee_name} {f.type_scan && <span className="font-normal text-gray-500">· {f.type_scan}</span>}</p>
+                    <span className="rounded-full bg-white border border-slate-200 px-2 py-0.5 text-[10px] font-black text-slate-700">{f.stage.replace(/_/g, ' ')}</span>
+                  </div>
+                  <p className="text-gray-500">{f.timestamp.slice(0, 10)} · {f.timestamp.slice(11, 19)}</p>
+                  <p className="mt-1 text-gray-700">{f.reason}</p>
+                  {f.accuracy_meters !== undefined && <p className="text-[10px] text-gray-400 mt-0.5">GPS ±{f.accuracy_meters} m</p>}
+                </div>
+              ))}</div>
+
               <div className="pt-2 border-t border-gray-100"><h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider">Bantuan Admin</h3><p className="text-[10px] text-gray-400">Daftar absensi yang dibuat lewat bantuan admin, lengkap dengan alasan.</p></div>
               <div className="space-y-2">{assistedPeriodLogs.length === 0 ? <p className="p-10 text-center text-xs text-gray-400 bg-gray-50 border border-dashed rounded-xl">Belum ada absensi dibantu admin pada periode ini.</p> : assistedPeriodLogs.map(log => <div key={log.id} className="rounded-xl border border-amber-100 bg-amber-50/60 p-3 text-xs"><div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"><div><p className="font-black text-gray-900">{log.employee_name}</p><p className="text-gray-500">{log.timestamp.slice(0, 10)} · {log.timestamp.slice(11, 16)} · {log.type_scan}</p></div><span className="rounded-full bg-white border border-amber-200 px-2 py-1 text-[10px] font-black text-amber-800">Dibantu {log.assisted_by_name || '-'}</span></div><p className="mt-2 text-gray-600">Alasan: {log.assistance_reason || '-'}</p></div>)}</div>
             </div>
@@ -1328,7 +1385,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
             <div className="lg:col-span-5 bg-white rounded-2xl border border-gray-200 p-5 space-y-4 shadow-xs text-left no-print">
               <div>
                 <h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider flex items-center gap-2">
-                  <Map className="w-4 h-4 text-[var(--color-evergreen)]" /> Radius Absensi Pabrik
+                  <MapIcon className="w-4 h-4 text-[var(--color-evergreen)]" /> Radius Absensi Pabrik
                 </h3>
                 <p className="text-[10px] text-gray-400 mt-0.5">Absensi hanya diterima jika GPS berada dalam radius yang diatur admin.</p>
               </div>

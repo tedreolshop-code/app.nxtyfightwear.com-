@@ -332,6 +332,27 @@ export interface PayrollWeekly {
 
 export type AttendanceAdjustmentType = 'late_compensation' | 'overtime' | 'live_tiktok' | 'ignored';
 
+/**
+ * Catatan SATU percobaan scan yang GAGAL. Scan berhasil sudah punya jejaknya
+ * sendiri di tabel absensi; tanpa ini kegagalan tidak meninggalkan bekas sama
+ * sekali, sehingga keluhan "tidak bisa absen" mustahil ditelusuri.
+ */
+export interface AttendanceFailure {
+  id: string;
+  employee_id: string;
+  employee_name: string;
+  timestamp: string;
+  type_scan?: AttendanceType;
+  /** Tahap kegagalan: dipakai mengelompokkan sebab, bukan sekadar pesan bebas. */
+  stage: 'pilih_karyawan' | 'qr_lokasi' | 'pin' | 'alasan_pulang_cepat' | 'gps' | 'ditolak_aturan';
+  reason: string;
+  device_token?: string;
+  /** Diisi bila GPS sempat terbaca — menolong menilai keluhan radius. */
+  latitude?: number;
+  longitude?: number;
+  accuracy_meters?: number;
+}
+
 export interface AttendanceAdjustment {
   id: string;
   attendance_id: string;

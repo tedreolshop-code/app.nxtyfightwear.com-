@@ -70,7 +70,8 @@ const PER_ROW: PerRowSync[] = [
   { key: 'cash_advances', table: 'ari_cash_advances', ready: !isCloudEnabled },
   { key: 'cash_advance_transactions', table: 'ari_cash_advance_transactions', ready: !isCloudEnabled },
   { key: 'attendance_bonus_payouts', table: 'ari_attendance_bonus_payouts', ready: !isCloudEnabled },
-  // Absensi (koreksi/ACC)
+  // Absensi (koreksi/ACC + jejak scan gagal)
+  { key: 'attendance_failures', table: 'ari_attendance_failures', ready: !isCloudEnabled, appendOnly: true },
   { key: 'attendance_adjustments', table: 'ari_attendance_adjustments', ready: !isCloudEnabled },
   // Notifikasi
   { key: 'notifications', table: 'ari_notifications', ready: !isCloudEnabled },

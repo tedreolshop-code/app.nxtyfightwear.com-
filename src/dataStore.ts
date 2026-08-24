@@ -32,7 +32,7 @@ import {
   ,PackingTask
   ,AttendanceAdjustment
   ,CashAdvanceTransaction
-  ,AttendanceBonusPayout, isEligibleForAttendanceBonus, PaymentEntry, purchaseRemaining, orderRemaining, clockMinutes, checkoutMetrics } from './types';
+  ,AttendanceBonusPayout, isEligibleForAttendanceBonus, PaymentEntry, purchaseRemaining, orderRemaining, clockMinutes, checkoutMetrics, AttendanceFailure } from './types';
 import { pushKeyToCloud, pushAttendanceToCloud, clearAttendanceInCloud } from './cloudSync';
 
 // Helper to generate UUIDs
@@ -1550,6 +1550,27 @@ class DataStore {
       p.id === payrollId ? { ...p, payment_status: status, paid_at: status === 'paid' ? wibNowISO() : undefined } : p
     );
     this.setPayrollWeekly(payrolls);
+  };
+
+  getAttendanceFailures = (): AttendanceFailure[] => this.get('attendance_failures', []);
+
+  /**
+   * Catat satu percobaan scan yang gagal. Sengaja TIDAK melempar error apa pun:
+   * pencatatan jejak tidak boleh ikut menggagalkan alur scan yang sudah gagal.
+   * Disimpan 500 terakhir saja supaya localStorage perangkat kiosk tidak penuh.
+   */
+  logAttendanceFailure = (entry: Omit<AttendanceFailure, 'id' | 'timestamp' | 'employee_name'> & { employee_name?: string }): void => {
+    try {
+      const timestamp = wibNowISO();
+      const employee = this.getEmployees().find(e => e.id === entry.employee_id);
+      const record: AttendanceFailure = {
+        ...entry,
+        id: `fail-${entry.employee_id || 'anon'}-${timestamp}`,
+        timestamp,
+        employee_name: entry.employee_name || employee?.name || '(belum dipilih)',
+      };
+      this.set('attendance_failures', [record, ...this.getAttendanceFailures()].slice(0, 500));
+    } catch { /* jejak gagal ditulis: abaikan, jangan ganggu alur scan */ }
   };
 
   /**
