@@ -25,14 +25,43 @@ const CARD_CSS = `
   .lembar { display: flex; flex-wrap: wrap; gap: 3mm; }
 
   .kartu {
-    width: 54mm; height: 85.6mm; border-radius: 3mm; overflow: hidden;
+    width: 54mm; height: 85.6mm; border-radius: 3mm; overflow: hidden; position: relative;
     display: flex; flex-direction: column; page-break-inside: avoid;
-    border: 0.3mm solid #cbd5e1; background: #fff;
+    border: 0.3mm solid #cbd5e1; color: var(--warna);
+    background: #fff;
   }
+
+  /* Hiasan latar: lingkaran & garis miring tipis, semuanya memakai warna brand
+     dengan kepekatan rendah agar tulisan tetap gampang dibaca saat dicetak. */
+  .dekor { position: absolute; pointer-events: none; }
+  .dekor-bulat-besar {
+    width: 42mm; height: 42mm; border-radius: 50%; background: var(--warna);
+    opacity: 0.14; left: -15mm; bottom: 8mm;
+  }
+  .dekor-bulat-kecil {
+    width: 26mm; height: 26mm; border-radius: 50%; background: var(--warna);
+    opacity: 0.11; right: -10mm; top: 30mm;
+  }
+  .dekor-cincin {
+    width: 30mm; height: 30mm; border-radius: 50%; border: 0.8mm solid var(--warna);
+    opacity: 0.22; right: -12mm; bottom: 20mm;
+  }
+  .dekor-gradasi {
+    left: 0; right: 0; bottom: 0; height: 40mm; opacity: 0.16;
+    background: linear-gradient(180deg, transparent, var(--warna));
+  }
+  .dekor-garis {
+    left: 0; right: 0; bottom: 0; height: 26mm; color: var(--warna); opacity: 0.13;
+    background: repeating-linear-gradient(135deg, transparent 0 2.2mm, currentColor 2.2mm 2.5mm);
+  }
+
+  .kepala, .badan, .kaki { position: relative; z-index: 1; }
 
   /* Kepala kartu: warna dominan brand, sekaligus tempat lubang tali lanyard */
   .kepala {
-    background: var(--warna); color: #fff; padding: 2.5mm 3mm 2mm;
+    background-color: var(--warna);
+    background-image: linear-gradient(135deg, rgba(255,255,255,0.22), rgba(0,0,0,0.18));
+    color: #fff; padding: 2.5mm 3mm 3.5mm; border-radius: 0 0 7mm 7mm;
     display: flex; flex-direction: column; align-items: center; gap: 0.8mm;
   }
   .lubang { width: 12mm; height: 1.8mm; border-radius: 1mm; background: rgba(255,255,255,0.35); }
@@ -43,8 +72,8 @@ const CARD_CSS = `
   .badan { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 2.5mm 3mm 0; min-height: 0; }
   .badan > * { flex: 0 0 auto; }
   .foto, .foto-kosong {
-    width: 20mm; height: 25mm; border-radius: 2mm;
-    border: 0.6mm solid var(--warna); background: #f1f5f9;
+    width: 20mm; height: 25mm; border-radius: 2mm; background: #fff;
+    border: 0.6mm solid var(--warna); box-shadow: 0 0 0 0.8mm rgba(255,255,255,0.9);
   }
   .foto { object-fit: cover; }
   .foto-kosong {
@@ -66,13 +95,18 @@ const CARD_CSS = `
   }
   .divisi { margin-top: 1.2mm; font-size: 2.6mm; font-weight: 600; color: var(--warna); text-align: center; }
 
-  .qr-blok { margin-top: auto; padding-bottom: 1.5mm; display: flex; flex-direction: column; align-items: center; gap: 0.8mm; }
+  .qr-blok {
+    margin-top: auto; margin-bottom: 1.5mm; padding: 1.2mm 1.2mm 0.8mm;
+    background: rgba(255,255,255,0.92); border-radius: 1.5mm;
+    display: flex; flex-direction: column; align-items: center; gap: 0.5mm;
+  }
   .qr-catatan { font-size: 2mm; color: #64748b; }
 
   /* Kaki kartu: pengingat kepemilikan, sekaligus penyeimbang warna kepala */
   .kaki {
-    background: var(--warna); color: #fff;
-    font-size: 1.9mm; text-align: center; padding: 1.5mm 2mm; line-height: 1.25;
+    background-color: var(--warna);
+    background-image: linear-gradient(90deg, rgba(0,0,0,0.18), rgba(255,255,255,0.12));
+    color: #fff; font-size: 1.9mm; text-align: center; padding: 1.5mm 2mm; line-height: 1.25;
   }
 `;
 
@@ -86,6 +120,12 @@ export const EmployeeIdCards: React.FC<{ employees: Employee[] }> = ({ employees
       <div className="lembar">
         {employees.map(emp => (
           <div key={emp.id} className="kartu" style={{ '--warna': brand.primary_color } as React.CSSProperties}>
+            <div className="dekor dekor-bulat-besar" />
+            <div className="dekor dekor-bulat-kecil" />
+            <div className="dekor dekor-cincin" />
+            <div className="dekor dekor-gradasi" />
+            <div className="dekor dekor-garis" />
+
             <div className="kepala">
               <div className="lubang" />
               <div className="brand">
