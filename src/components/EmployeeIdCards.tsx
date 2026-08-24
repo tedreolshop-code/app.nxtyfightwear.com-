@@ -6,8 +6,11 @@ import { dataStore } from '../dataStore';
 /**
  * Kartu identitas karyawan siap cetak sendiri.
  *
- * Ukuran kartu mengikuti KTP (85,6 x 54 mm) supaya muat di dompet dan cocok
- * dengan plastik laminating yang dijual umum. Sepuluh kartu per lembar A4.
+ * Bentuk TEGAK 54 x 85,6 mm — ukuran kartu lanyard yang umum dipakai, cocok
+ * dengan plastik gantung dan tali yang dijual bebas. Sembilan kartu per A4.
+ *
+ * Warna mengikuti warna utama brand di Pengaturan (bawaan hijau evergreen),
+ * jadi kartu ikut berubah bila perusahaan mengganti warna aplikasinya.
  *
  * QR pada kartu adalah token absensi yang SUDAH ADA (ARI-ATTENDANCE:...), sama
  * dengan yang dipakai admin saat membantu karyawan yang gagal absen mandiri.
@@ -16,44 +19,62 @@ import { dataStore } from '../dataStore';
  */
 
 const CARD_CSS = `
-  @page { size: A4; margin: 8mm; }
+  @page { size: A4; margin: 7mm; }
   * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
-  .lembar { display: flex; flex-wrap: wrap; gap: 4mm; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #0f172a; }
+  .lembar { display: flex; flex-wrap: wrap; gap: 3mm; }
+
   .kartu {
-    width: 85.6mm; height: 54mm; border: 0.3mm dashed #bbb; border-radius: 3mm;
-    padding: 3.5mm; display: flex; gap: 3mm; overflow: hidden; page-break-inside: avoid;
+    width: 54mm; height: 85.6mm; border-radius: 3mm; overflow: hidden;
+    display: flex; flex-direction: column; page-break-inside: avoid;
+    border: 0.3mm solid #cbd5e1; background: #fff;
   }
-  .kiri { width: 20mm; flex: 0 0 20mm; }
+
+  /* Kepala kartu: warna dominan brand, sekaligus tempat lubang tali lanyard */
+  .kepala {
+    background: var(--warna); color: #fff; padding: 2.5mm 3mm 2mm;
+    display: flex; flex-direction: column; align-items: center; gap: 0.8mm;
+  }
+  .lubang { width: 12mm; height: 1.8mm; border-radius: 1mm; background: rgba(255,255,255,0.35); }
+  .brand { display: flex; align-items: center; gap: 1.2mm; margin-top: 0.5mm; }
+  .brand img { height: 4.5mm; width: auto; }
+  .brand-nama { font-size: 3mm; font-weight: 800; letter-spacing: 0.25mm; text-transform: uppercase; }
+
+  .badan { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 2.5mm 3mm 0; min-height: 0; }
+  .badan > * { flex: 0 0 auto; }
   .foto, .foto-kosong {
-    width: 20mm; height: 26mm; border-radius: 1.5mm; border: 0.3mm solid #ddd; background: #f1f5f9;
+    width: 20mm; height: 25mm; border-radius: 2mm;
+    border: 0.6mm solid var(--warna); background: #f1f5f9;
   }
   .foto { object-fit: cover; }
-  .foto-kosong { display: flex; align-items: center; justify-content: center; font-size: 8mm; font-weight: 800; color: #94a3b8; }
-  .tengah { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-  .brand { display: flex; align-items: center; gap: 1.5mm; border-bottom: 0.4mm solid currentColor; padding-bottom: 1mm; }
-  .brand img { height: 4.5mm; width: auto; }
-  .brand-nama {
-    font-size: 2.9mm; font-weight: 800; letter-spacing: 0.2mm; text-transform: uppercase;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  .foto-kosong {
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10mm; font-weight: 800; color: var(--warna); opacity: 0.55;
   }
-  /* Nama panjang mengecil sendiri, bukan dipotong — kartu identitas tidak boleh
-     memenggal nama orang. Tiga baris cukup untuk nama terpanjang di daftar. */
+
+  /* Nama panjang mengecil sendiri — kartu identitas tidak boleh memenggal nama orang */
   .nama {
-    font-size: 3.6mm; font-weight: 800; margin-top: 1.5mm; line-height: 1.15; color: #0f172a;
-    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+    margin-top: 2mm; font-size: 3.6mm; font-weight: 800; line-height: 1.15; text-align: center;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   }
   .nama.panjang { font-size: 3mm; }
-  .nomor {
-    font-size: 2.9mm; font-family: ui-monospace, "Courier New", monospace; font-weight: 700;
-    margin-top: 1mm; white-space: nowrap;
-  }
-  .baris { font-size: 2.6mm; color: #475569; margin-top: 0.6mm; }
-  .catatan-bawah { margin-top: auto; font-size: 2.1mm; color: #94a3b8; line-height: 1.2; }
-  .kanan { width: 23mm; flex: 0 0 23mm; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.2mm; }
-  .qr-catatan { font-size: 2.1mm; color: #64748b; text-align: center; line-height: 1.2; }
-`;
 
+  .nomor {
+    margin-top: 1.2mm; font-size: 2.8mm; font-weight: 700; white-space: nowrap;
+    font-family: ui-monospace, "Courier New", monospace;
+    background: var(--warna); color: #fff; padding: 0.8mm 2mm; border-radius: 1.2mm;
+  }
+  .divisi { margin-top: 1.2mm; font-size: 2.6mm; font-weight: 600; color: var(--warna); text-align: center; }
+
+  .qr-blok { margin-top: auto; padding-bottom: 1.5mm; display: flex; flex-direction: column; align-items: center; gap: 0.8mm; }
+  .qr-catatan { font-size: 2mm; color: #64748b; }
+
+  /* Kaki kartu: pengingat kepemilikan, sekaligus penyeimbang warna kepala */
+  .kaki {
+    background: var(--warna); color: #fff;
+    font-size: 1.9mm; text-align: center; padding: 1.5mm 2mm; line-height: 1.25;
+  }
+`;
 
 export const ID_CARDS_CONTAINER_ID = 'kartu-karyawan-cetak';
 
@@ -64,30 +85,34 @@ export const EmployeeIdCards: React.FC<{ employees: Employee[] }> = ({ employees
     <div id={ID_CARDS_CONTAINER_ID} className="hidden">
       <div className="lembar">
         {employees.map(emp => (
-          <div key={emp.id} className="kartu" style={{ color: brand.primary_color }}>
-            <div className="kiri">
-              {emp.photo_url
-                ? <img className="foto" src={emp.photo_url} alt="" />
-                : <div className="foto-kosong">{emp.name[0]}</div>}
-            </div>
-
-            <div className="tengah">
+          <div key={emp.id} className="kartu" style={{ '--warna': brand.primary_color } as React.CSSProperties}>
+            <div className="kepala">
+              <div className="lubang" />
               <div className="brand">
                 {brand.logo_data_url && <img src={brand.logo_data_url} alt="" />}
                 <span className="brand-nama">{brand.company_name}</span>
               </div>
-              <div className={`nama${emp.name.length > 20 ? ' panjang' : ''}`}>{emp.name}</div>
-              <div className="nomor">{emp.employee_number || '—'}</div>
-              <div className="baris">{divisionLabel(emp.department_id, 'Umum / HQ')}</div>
-              {emp.join_date && <div className="baris">Masuk: {emp.join_date}</div>}
-              <div className="catatan-bawah">Kartu milik {brand.company_name}. Kembalikan bila berhenti bekerja.</div>
             </div>
 
-            <div className="kanan">
-              {emp.attendance_qr_token
-                ? <QRCodeSVG value={`ARI-ATTENDANCE:${emp.attendance_qr_token}`} size={96} level="M" />
-                : <div className="qr-catatan">QR belum tersedia</div>}
-              <div className="qr-catatan">Kartu absensi</div>
+            <div className="badan">
+              {emp.photo_url
+                ? <img className="foto" src={emp.photo_url} alt="" />
+                : <div className="foto-kosong">{emp.name[0]}</div>}
+
+              <div className={`nama${emp.name.length > 20 ? ' panjang' : ''}`}>{emp.name}</div>
+              <div className="nomor">{emp.employee_number || '—'}</div>
+              <div className="divisi">{divisionLabel(emp.department_id, 'Umum / HQ')}</div>
+
+              <div className="qr-blok">
+                {emp.attendance_qr_token
+                  ? <QRCodeSVG value={`ARI-ATTENDANCE:${emp.attendance_qr_token}`} size={56} level="M" />
+                  : <div className="qr-catatan">QR belum tersedia</div>}
+                <div className="qr-catatan">Kartu absensi</div>
+              </div>
+            </div>
+
+            <div className="kaki">
+              {emp.join_date && <>Masuk {emp.join_date} · </>}Kartu milik {brand.company_name}
             </div>
           </div>
         ))}

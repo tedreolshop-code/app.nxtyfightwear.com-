@@ -28,7 +28,7 @@ test('kartu karyawan berisi data yang benar dan ikut filter daftar', async ({ pa
   const ani = kartu.filter({ hasText: 'Ani Konveksi' });
   await expect(ani).toContainText('AR-KONVEKSI-001');
   await expect(ani).toContainText('Konveksi');
-  await expect(ani).toContainText('Masuk: 2026-08-18');
+  await expect(ani).toContainText('Masuk 2026-08-18');
   await expect(ani.locator('svg')).toHaveCount(1);
 
   // Tombol menyebut jumlah yang akan tercetak, dan ikut filter daftar
@@ -38,7 +38,7 @@ test('kartu karyawan berisi data yang benar dan ikut filter daftar', async ({ pa
   await expect(page.getByRole('button', { name: 'Cetak Kartu (1)' })).toBeVisible();
 });
 
-test('dokumen cetak memakai ukuran KTP di kertas A4', async ({ page }) => {
+test('dokumen cetak memakai ukuran kartu lanyard tegak di kertas A4', async ({ page }) => {
   await isolateAsOwner(page);
   await page.addInitScript(() => {
     localStorage.setItem('nxty_employees', JSON.stringify([{
@@ -63,8 +63,8 @@ test('dokumen cetak memakai ukuran KTP di kertas A4', async ({ page }) => {
     };
   });
   expect(isi.style).toContain('size: A4');
-  expect(isi.style).toContain('85.6mm');
-  expect(isi.style).toContain('54mm');
+  expect(isi.style).toContain('width: 54mm');      // tegak, ukuran lanyard
+  expect(isi.style).toContain('height: 85.6mm');
   expect(isi.jumlahKartu).toBe(1);
   expect(isi.adaQr).toBe(true);
 });
