@@ -673,6 +673,9 @@ export interface ProductionHandoff {
   job_id: string;
   order_number?: string;
   product_name: string;
+  // Varian/ukuran barang. Tanpa ini penerima hanya melihat nama produk saat ACC,
+  // padahal satu produk bisa punya beberapa ukuran/warna yang berbeda.
+  variant?: string;
   from_stage: string;
   to_stage: string;
   from_department_id: string;
