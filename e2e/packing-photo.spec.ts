@@ -31,7 +31,8 @@ test('input foto packing karyawan membuka kamera belakang', async ({ page }) => 
 test('packing selesai tanpa foto muncul di tab Dokumentasi dan bisa dilengkapi', async ({ page }) => {
   await seed(page, 'owner');
   await page.goto('/');
-  await page.locator('#nav-tab-produksi').click();
+  // Tab dokumentasi foto packing ada di menu Penjualan, bukan Produksi
+  await page.locator('#nav-tab-penjualan').click();
   await page.getByRole('button', { name: 'Dokumentasi Foto Packing' }).click();
 
   await expect(page.getByText('1 packing selesai belum ada fotonya')).toBeVisible();
