@@ -9,8 +9,14 @@ test.use({ viewport: { width: 1440, height: 900 }, isMobile: false, hasTouch: fa
  * 2 Juli sama → saldo jadi Rp20.000
  * 3 Juli telat → tidak dapat hari itu, tapi saldo TETAP Rp20.000 (tidak hangus)
  */
+// Waktu dipatok supaya penilaian selalu jatuh pada Juli 2026 — panel bonus menilai
+// bulan BERJALAN, jadi tanpa ini tes ikut basi begitu bulan berganti.
+const PATOK_WAKTU = new Date('2026-07-15T10:00:00+07:00');
+
 const seed = async (page: Page) => {
   await isolateAsOwner(page);
+  await page.clock.install({ time: PATOK_WAKTU });
+  await page.clock.setFixedTime(PATOK_WAKTU);
   await page.addInitScript(() => {
     localStorage.setItem('nxty_employees', JSON.stringify([{
       id: 'emp-owner', username: 'ari', name: 'Karyawan A', access_role: 'owner',
@@ -61,6 +67,8 @@ test('bonus kehadiran menumpuk per hari dan tidak hangus saat telat', async ({ p
 
 test('bonus kehadiran bisa disortir per karyawan dan per divisi', async ({ page }) => {
   await isolateAsOwner(page);
+  await page.clock.install({ time: PATOK_WAKTU });
+  await page.clock.setFixedTime(PATOK_WAKTU);
   await page.addInitScript(() => {
     const base = {
       role: 'karyawan', rate_harian: 100000, rate_lembur_per_jam: 10000, default_attendance_bonus: 10000,

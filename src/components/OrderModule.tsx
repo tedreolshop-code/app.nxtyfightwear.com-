@@ -1084,6 +1084,7 @@ export const OrderModule: React.FC = () => {
               <option value="customer">Pelanggan A-Z</option>
             </select>
             <select
+              title="Filter status order"
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value as typeof filterStatus)}
               className="bg-white border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-800 focus:outline-none focus:border-emerald-600 cursor-pointer"

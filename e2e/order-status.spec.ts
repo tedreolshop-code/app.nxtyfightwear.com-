@@ -64,7 +64,7 @@ test('order dibatalkan bisa diaktifkan kembali tanpa mengubah stok', async ({ pa
 
   // Dibatalkan hilang dari filter Aktif, muncul lagi saat filter diganti
   await expect(page.getByText('ORD/2026/07/001')).toHaveCount(0);
-  await page.locator('select').last().selectOption('cancelled');
+  await page.getByTitle('Filter status order').selectOption('cancelled');
   await expect(page.getByText('ORD/2026/07/001')).toBeVisible();
 
   const stokSebelum = await stokMatras(page);
@@ -72,7 +72,7 @@ test('order dibatalkan bisa diaktifkan kembali tanpa mengubah stok', async ({ pa
 
   // Sudah bukan Dibatalkan lagi, jadi hilang dari filter itu dan muncul sebagai Pending di filter Aktif
   await expect(page.getByText('ORD/2026/07/001')).toHaveCount(0);
-  await page.locator('select').last().selectOption('active');
+  await page.getByTitle('Filter status order').selectOption('active');
   await expect(badgeStatus(page)).toHaveText('Pending');
 
   expect(await stokMatras(page), 'aktifkan kembali tidak boleh menyentuh stok').toBe(stokSebelum);

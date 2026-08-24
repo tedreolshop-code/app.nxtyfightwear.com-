@@ -43,13 +43,20 @@ test('bonus kehadiran gugur untuk karyawan training, cair untuk karyawan', async
   await page.getByRole('button', { name: 'Payroll & Slip Gaji' }).click();
   await page.getByRole('button', { name: 'Bonus Kehadiran' }).click();
 
-  // Ada dua tabel: ringkasan harian di dalam <details>, dan tabel bulan penilaian.
-  // Yang dicek di sini tabel bulan penilaian (paling bawah).
-  const barisTraining = page.getByRole('row').filter({ hasText: 'Cici Training' }).last();
+  // Panel bonus punya tiga sub-tab; tabel penilaian bulanan ada di tab "Evaluasi",
+  // sedangkan yang terbuka lebih dulu adalah "Posisi Hari Ini".
+  await page.getByRole('button', { name: /^Evaluasi / }).click();
+
+  // Tabel bulan penilaian dikenali dari kolom "Keterangan".
+  const tabelBulan = page.getByRole('table').filter({ has: page.getByRole('columnheader', { name: 'Keterangan' }) });
+
+  const barisTraining = tabelBulan.getByRole('row').filter({ hasText: 'Cici Training' });
   await expect(barisTraining).toContainText('Masih berstatus training');
-  await expect(barisTraining).toContainText('GUGUR');
+  // Sejak bonus jadi akumulasi harian, vonis GUGUR diganti jumlah hari layak yang
+  // sebenarnya; training tidak berhak sehingga hari layaknya nol.
+  await expect(barisTraining).toContainText('TIDAK ADA');
 
   // Rekan yang absensinya sama tapi sudah karyawan tetap aman
-  const barisTetap = page.getByRole('row').filter({ hasText: 'Budi Tetap' }).last();
+  const barisTetap = tabelBulan.getByRole('row').filter({ hasText: 'Budi Tetap' });
   await expect(barisTetap).not.toContainText('Masih berstatus training');
 });
