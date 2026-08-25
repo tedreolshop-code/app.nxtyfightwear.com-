@@ -379,7 +379,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
       id: `job-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       order_number: orderNumber,
       product_id: first.product.id,
-      product_name: outputs.length > 1 ? `${first.product.name} +${outputs.length - 1} output` : first.product.name,
+      product_name: outputs.map(output => output.product.name).join(', '),
       variant: first.product.variant,
       qty: first.target_qty,
       department_id: manualDepartmentId,
