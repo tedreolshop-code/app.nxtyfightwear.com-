@@ -46,6 +46,13 @@ type ProductionDepartmentId = ProductionJob['department_id'];
 // Baris mutasi terbaru yang ditampilkan di tabel Riwayat Mutasi
 const MOVEMENT_LIMIT = 100;
 
+// Job multi-output: nama tiap produk dibedakan varian, dan qty yang tampil adalah total semua output.
+// job.qty tetap qty output pertama karena dipakai logika stok — jangan dipakai untuk tampilan.
+const outputLabel = (name: string, variant?: string) => (variant ? `${name} (${variant})` : name);
+const isMultiOutput = (job: ProductionJob) => (job.outputs?.length || 0) > 1;
+const displayQty = (job: ProductionJob) =>
+  isMultiOutput(job) ? job.outputs!.reduce((total, output) => total + (output.target_qty || 0), 0) : job.qty;
+
 const PRODUCTION_DEPARTMENTS: Array<{ id: ProductionDepartmentId; label: string }> = [
   { id: 'dept-eva-foam', label: 'Eva Foam' },
   { id: 'dept-konveksi', label: 'Konveksi' },
@@ -379,7 +386,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
       id: `job-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       order_number: orderNumber,
       product_id: first.product.id,
-      product_name: outputs.map(output => output.product.name).join(', '),
+      product_name: outputs.map(output => outputLabel(output.product.name, output.product.variant)).join(', '),
       variant: first.product.variant,
       qty: first.target_qty,
       department_id: manualDepartmentId,
@@ -1114,7 +1121,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                                   {job.notes && <p className="text-[10px] text-gray-500 mt-1 line-clamp-2">{job.notes}</p>}
                                 </div>
                                 <div className="text-right shrink-0">
-                                  <p className="font-mono text-xs font-black text-[var(--color-evergreen)]">{job.qty} pcs</p>
+                                  <p className="font-mono text-xs font-black text-[var(--color-evergreen)]">{displayQty(job)} pcs</p>
                                   <p className="text-[10px] font-bold text-amber-700">{job.current_stage}</p>
                                   <span className={`mt-1 inline-block rounded px-1.5 py-0.5 text-[9px] font-bold ${hasInputToday ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-500'}`}>{hasInputToday ? 'Sudah input' : 'Belum input'}</span>
                                 </div>
@@ -1490,8 +1497,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                               </div>
                               <h4 className="font-extrabold text-gray-900 text-xs tracking-tight leading-snug group-hover:text-[var(--color-evergreen)] transition-colors">{job.product_name}</h4>
                               <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-gray-400">
-                                <span>Varian: <strong className="text-gray-600 font-semibold">{job.variant}</strong></span>
-                                <span>&bull;</span>
+                                {!isMultiOutput(job) && <><span>Varian: <strong className="text-gray-600 font-semibold">{job.variant}</strong></span><span>&bull;</span></>}
                                 <span className={`inline-flex items-center gap-1 font-bold ${sufficient ? 'text-emerald-700' : 'text-amber-700'}`}>
                                   <span className={`w-1 h-1 rounded-full ${sufficient ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
                                   Bahan {sufficient ? 'Tersedia' : 'Kurang'}
@@ -1547,7 +1553,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                             <div className="w-full md:col-span-3 text-left md:text-right flex md:flex-col items-center md:items-end justify-between md:justify-center gap-2">
                               <div className="flex items-center gap-2 md:flex-col md:items-end md:gap-0.5">
                                 <span className="font-mono text-xs font-black text-gray-900 px-2 py-0.5 bg-gray-100 rounded">
-                                  {job.qty} Pcs
+                                  {displayQty(job)} Pcs
                                 </span>
                                 <span className="text-[10px] text-gray-500 font-medium flex items-center gap-1">
                                   <User className="w-3 h-3 text-gray-400" />
@@ -1625,8 +1631,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                               </div>
                               <h4 className="font-extrabold text-gray-900 text-xs tracking-tight leading-snug group-hover:text-sky-800 transition-colors">{job.product_name}</h4>
                               <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-gray-400">
-                                <span>Varian: <strong className="text-gray-600 font-semibold">{job.variant}</strong></span>
-                                <span>&bull;</span>
+                                {!isMultiOutput(job) && <><span>Varian: <strong className="text-gray-600 font-semibold">{job.variant}</strong></span><span>&bull;</span></>}
                                 <span className={`inline-flex items-center gap-1 font-bold ${sufficient ? 'text-emerald-700' : 'text-amber-700'}`}>
                                   <span className={`w-1 h-1 rounded-full ${sufficient ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
                                   Bahan {sufficient ? 'Tersedia' : 'Kurang'}
@@ -1682,7 +1687,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                             <div className="w-full md:col-span-3 text-left md:text-right flex md:flex-col items-center md:items-end justify-between md:justify-center gap-2">
                               <div className="flex items-center gap-2 md:flex-col md:items-end md:gap-0.5">
                                 <span className="font-mono text-xs font-black text-gray-900 px-2 py-0.5 bg-gray-100 rounded">
-                                  {job.qty} Pcs
+                                  {displayQty(job)} Pcs
                                 </span>
                                 <span className="text-[10px] text-gray-500 font-medium flex items-center gap-1">
                                   <User className="w-3 h-3 text-gray-400" />
@@ -1727,7 +1732,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                   <h3 className="text-base font-black tracking-wide uppercase">{selectedJob.product_name}</h3>
                 </div>
                 <p className="text-xs text-emerald-100 font-medium">
-                  Divisi: {selectedJob.department_id === 'dept-eva-foam' ? 'Eva Foam' : 'Konveksi (Jahit)'} &middot; Varian: {selectedJob.variant} &middot; Qty: <span className="font-bold underline">{selectedJob.qty} Pcs</span>
+                  Divisi: {selectedJob.department_id === 'dept-eva-foam' ? 'Eva Foam' : 'Konveksi (Jahit)'} {!isMultiOutput(selectedJob) && <> &middot; Varian: {selectedJob.variant}</>} &middot; Qty: <span className="font-bold underline">{displayQty(selectedJob)} Pcs</span>
                 </p>
               </div>
               <button 
@@ -2334,7 +2339,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                           {job.assigned_employees && job.assigned_employees.length > 0 && <p className="text-[10px] text-gray-400 mt-1">{job.assigned_employees.map(item => item.employee_name).join(', ')}</p>}
                         </div>
                         <div className="text-right shrink-0">
-                          <p className="font-mono text-xs font-black text-[var(--color-evergreen)]">{job.qty} pcs</p>
+                          <p className="font-mono text-xs font-black text-[var(--color-evergreen)]">{displayQty(job)} pcs</p>
                           <p className="text-[10px] text-amber-700 font-bold">{job.current_stage}</p>
                         </div>
                       </div>

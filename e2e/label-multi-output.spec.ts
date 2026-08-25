@@ -20,6 +20,8 @@ test('label lama +N output ikut diperbaiki', async ({ page }) => {
   await page.goto('/');
   await page.locator('#nav-tab-produksi').click();
   await page.getByRole('button', { name: 'Progress' }).click();
-  await expect(page.getByRole('heading', { name: 'Body Protector Pencak Silat, Samsak Gantung 120cm' }).first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Body Protector Pencak Silat (Size L), Samsak Gantung 120cm (Premium Hitam)' }).first()).toBeVisible();
   await expect(page.getByText('+1 output')).toHaveCount(0);
+  // qty yang tampil = total semua output (5 + 2), bukan qty output pertama
+  await expect(page.getByText('7 Pcs').first()).toBeVisible();
 });

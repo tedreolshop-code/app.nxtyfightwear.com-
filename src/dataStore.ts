@@ -758,14 +758,18 @@ class DataStore {
     };
     let changed = false;
     const migrated = jobs.map(job => {
-      // Label lama "Produk A +1 output" ditulis ulang jadi daftar nama lengkap
-      const oldLabel = /\s\+\d+ output$/.test(job.product_name) && job.outputs && job.outputs.length > 0;
+      // Job multi-output: nama selalu daftar lengkap "Produk (varian), Produk (varian)".
+      // Memperbaiki juga label lama "Produk A +1 output" dan label tanpa varian.
+      const multiLabel = job.outputs && job.outputs.length > 1
+        ? job.outputs.map(output => (output.variant ? `${output.product_name} (${output.variant})` : output.product_name)).join(', ')
+        : null;
+      const oldLabel = Boolean(multiLabel) && multiLabel !== job.product_name;
       const needs = job.stages.some(s => RENAME[s.stage]) || RENAME[job.current_stage] || oldLabel;
       if (!needs) return job;
       changed = true;
       return {
         ...job,
-        product_name: oldLabel ? job.outputs!.map(output => output.product_name).join(', ') : job.product_name,
+        product_name: oldLabel ? multiLabel! : job.product_name,
         current_stage: RENAME[job.current_stage] || job.current_stage,
         stages: job.stages.map(s => ({ ...s, stage: RENAME[s.stage] || s.stage })),
       };
