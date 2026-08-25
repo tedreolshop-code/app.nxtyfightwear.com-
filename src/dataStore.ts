@@ -758,11 +758,14 @@ class DataStore {
     };
     let changed = false;
     const migrated = jobs.map(job => {
-      const needs = job.stages.some(s => RENAME[s.stage]) || RENAME[job.current_stage];
+      // Label lama "Produk A +1 output" ditulis ulang jadi daftar nama lengkap
+      const oldLabel = /\s\+\d+ output$/.test(job.product_name) && job.outputs && job.outputs.length > 0;
+      const needs = job.stages.some(s => RENAME[s.stage]) || RENAME[job.current_stage] || oldLabel;
       if (!needs) return job;
       changed = true;
       return {
         ...job,
+        product_name: oldLabel ? job.outputs!.map(output => output.product_name).join(', ') : job.product_name,
         current_stage: RENAME[job.current_stage] || job.current_stage,
         stages: job.stages.map(s => ({ ...s, stage: RENAME[s.stage] || s.stage })),
       };
