@@ -94,6 +94,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
 
   // Interactive Helper States
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<'tanggal_baru' | 'tanggal_lama' | 'nama' | 'nama_desc'>('tanggal_baru');
   const [activeFilter, setActiveFilter] = useState<'all' | 'ongoing' | 'kendala' | 'terlambat' | 'completed_today'>('all');
   const [selectedJob, setSelectedJob] = useState<ProductionJob | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -859,6 +860,11 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
     if (activeFilter === 'completed_today') return isCompletedToday(job);
 
     return true;
+  }).sort((a, b) => {
+    if (sortBy === 'nama') return a.product_name.localeCompare(b.product_name);
+    if (sortBy === 'nama_desc') return b.product_name.localeCompare(a.product_name);
+    if (sortBy === 'tanggal_lama') return a.created_at.localeCompare(b.created_at);
+    return b.created_at.localeCompare(a.created_at); // default: tanggal terbaru
   });
 
   // Aksi berikutnya untuk satu job: tahap mana yang harus dimulai/diselesaikan (untuk tombol satu-tap di kartu)
@@ -1321,6 +1327,19 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                   </button>
                 )}
               </div>
+
+              {/* Urutan daftar pekerjaan (berlaku untuk kedua kolom departemen) */}
+              <select
+                title="Urutkan daftar pekerjaan"
+                value={sortBy}
+                onChange={e => setSortBy(e.target.value as typeof sortBy)}
+                className="w-full md:w-auto bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-[var(--color-evergreen)] cursor-pointer"
+              >
+                <option value="tanggal_baru">Tanggal Terbaru</option>
+                <option value="tanggal_lama">Tanggal Terlama</option>
+                <option value="nama">Nama A-Z</option>
+                <option value="nama_desc">Nama Z-A</option>
+              </select>
 
               {/* Status info banner */}
               <div className="flex items-center gap-2 text-[11px] text-gray-500 font-medium">
