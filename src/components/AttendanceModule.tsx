@@ -449,7 +449,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
         setStatusMessage({ text: 'Alasan pengajuan lembur wajib diisi.', error: true });
         return;
       }
-      if (liveRequest && liveReason.trim().length < 4) {
+      if (canRequestLiveBonus && liveRequest && liveReason.trim().length < 4) {
         setStatusMessage({ text: 'Keterangan pengajuan bonus Live TikTok wajib diisi.', error: true });
         return;
       }
@@ -477,7 +477,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
             early_leave_reason: finalEarlyLeaveReason || undefined,
             overtime_request: effectiveScanType === 'pulang' && otRequest && otReason.trim()
               ? { reason: otReason.trim(), requested_at: wibNowISO() } : undefined,
-            live_tiktok_request: effectiveScanType === 'pulang' && liveRequest && liveReason.trim()
+            live_tiktok_request: effectiveScanType === 'pulang' && canRequestLiveBonus && liveRequest && liveReason.trim()
               ? { reason: liveReason.trim(), requested_at: wibNowISO() } : undefined,
           });
 
@@ -623,6 +623,9 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
     wibNowISO().slice(11, 16) < workSettings.end_time;
   const finalEarlyLeaveReason =
     earlyLeaveChoice === 'Lainnya' ? earlyLeaveReason.trim() : earlyLeaveChoice;
+  // Pengajuan bonus Live TikTok hanya muncul bila karyawan ini memang berhak
+  // (tarifnya diisi di profil). Kosong = bukan bagian tugasnya, sembunyikan.
+  const canRequestLiveBonus = (lockedEmployee?.default_live_tiktok_bonus ?? 0) > 0;
   const departmentLabel = (departmentId: string) => departmentId === 'dept-eva-foam' ? 'Eva Foam' : departmentId === 'dept-konveksi' ? 'Konveksi' : departmentId;
 
   const todayWib = wibNowISO().slice(0, 10);
@@ -1278,18 +1281,22 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                       />
                     )}
 
-                    <label className="flex items-start gap-2 cursor-pointer">
-                      <input type="checkbox" checked={liveRequest} onChange={e => setLiveRequest(e.target.checked)} className="mt-0.5" />
-                      <span className="text-[11px] text-emerald-100 font-bold">Ajukan bonus Live TikTok</span>
-                    </label>
-                    {liveRequest && (
-                      <textarea
-                        value={liveReason}
-                        onChange={e => setLiveReason(e.target.value)}
-                        rows={2}
-                        placeholder="Keterangan sesi live (wajib), mis. jam berapa & durasi."
-                        className="w-full bg-[#0e2419]/80 border border-[#1a422f] rounded-lg p-2 text-[11px] text-emerald-50 placeholder:text-emerald-200/30 focus:outline-none"
-                      />
+                    {canRequestLiveBonus && (
+                      <>
+                        <label className="flex items-start gap-2 cursor-pointer">
+                          <input type="checkbox" checked={liveRequest} onChange={e => setLiveRequest(e.target.checked)} className="mt-0.5" />
+                          <span className="text-[11px] text-emerald-100 font-bold">Ajukan bonus Live TikTok</span>
+                        </label>
+                        {liveRequest && (
+                          <textarea
+                            value={liveReason}
+                            onChange={e => setLiveReason(e.target.value)}
+                            rows={2}
+                            placeholder="Keterangan sesi live (wajib), mis. jam berapa & durasi."
+                            className="w-full bg-[#0e2419]/80 border border-[#1a422f] rounded-lg p-2 text-[11px] text-emerald-50 placeholder:text-emerald-200/30 focus:outline-none"
+                          />
+                        )}
+                      </>
                     )}
 
                     <p className="text-[9px] text-emerald-200/50 leading-snug">Pengajuan tidak menghalangi absen. Nilainya belum masuk gaji sampai admin menyetujui.</p>
