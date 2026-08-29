@@ -1157,8 +1157,6 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
         .filter(log => !adjustments.some(item => item.attendance_id === log.id))
         .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
     : [];
-  const selectedPendingOvertimeMinutes = selectedPendingAdjustmentLogs.reduce((sum, log) => sum + (log.overtime_minutes || 0), 0);
-  const selectedPendingLateCompensationMinutes = selectedPendingAdjustmentLogs.reduce((sum, log) => sum + (log.late_compensation_minutes || 0), 0);
 
   return (
     <div className="space-y-8">
@@ -1846,36 +1844,54 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                   />
                 </div>
 
-                {selectedEmpId && selectedPendingAdjustmentLogs.length > 0 && (
-                  <div className="md:col-span-2 rounded-xl border border-amber-200 bg-amber-50/80 p-3 space-y-2">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-                      <div>
-                        <p className="font-black text-amber-900 uppercase tracking-wide text-[11px]">Ada lembur/pengganti telat belum ACC</p>
-                        <p className="text-[11px] text-amber-800">
-                          Pending: pengganti telat {selectedPendingLateCompensationMinutes} menit, lembur {selectedPendingOvertimeMinutes} menit. Setelah ACC, field Jam Lembur ACC otomatis terisi.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="space-y-1.5">
-                      {selectedPendingAdjustmentLogs.map(log => (
-                        <div key={log.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-white/80 border border-amber-100 rounded-lg px-3 py-2">
-                          <span className="text-[11px] text-gray-700">
-                            {log.timestamp.slice(0, 10)} pulang {log.timestamp.slice(11, 16)} · pengganti {log.late_compensation_minutes || 0} menit · lembur {log.overtime_minutes || 0} menit
-                          </span>
-                          <div className="flex flex-wrap gap-1.5">
-                            {(log.late_compensation_minutes || 0) > 0 && (
-                              <button type="button" onClick={() => approveAdjustment(log, 'late_compensation')} className="px-2.5 py-1 rounded bg-emerald-700 text-white font-bold text-[10px] cursor-pointer">Setujui Pengganti</button>
-                            )}
-                            {(log.overtime_minutes || 0) > 0 && (
-                              <button type="button" onClick={() => approveAdjustment(log, 'overtime')} className="px-2.5 py-1 rounded bg-[var(--color-evergreen)] text-white font-bold text-[10px] cursor-pointer">ACC Lembur</button>
-                            )}
-                            <button type="button" onClick={() => approveAdjustment(log, 'ignored')} className="px-2.5 py-1 rounded bg-white border border-gray-200 text-gray-600 font-bold text-[10px] cursor-pointer">Abaikan</button>
+                {selectedEmpId && (() => {
+                  const decidedForSel = adjustments.filter(a => a.employee_id === selectedEmpId && a.date >= periodStart && a.date <= periodEnd && a.status !== 'rejected' && ((a.overtime_minutes || 0) > 0 || (a.bonus_amount || 0) > 0));
+                  const pending = selectedPendingAdjustmentLogs;
+                  const toReview = () => { setIsCalculatorOpen(false); setPayrollDetailView('review'); };
+                  if (pending.length === 0 && decidedForSel.length === 0) return null;
+                  return (
+                    <div className="md:col-span-2">
+                      {pending.length > 0 ? (
+                        <div className="rounded-xl border border-rose-200 bg-rose-50/80 p-3 space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="font-black text-rose-800 uppercase tracking-wide text-[11px]">⚠ {pending.length} pengajuan / lembur belum di-ACC</p>
+                            <button type="button" onClick={toReview} className="shrink-0 rounded-lg bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 text-[10px] font-bold cursor-pointer">Buka Perlu Review</button>
+                          </div>
+                          <p className="text-[11px] text-rose-700">Belum ikut ke slip. ACC cepat di bawah, atau buka Perlu Review untuk atur menit/nominal.</p>
+                          <div className="space-y-1.5">
+                            {pending.map(log => (
+                              <div key={log.id} className="flex flex-col gap-1 bg-white/80 border border-rose-100 rounded-lg px-3 py-2">
+                                <span className="text-[11px] text-gray-700">
+                                  {log.timestamp.slice(0, 10)} pulang {log.timestamp.slice(11, 16)} · pengganti {log.late_compensation_minutes || 0}m · lembur {log.overtime_minutes || 0}m
+                                </span>
+                                {(log.overtime_request || log.live_tiktok_request) && (
+                                  <span className="text-[10px] text-sky-700">Diajukan karyawan: {log.overtime_request?.reason || log.live_tiktok_request?.reason}</span>
+                                )}
+                                <div className="flex flex-wrap gap-1.5">
+                                  {(log.late_compensation_minutes || 0) > 0 && (
+                                    <button type="button" onClick={() => approveAdjustment(log, 'late_compensation')} className="px-2.5 py-1 rounded bg-emerald-700 text-white font-bold text-[10px] cursor-pointer">Setujui Pengganti</button>
+                                  )}
+                                  {((log.overtime_minutes || 0) > 0 || log.overtime_request) && (
+                                    <button type="button" onClick={() => approveAdjustment(log, 'overtime')} className="px-2.5 py-1 rounded bg-[var(--color-evergreen)] text-white font-bold text-[10px] cursor-pointer">ACC Lembur</button>
+                                  )}
+                                  {log.live_tiktok_request && (
+                                    <button type="button" onClick={() => approveAdjustment(log, 'live_tiktok')} className="px-2.5 py-1 rounded bg-pink-600 text-white font-bold text-[10px] cursor-pointer">ACC Live TikTok</button>
+                                  )}
+                                  <button type="button" onClick={() => approveAdjustment(log, 'ignored')} className="px-2.5 py-1 rounded bg-white border border-gray-200 text-gray-600 font-bold text-[10px] cursor-pointer">Abaikan</button>
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         </div>
-                      ))}
+                      ) : (
+                        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 flex items-center justify-between gap-2">
+                          <p className="text-[11px] font-bold text-emerald-800">✓ {decidedForSel.length} pengajuan periode ini sudah di-ACC</p>
+                          <button type="button" onClick={toReview} className="shrink-0 rounded-lg border border-emerald-300 text-emerald-800 px-3 py-1.5 text-[10px] font-bold cursor-pointer hover:bg-emerald-100">Lihat Riwayat</button>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 <div>
                   <label className="block font-bold text-emerald-800 uppercase tracking-wider mb-1">Hari Kerja Otomatis</label>

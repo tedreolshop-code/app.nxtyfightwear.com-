@@ -64,6 +64,10 @@ test('pengajuan lembur + live TikTok saat pulang masuk review admin dan mengalir
   await page.getByLabel('Akhir periode generate satuan').fill('2026-08-21');
   await page.locator('select').first().selectOption({ label: 'Ayu Lembur' });
 
+  // Formulir generate menandai pengajuan periode ini sudah di-ACC (hijau) + link ke riwayat
+  await expect(page.getByText('1 pengajuan periode ini sudah di-ACC')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Lihat Riwayat' })).toBeVisible();
+
   // THP = 1 hari×100.000 + 2 jam lembur×12.000 + bonus live 25.000 = 149.000
   const modal = page.locator('form').filter({ hasText: 'Generate & Posting Slip' });
   await expect(modal.getByLabel('Jam Lembur ACC')).toHaveValue('2');
