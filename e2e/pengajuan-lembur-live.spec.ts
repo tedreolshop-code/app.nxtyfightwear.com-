@@ -52,8 +52,10 @@ test('pengajuan lembur + live TikTok saat pulang masuk review admin dan mengalir
   await page.getByLabel('Lembur disetujui (menit)').fill('120');
   await page.getByRole('button', { name: 'Simpan Keputusan' }).click();
 
-  // Antrean review kosong
-  await expect(page.getByText('Tidak ada yang perlu direview saat ini.')).toBeVisible();
+  // Antrean pending kosong, keputusan pindah ke Riwayat Keputusan
+  await expect(page.getByText('Tidak ada pengajuan / lembur yang menunggu keputusan.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Riwayat Keputusan' })).toBeVisible();
+  await expect(page.getByText('lembur 120m · live Rp 25.000')).toBeVisible();
 
   // Generate slip satuan untuk Ayu, periode mencakup 19 Agustus
   await page.getByRole('button', { name: 'Buku Register Slip Gaji' }).click();

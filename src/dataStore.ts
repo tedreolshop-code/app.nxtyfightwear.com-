@@ -887,6 +887,13 @@ class DataStore {
     this.logAudit('create', 'attendance_adjustment', `ACC ${adjustment.type} untuk ${adjustment.employee_name} tanggal ${adjustment.date}`, adjustment.id);
   };
 
+  /** Batalkan keputusan review — pengajuan kembali menunggu. */
+  deleteAttendanceAdjustment = (id: string): void => {
+    const target = this.getAttendanceAdjustments().find(item => item.id === id);
+    this.setAttendanceAdjustments(this.getAttendanceAdjustments().filter(item => item.id !== id));
+    if (target) this.logAudit('delete', 'attendance_adjustment', `Batalkan keputusan ${target.type} ${target.employee_name} tanggal ${target.date}`, id);
+  };
+
   createManualProductionJob = (job: ProductionJob): { ok: boolean; shortages: string[] } => {
     const materialsUsed = job.materials_planned || [];
     const materials = this.getRawMaterials();

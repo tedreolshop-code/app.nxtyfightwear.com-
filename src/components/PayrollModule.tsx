@@ -29,7 +29,8 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
   type BulkRow = {
     employeeId: string; name: string; rateHarian: number; rateLembur: number;
     days: number; overtimeHrs: number; bonus: number; kasbon: number;
-    outstanding: number; selected: boolean; alreadyExists: boolean;
+    outstanding: number; accCount: number; pendingCount: number;
+    selected: boolean; alreadyExists: boolean;
   };
   const [isBulkOpen, setIsBulkOpen] = useState(false);
   const [bulkPeriodStart, setBulkPeriodStart] = useState('');
@@ -232,15 +233,24 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     const dayFractions = Array.from(new Set(empAtt.map(a => a.timestamp.split('T')[0]))).map(date =>
       dayFraction(empAtt.filter(l => l.timestamp.startsWith(date)), ws));
     const days = dayFractions.reduce((sum, value) => sum + value, 0);
-    const acc = adjustments.filter(i => i.employee_id === emp.id && i.date >= pStart && i.date <= pEnd);
-    const overtimeHrs = Math.round(acc.filter(i => i.type === 'overtime').reduce((s, i) => s + (i.overtime_minutes || 0), 0) / 60 * 100) / 100;
-    const bonus = acc.filter(i => i.type === 'live_tiktok').reduce((s, i) => s + (i.bonus_amount || 0), 0);
+    // Lembur & bonus dari keputusan review (jumlah per field, buang yang ditolak).
+    const acc = adjustments.filter(i => i.employee_id === emp.id && i.date >= pStart && i.date <= pEnd && i.status !== 'rejected');
+    const overtimeHrs = Math.round(acc.reduce((s, i) => s + (i.overtime_minutes || 0), 0) / 60 * 100) / 100;
+    const bonus = acc.reduce((s, i) => s + (i.bonus_amount || 0), 0);
+    const accCount = acc.filter(i => (i.overtime_minutes || 0) > 0 || (i.bonus_amount || 0) > 0).length;
+    // Pengajuan karyawan di periode ini yang belum diputuskan admin → belum ikut slip.
+    const pendingCount = attendance.filter(a =>
+      a.employee_id === emp.id
+      && (a.overtime_request || a.live_tiktok_request)
+      && a.timestamp.slice(0, 10) >= pStart && a.timestamp.slice(0, 10) <= pEnd
+      && !adjustments.some(adj => adj.attendance_id === a.id)
+    ).length;
     const outstanding = cashAdvances.filter(c => c.employee_id === emp.id).reduce((s, c) => s + c.remaining_balance, 0);
     const kasbon = Math.min(outstanding, emp.default_weekly_cash_advance_deduction ?? 50000);
     const alreadyExists = payrolls.some(p => p.employee_id === emp.id && p.period_start === pStart && p.period_end === pEnd);
     return {
       employeeId: emp.id, name: emp.name, rateHarian: emp.rate_harian, rateLembur: emp.rate_lembur_per_jam,
-      days, overtimeHrs, bonus, kasbon, outstanding,
+      days, overtimeHrs, bonus, kasbon, outstanding, accCount, pendingCount,
       alreadyExists,
       selected: !alreadyExists && days > 0,
     };
@@ -517,6 +527,23 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
       overtime: type === 'overtime' ? (log.overtime_minutes || 0) : 0,
       live: type === 'live_tiktok' ? (emp?.default_live_tiktok_bonus ?? 20000) : 0,
     });
+  };
+
+  // Riwayat keputusan review (disetujui / ditolak yang bernilai), terbaru dulu.
+  const decidedAdjustments = adjustments
+    .filter(a => a.status === 'rejected' || (a.overtime_minutes || 0) > 0 || (a.bonus_amount || 0) > 0 || (a.late_compensation_minutes || 0) > 0)
+    .sort((a, b) => (b.approved_at || '').localeCompare(a.approved_at || ''))
+    .slice(0, 40);
+  const slipPostedFor = (adj: AttendanceAdjustment) =>
+    payrolls.some(p => p.employee_id === adj.employee_id && adj.date >= p.period_start && adj.date <= p.period_end);
+  const cancelDecision = (adj: AttendanceAdjustment) => {
+    if (slipPostedFor(adj)) {
+      alert(`Slip gaji ${adj.employee_name} untuk periode yang memuat ${adj.date} sudah diposting. Hapus atau edit slipnya dulu sebelum membatalkan keputusan.`);
+      return;
+    }
+    if (!window.confirm(`Batalkan keputusan ${adj.employee_name} (${adj.date})? Pengajuan kembali ke daftar "Perlu Diputuskan".`)) return;
+    dataStore.deleteAttendanceAdjustment(adj.id);
+    loadData();
   };
 
 
@@ -1220,12 +1247,16 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
           </button>
         </div>
 
-        {payrollDetailView === 'review' && pendingAdjustmentLogs.length > 0 && (
+        {payrollDetailView === 'review' && (
+        <div className="space-y-4">
           <div className="bg-white border border-amber-200 rounded-xl p-4 space-y-3">
             <div>
-              <h3 className="font-black text-sm text-gray-800">Perlu Review Pengganti Telat / Lembur / Live TikTok</h3>
-              <p className="text-xs text-gray-500">Jam tambahan menutup telat dulu, sisanya baru masuk lembur. Nilai di bawah bisa dikoreksi sebelum disimpan. Pengajuan dari karyawan ditandai biru.</p>
+              <h3 className="font-black text-sm text-gray-800">Perlu Diputuskan</h3>
+              <p className="text-xs text-gray-500">Jam tambahan menutup telat dulu, sisanya baru masuk lembur. Nilai bisa dikoreksi sebelum disimpan. Pengajuan dari karyawan ditandai biru. <b>Keputusan tersimpan permanen dan otomatis terisi di slip gaji periode terkait saat Generate.</b></p>
             </div>
+            {pendingAdjustmentLogs.length === 0 ? (
+              <p className="text-center text-gray-400 italic text-xs py-6">Tidak ada pengajuan / lembur yang menunggu keputusan.</p>
+            ) : (
             <div className="space-y-2">
               {pendingAdjustmentLogs.map(log => {
                 const d = draftFor(log);
@@ -1267,13 +1298,57 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                 );
               })}
             </div>
+            )}
           </div>
-        )}
 
-        {payrollDetailView === 'review' && pendingAdjustmentLogs.length === 0 && (
-          <div className="bg-white border border-gray-200 rounded-xl p-8 text-center text-gray-400 italic text-xs">
-            Tidak ada yang perlu direview saat ini.
+          {/* Riwayat keputusan — data pengajuan yang sudah di-ACC / ditolak */}
+          <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+            <div>
+              <h3 className="font-black text-sm text-gray-800">Riwayat Keputusan</h3>
+              <p className="text-xs text-gray-500">Pengganti telat / lembur / Live TikTok yang sudah diputuskan. Batalkan bila salah — pengajuan kembali menunggu (selama slip periode itu belum diposting).</p>
+            </div>
+            {decidedAdjustments.length === 0 ? (
+              <p className="text-center text-gray-400 italic text-xs py-6">Belum ada keputusan.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-[11px]">
+                  <thead className="bg-gray-50 text-gray-500 font-bold uppercase tracking-wider text-[10px]">
+                    <tr><th className="p-2 text-left">Tanggal</th><th className="p-2 text-left">Karyawan</th><th className="p-2 text-left">Hasil</th><th className="p-2 text-left">Alasan / Catatan</th><th className="p-2 text-left">Diputuskan</th><th className="p-2"></th></tr>
+                  </thead>
+                  <tbody>
+                    {decidedAdjustments.map(adj => {
+                      const src = attendance.find(a => a.id === adj.attendance_id);
+                      const reason = adj.status === 'rejected'
+                        ? (adj.rejection_reason || 'Ditolak')
+                        : (src?.overtime_request?.reason || src?.live_tiktok_request?.reason || adj.note || '—');
+                      const posted = slipPostedFor(adj);
+                      return (
+                        <tr key={adj.id} className="border-t border-gray-100">
+                          <td className="p-2 whitespace-nowrap">{adj.date}</td>
+                          <td className="p-2 font-bold text-gray-800">{adj.employee_name}</td>
+                          <td className="p-2 whitespace-nowrap">
+                            {adj.status === 'rejected'
+                              ? <span className="text-rose-700 font-bold">Ditolak</span>
+                              : <span className="text-emerald-700 font-bold">{[(adj.late_compensation_minutes || 0) > 0 && `pengganti ${adj.late_compensation_minutes}m`, (adj.overtime_minutes || 0) > 0 && `lembur ${adj.overtime_minutes}m`, (adj.bonus_amount || 0) > 0 && `live ${formatIDR(adj.bonus_amount || 0)}`].filter(Boolean).join(' · ') || 'tanpa tambahan'}</span>}
+                          </td>
+                          <td className="p-2 text-gray-600 max-w-[220px] truncate">{reason}</td>
+                          <td className="p-2 text-gray-500 whitespace-nowrap">{adj.approved_by_name || '-'}{adj.approved_at ? ` · ${adj.approved_at.slice(0, 10)}` : ''}</td>
+                          <td className="p-2 text-right">
+                            <button type="button" onClick={() => cancelDecision(adj)} disabled={posted}
+                              title={posted ? 'Slip periode ini sudah diposting' : 'Batalkan keputusan'}
+                              className="px-2 py-1 rounded border border-gray-200 text-gray-600 font-bold hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+                              Batalkan
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
+        </div>
         )}
 
         {/* Payroll History & Print list with Evergreen Theme */}
@@ -1880,6 +1955,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
         const picked = bulkRows.filter(r => r.selected && !r.alreadyExists);
         const eligible = bulkRows.filter(r => !r.alreadyExists);
         const totalThp = picked.reduce((s, r) => s + bulkThp(r), 0);
+        const totalPending = bulkRows.reduce((s, r) => s + r.pendingCount, 0);
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 no-print animate-fade-in overflow-y-auto overscroll-contain">
             <div className="bg-white rounded-2xl w-full max-w-4xl border border-emerald-800/30 overflow-hidden shadow-2xl my-auto flex flex-col max-h-[92vh]" onClick={(e) => e.stopPropagation()}>
@@ -1897,6 +1973,13 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                   <p className="font-black uppercase tracking-wide">Hitung otomatis dari absensi &amp; ACC</p>
                   <p className="mt-1">Bawaan periode = <b>Sabtu-Jumat terakhir yang sudah selesai</b> (dibayar Sabtu ini). Periode berjalan belum lengkap, kalau dipilih hari yang belum lewat terhitung nol. Hari kerja dari scan absensi, lembur dari adjustment yang sudah di-ACC, bonus dari Live TikTok, potongan kasbon dari saldo aktif. Semua angka masih bisa dikoreksi per baris sebelum diposting. Bonus KEHADIRAN tidak termasuk — dibayar terpisah tiap tanggal 1.</p>
                 </div>
+
+                {totalPending > 0 && (
+                  <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-[11px] text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <span><b>{totalPending} pengajuan lembur / Live TikTok belum di-ACC</b> di periode ini — belum ikut ke slip. Setujui dulu di Perlu Review.</span>
+                    <button type="button" onClick={() => { setIsBulkOpen(false); setPayrollDetailView('review'); }} className="shrink-0 rounded-lg bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 font-bold cursor-pointer">Buka Perlu Review</button>
+                  </div>
+                )}
 
                 <div className="flex flex-wrap items-end gap-3">
                   <div>
@@ -1941,6 +2024,8 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                             {r.name}
                             {r.alreadyExists && <span className="ml-1.5 text-[9px] bg-gray-200 text-gray-600 px-1 py-0.5 rounded font-bold uppercase">Slip sudah ada</span>}
                             {!r.alreadyExists && r.days === 0 && <span className="ml-1.5 text-[9px] bg-rose-50 text-rose-600 border border-rose-100 px-1 py-0.5 rounded font-bold uppercase">0 hari</span>}
+                            {r.accCount > 0 && <span className="block text-[9px] font-bold text-emerald-600">✓ {r.accCount} pengajuan di-ACC</span>}
+                            {r.pendingCount > 0 && <span className="block text-[9px] font-bold text-amber-600">⚠ {r.pendingCount} pengajuan belum di-ACC</span>}
                           </td>
                           <td className="p-1">
                             <input type="number" step="0.5" min="0" disabled={r.alreadyExists} value={r.days} onChange={(e) => updateBulkRow(r.employeeId, { days: Number(e.target.value) })} className="w-full text-right bg-white border border-gray-200 rounded px-1.5 py-1 disabled:bg-transparent disabled:border-transparent" />
