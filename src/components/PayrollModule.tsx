@@ -41,6 +41,9 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
   // yang bisa dikoreksi admin sebelum disetujui.
   type ReviewDraft = { lateComp: number; overtime: number; live: number };
   const [reviewDraft, setReviewDraft] = useState<Record<string, ReviewDraft>>({});
+  // Filter tab "Perlu Review" per karyawan ('' = semua). Diisi otomatis saat
+  // datang dari modal generate lewat tombol "Buka Perlu Review" / "Lihat Riwayat".
+  const [reviewFilterEmpId, setReviewFilterEmpId] = useState('');
 
   // Calibration settings modal state
 
@@ -446,9 +449,11 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
   const needsReview = (log: Attendance) =>
     log.type_scan === 'pulang'
     && ((log.overtime_minutes || 0) > 0 || (log.late_compensation_minutes || 0) > 0 || !!log.overtime_request || !!log.live_tiktok_request);
-  const pendingAdjustmentLogs = attendance
+  const allPendingReviewLogs = attendance
     .filter(needsReview)
-    .filter(log => !adjustments.some(item => item.attendance_id === log.id))
+    .filter(log => !adjustments.some(item => item.attendance_id === log.id));
+  const pendingAdjustmentLogs = allPendingReviewLogs
+    .filter(log => !reviewFilterEmpId || log.employee_id === reviewFilterEmpId)
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
     .slice(0, 30);
 
@@ -531,6 +536,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
 
   // Riwayat keputusan review (disetujui / ditolak yang bernilai), terbaru dulu.
   const decidedAdjustments = adjustments
+    .filter(a => !reviewFilterEmpId || a.employee_id === reviewFilterEmpId)
     .filter(a => a.status === 'rejected' || (a.overtime_minutes || 0) > 0 || (a.bonus_amount || 0) > 0 || (a.late_compensation_minutes || 0) > 0)
     .sort((a, b) => (b.approved_at || '').localeCompare(a.approved_at || ''))
     .slice(0, 40);
@@ -1228,9 +1234,9 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
             }`}
           >
             Perlu Review
-            {pendingAdjustmentLogs.length > 0 && (
+            {allPendingReviewLogs.length > 0 && (
               <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${payrollDetailView === 'review' ? 'bg-white/20' : 'bg-amber-100 text-amber-800'}`}>
-                {pendingAdjustmentLogs.length}
+                {allPendingReviewLogs.length}
               </span>
             )}
           </button>
@@ -1247,6 +1253,23 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
 
         {payrollDetailView === 'review' && (
         <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2 bg-white border border-gray-200 rounded-xl p-3">
+            <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Karyawan</span>
+            <select
+              value={reviewFilterEmpId}
+              onChange={e => setReviewFilterEmpId(e.target.value)}
+              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white font-semibold"
+            >
+              <option value="">Semua Karyawan</option>
+              {[...employees].sort((a, b) => a.name.localeCompare(b.name)).map(emp => (
+                <option key={emp.id} value={emp.id}>{emp.name}</option>
+              ))}
+            </select>
+            {reviewFilterEmpId && (
+              <button type="button" onClick={() => setReviewFilterEmpId('')} className="text-[11px] text-gray-500 hover:text-gray-800 font-bold cursor-pointer">✕ semua</button>
+            )}
+          </div>
+
           <div className="bg-white border border-amber-200 rounded-xl p-4 space-y-3">
             <div>
               <h3 className="font-black text-sm text-gray-800">Perlu Diputuskan</h3>
@@ -1847,7 +1870,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                 {selectedEmpId && (() => {
                   const decidedForSel = adjustments.filter(a => a.employee_id === selectedEmpId && a.date >= periodStart && a.date <= periodEnd && a.status !== 'rejected' && ((a.overtime_minutes || 0) > 0 || (a.bonus_amount || 0) > 0));
                   const pending = selectedPendingAdjustmentLogs;
-                  const toReview = () => { setIsCalculatorOpen(false); setPayrollDetailView('review'); };
+                  const toReview = () => { setReviewFilterEmpId(selectedEmpId); setIsCalculatorOpen(false); setPayrollDetailView('review'); };
                   if (pending.length === 0 && decidedForSel.length === 0) return null;
                   return (
                     <div className="md:col-span-2">
@@ -1993,7 +2016,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                 {totalPending > 0 && (
                   <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-[11px] text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <span><b>{totalPending} pengajuan lembur / Live TikTok belum di-ACC</b> di periode ini — belum ikut ke slip. Setujui dulu di Perlu Review.</span>
-                    <button type="button" onClick={() => { setIsBulkOpen(false); setPayrollDetailView('review'); }} className="shrink-0 rounded-lg bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 font-bold cursor-pointer">Buka Perlu Review</button>
+                    <button type="button" onClick={() => { setReviewFilterEmpId(''); setIsBulkOpen(false); setPayrollDetailView('review'); }} className="shrink-0 rounded-lg bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 font-bold cursor-pointer">Buka Perlu Review</button>
                   </div>
                 )}
 
