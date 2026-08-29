@@ -76,19 +76,12 @@
     display: block !important;
   }
 
-  /* Custom continuous form dot matrix dimensions */
+  /* Ukuran & orientasi kertas dibiarkan dipilih di dialog print / pengaturan
+     printer. Mengunci `size` di sini membuat opsi Landscape pada dot-matrix
+     tidak bisa dipilih. Isi cetak tetap dibatasi 210x140mm lewat gaya inline
+     di tiap template (.print-only), jadi tata letaknya tak berubah. */
   @page {
-    size: 210mm 140mm; /* typical half letter or 9.5x5.5 continuous form size */
     margin: 0;
-  }
-
-  .dot-matrix-container {
-    width: 210mm;
-    height: 140mm;
-    position: relative;
-    padding: 10px;
-    box-sizing: border-box;
-    page-break-after: always;
   }
 }
 
