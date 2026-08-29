@@ -227,6 +227,11 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
   // Alasan pulang cepat: satu ketukan, bukan mengetik sambil diantre
   const EARLY_LEAVE_CHOICES = ['Sakit', 'Izin keluarga', 'Urusan kantor', 'Lainnya'];
   const [earlyLeaveChoice, setEarlyLeaveChoice] = useState('');
+  // Pengajuan opsional saat scan pulang (portal karyawan) — lembur & bonus Live TikTok
+  const [otRequest, setOtRequest] = useState(false);
+  const [otReason, setOtReason] = useState('');
+  const [liveRequest, setLiveRequest] = useState(false);
+  const [liveReason, setLiveReason] = useState('');
   const [rejectOverlay, setRejectOverlay] = useState<{ judul: string; pesan: string } | null>(null);
   const [scanType, setScanType] = useState<AttendanceType>('masuk');
   
@@ -437,6 +442,19 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
       return;
     }
 
+    // Pengajuan lembur / live TikTok: kalau dicentang, alasan wajib. Tidak dilog
+    // sebagai scan gagal — cuma pesan inline, scan-nya sendiri tidak batal.
+    if (effectiveScanType === 'pulang') {
+      if (otRequest && otReason.trim().length < 4) {
+        setStatusMessage({ text: 'Alasan pengajuan lembur wajib diisi.', error: true });
+        return;
+      }
+      if (liveRequest && liveReason.trim().length < 4) {
+        setStatusMessage({ text: 'Keterangan pengajuan bonus Live TikTok wajib diisi.', error: true });
+        return;
+      }
+    }
+
     if (!navigator.geolocation) {
       tolakScan('gps', 'Perangkat/browser ini tidak mendukung GPS. Gunakan browser lain.', { employeeId: emp.id, typeScan: effectiveScanType });
       return;
@@ -456,7 +474,11 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
             device_token: deviceToken!,
             note: `Kiosk Terminal Scan (GPS perangkat, akurasi ±${Math.round(pos.coords.accuracy)} m)`,
             verification_method: 'gps_self',
-            early_leave_reason: finalEarlyLeaveReason || undefined
+            early_leave_reason: finalEarlyLeaveReason || undefined,
+            overtime_request: effectiveScanType === 'pulang' && otRequest && otReason.trim()
+              ? { reason: otReason.trim(), requested_at: wibNowISO() } : undefined,
+            live_tiktok_request: effectiveScanType === 'pulang' && liveRequest && liveReason.trim()
+              ? { reason: liveReason.trim(), requested_at: wibNowISO() } : undefined,
           });
 
           // Launch Big Success Overlay (Auto disappears in 3 seconds)
@@ -474,6 +496,8 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
           setPin('');
           setEarlyLeaveReason('');
           setEarlyLeaveChoice('');
+          setOtRequest(false); setOtReason('');
+          setLiveRequest(false); setLiveReason('');
           setLocationVerified(false);
           setSelectedEmpId(lockedEmployee ? lockedEmployee.id : '');
           loadData();
@@ -1231,6 +1255,44 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                         className="w-full bg-[#122f21]/60 border border-amber-900/30 rounded-lg p-2 text-[11px] text-emerald-50 placeholder:text-emerald-200/30 focus:outline-none"
                       />
                     )}
+                  </div>
+                )}
+
+                {/* Pengajuan opsional saat pulang (portal karyawan): lembur / bonus Live TikTok.
+                    Muncul di menu admin "Perlu Review" untuk disetujui/ditolak. */}
+                {lockedEmployee && automaticScanType === 'pulang' && (
+                  <div className="bg-[#122f21]/60 border border-[#1a422f] rounded-xl p-2.5 space-y-2">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-emerald-300">Pengajuan (opsional)</p>
+
+                    <label className="flex items-start gap-2 cursor-pointer">
+                      <input type="checkbox" checked={otRequest} onChange={e => setOtRequest(e.target.checked)} className="mt-0.5" />
+                      <span className="text-[11px] text-emerald-100 font-bold">Ajukan lembur hari ini</span>
+                    </label>
+                    {otRequest && (
+                      <textarea
+                        value={otReason}
+                        onChange={e => setOtReason(e.target.value)}
+                        rows={2}
+                        placeholder="Alasan / pekerjaan lembur (wajib). Menit disetujui ditetapkan admin."
+                        className="w-full bg-[#0e2419]/80 border border-[#1a422f] rounded-lg p-2 text-[11px] text-emerald-50 placeholder:text-emerald-200/30 focus:outline-none"
+                      />
+                    )}
+
+                    <label className="flex items-start gap-2 cursor-pointer">
+                      <input type="checkbox" checked={liveRequest} onChange={e => setLiveRequest(e.target.checked)} className="mt-0.5" />
+                      <span className="text-[11px] text-emerald-100 font-bold">Ajukan bonus Live TikTok</span>
+                    </label>
+                    {liveRequest && (
+                      <textarea
+                        value={liveReason}
+                        onChange={e => setLiveReason(e.target.value)}
+                        rows={2}
+                        placeholder="Keterangan sesi live (wajib), mis. jam berapa & durasi."
+                        className="w-full bg-[#0e2419]/80 border border-[#1a422f] rounded-lg p-2 text-[11px] text-emerald-50 placeholder:text-emerald-200/30 focus:outline-none"
+                      />
+                    )}
+
+                    <p className="text-[9px] text-emerald-200/50 leading-snug">Pengajuan tidak menghalangi absen. Nilainya belum masuk gaji sampai admin menyetujui.</p>
                   </div>
                 )}
 

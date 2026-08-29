@@ -565,7 +565,7 @@ class DataStore {
     // Kompensasi telat yang disetujui, per tanggal
     const compensationByDate = new Map<string, number>();
     this.getAttendanceAdjustments()
-      .filter(item => item.employee_id === employeeId && item.date.startsWith(month) && item.type !== 'ignored')
+      .filter(item => item.employee_id === employeeId && item.date.startsWith(month) && item.type !== 'ignored' && item.status !== 'rejected')
       .forEach(item => compensationByDate.set(
         item.date,
         (compensationByDate.get(item.date) || 0) + (item.late_compensation_minutes || 0)
@@ -1734,6 +1734,9 @@ class DataStore {
       distance_meters: Math.round(distance * 10) / 10,
       is_mock_location_flag: false,
       status,
+      // Pengajuan lembur / live TikTok hanya sah pada scan pulang.
+      overtime_request: att.type_scan === 'pulang' ? att.overtime_request : undefined,
+      live_tiktok_request: att.type_scan === 'pulang' ? att.live_tiktok_request : undefined,
     };
 
     attendanceLogs.unshift(newAttendance);

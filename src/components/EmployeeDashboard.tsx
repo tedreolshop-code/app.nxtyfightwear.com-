@@ -16,6 +16,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
   const [dayName, setDayName] = useState<string>('');
   const [attendanceLogs, setAttendanceLogs] = useState<Attendance[]>([]);
   const [payrolls, setPayrolls] = useState<PayrollWeekly[]>([]);
+  const [adjustments, setAdjustments] = useState<AttendanceAdjustment[]>([]);
 
   useEffect(() => {
     // Clock tick — selalu WIB (GMT+7), tidak tergantung zona waktu HP
@@ -30,13 +31,14 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
     const timer = setInterval(updateTime, 1000);
 
     // Initial load
-    setAttendanceLogs(dataStore.getAttendance());
-    setPayrolls(dataStore.getPayrollWeekly());
-
-    const handleStorageChange = () => {
+    const refresh = () => {
       setAttendanceLogs(dataStore.getAttendance());
       setPayrolls(dataStore.getPayrollWeekly());
+      setAdjustments(dataStore.getAttendanceAdjustments());
     };
+    refresh();
+
+    const handleStorageChange = refresh;
 
     window.addEventListener('nxty_storage_change', handleStorageChange);
 
@@ -62,6 +64,27 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
   const checkOutTimeToday = myTodayLogs.find(l => l.type_scan === 'pulang')?.timestamp.split('T')[1]?.substring(0, 5) || '--:--';
   const deptName = dataStore.getDepartments().find(dept => dept.id === loggedEmployee.department_id)?.name || 'Umum';
   const nextAttendanceLabel = !hasCheckedInToday ? 'Scan QR Lokasi untuk Absen Masuk' : !hasCheckedOutToday ? 'Scan QR Lokasi untuk Absen Pulang' : 'Absensi Hari Ini Selesai';
+
+  // Pengajuan lembur / Live TikTok yang dikirim saat scan pulang, + status ACC-nya.
+  const myRequests = myLogs
+    .filter(log => log.overtime_request || log.live_tiktok_request)
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+    .slice(0, 8)
+    .flatMap(log => {
+      const adj = adjustments.find(a => a.attendance_id === log.id);
+      const status: 'menunggu' | 'disetujui' | 'ditolak' = !adj ? 'menunggu' : adj.status === 'rejected' ? 'ditolak' : 'disetujui';
+      const date = log.timestamp.slice(0, 10);
+      const rows: { key: string; date: string; jenis: string; alasan: string; status: typeof status; detail: string }[] = [];
+      if (log.overtime_request) rows.push({
+        key: `${log.id}-ot`, date, jenis: 'Lembur', alasan: log.overtime_request.reason, status,
+        detail: status === 'disetujui' ? `${adj?.overtime_minutes || 0} menit disetujui` : status === 'ditolak' ? (adj?.rejection_reason || 'Ditolak') : 'Menunggu ACC admin',
+      });
+      if (log.live_tiktok_request) rows.push({
+        key: `${log.id}-live`, date, jenis: 'Live TikTok', alasan: log.live_tiktok_request.reason, status,
+        detail: status === 'disetujui' ? `Bonus Rp ${(adj?.bonus_amount || 0).toLocaleString('id-ID')}` : status === 'ditolak' ? (adj?.rejection_reason || 'Ditolak') : 'Menunggu ACC admin',
+      });
+      return rows;
+    });
 
   // Calendar setup (Current month)
   const getDaysInMonth = () => {
@@ -214,6 +237,33 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
           </div>
         </div>
       </div>
+
+      {/* Pengajuan lembur / Live TikTok saat scan pulang + status ACC-nya */}
+      {myRequests.length > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-xs p-5 space-y-3">
+          <h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
+            <FileText className="w-4 h-4 text-[var(--color-evergreen)]" /> Pengajuan Saya
+          </h3>
+          <div className="space-y-2">
+            {myRequests.map(r => (
+              <div key={r.key} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 rounded-xl border border-gray-100 bg-gray-50/60 p-3 text-xs">
+                <div className="min-w-0">
+                  <p className="font-bold text-gray-800">{r.jenis} · {r.date}</p>
+                  <p className="text-gray-500 truncate">{r.alasan}</p>
+                  <p className="text-[11px] text-gray-600">{r.detail}</p>
+                </div>
+                <span className={`shrink-0 self-start sm:self-center rounded-full px-2 py-1 text-[10px] font-black uppercase border ${
+                  r.status === 'disetujui' ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                  : r.status === 'ditolak' ? 'bg-rose-50 text-rose-700 border-rose-100'
+                  : 'bg-amber-50 text-amber-700 border-amber-100'
+                }`}>
+                  {r.status === 'disetujui' ? 'Disetujui' : r.status === 'ditolak' ? 'Ditolak' : 'Menunggu'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Grid: Kalender Kehadiran & Slip Gaji */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

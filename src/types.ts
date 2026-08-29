@@ -268,6 +268,11 @@ export interface Attendance {
   // Wajib diisi bila scan pulang antara full_day_from dan end_time (pulang cepat tetap dibayar penuh)
   early_leave_reason?: string;
   overtime_minutes?: number;
+  // Pengajuan opsional yang dikirim karyawan saat scan PULANG. Hanya berupa
+  // permintaan + alasan — nilai final (menit / nominal) ditetapkan admin saat ACC
+  // di menu "Perlu Review". Tidak memengaruhi gaji sampai disetujui.
+  overtime_request?: { reason: string; requested_at: string };
+  live_tiktok_request?: { reason: string; requested_at: string };
 }
 
 // Identitas brand/perusahaan — dapat diubah owner di menu Pengaturan (white label)
@@ -407,6 +412,10 @@ export interface AttendanceAdjustment {
   overtime_minutes?: number;
   bonus_amount?: number;
   note?: string;
+  // 'rejected' = pengajuan karyawan ditolak admin (tidak ikut gaji). Kosong/'approved'
+  // = disetujui, agar data lama tetap terbaca sebagai disetujui.
+  status?: 'approved' | 'rejected';
+  rejection_reason?: string;
   approved_by_id?: string;
   approved_by_name?: string;
   approved_at: string;

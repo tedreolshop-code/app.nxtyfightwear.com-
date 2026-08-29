@@ -36,6 +36,11 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
   const [bulkPeriodEnd, setBulkPeriodEnd] = useState('');
   const [bulkRows, setBulkRows] = useState<BulkRow[]>([]);
 
+  // Nilai review pengganti telat / lembur / live TikTok per log scan pulang,
+  // yang bisa dikoreksi admin sebelum disetujui.
+  type ReviewDraft = { lateComp: number; overtime: number; live: number };
+  const [reviewDraft, setReviewDraft] = useState<Record<string, ReviewDraft>>({});
+
   // Calibration settings modal state
 
   // Date Range Filter states
@@ -132,9 +137,11 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
       const computedDaysWorked = dayFractions.length ? dayFractions.reduce((sum, value) => sum + value, 0) : 6;
       setDaysWorked(computedDaysWorked);
 
-      const approvedAdjustments = adjustments.filter(item => item.employee_id === selectedEmpId && item.date >= periodStart && item.date <= periodEnd);
-      const liveBonus = approvedAdjustments.filter(item => item.type === 'live_tiktok').reduce((sum, item) => sum + (item.bonus_amount || 0), 0);
-      const computedOvertime = approvedAdjustments.filter(item => item.type === 'overtime').reduce((sum, item) => sum + (item.overtime_minutes || 0), 0) / 60;
+      // Satu keputusan review bisa memuat lembur + live sekaligus, jadi jumlahkan
+      // per field (bukan per type) dan buang yang ditolak.
+      const approvedAdjustments = adjustments.filter(item => item.employee_id === selectedEmpId && item.date >= periodStart && item.date <= periodEnd && item.status !== 'rejected');
+      const liveBonus = approvedAdjustments.reduce((sum, item) => sum + (item.bonus_amount || 0), 0);
+      const computedOvertime = approvedAdjustments.reduce((sum, item) => sum + (item.overtime_minutes || 0), 0) / 60;
       setOvertimeHours(Math.round(computedOvertime * 100) / 100);
 
       // Bonus di slip mingguan hanya bonus kerja (Live TikTok, dsb).
@@ -422,17 +429,34 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     loadData();
   };
 
+  // Log scan pulang yang perlu direview: ada pengganti telat / lembur otomatis,
+  // ATAU karyawan mengajukan lembur / live TikTok — dan belum ada keputusan admin.
+  const needsReview = (log: Attendance) =>
+    log.type_scan === 'pulang'
+    && ((log.overtime_minutes || 0) > 0 || (log.late_compensation_minutes || 0) > 0 || !!log.overtime_request || !!log.live_tiktok_request);
   const pendingAdjustmentLogs = attendance
-    .filter(log => log.type_scan === 'pulang' && ((log.overtime_minutes || 0) > 0 || (log.late_compensation_minutes || 0) > 0))
+    .filter(needsReview)
     .filter(log => !adjustments.some(item => item.attendance_id === log.id))
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
-    .slice(0, 20);
+    .slice(0, 30);
 
-  const approveAdjustment = (log: Attendance, type: 'late_compensation' | 'overtime' | 'live_tiktok' | 'ignored') => {
+  const defaultReviewDraft = (log: Attendance): ReviewDraft => ({
+    lateComp: log.late_compensation_minutes || 0,
+    overtime: log.overtime_minutes || 0,
+    live: log.live_tiktok_request ? (employees.find(e => e.id === log.employee_id)?.default_live_tiktok_bonus ?? 20000) : 0,
+  });
+  const draftFor = (log: Attendance): ReviewDraft => reviewDraft[log.id] ?? defaultReviewDraft(log);
+  const setDraft = (log: Attendance, patch: Partial<ReviewDraft>) =>
+    setReviewDraft(prev => ({ ...prev, [log.id]: { ...draftFor(log), ...patch } }));
+  const clearDraft = (logId: string) =>
+    setReviewDraft(prev => { const next = { ...prev }; delete next[logId]; return next; });
+
+  const saveReviewValues = (log: Attendance, v: ReviewDraft) => {
     const actor = JSON.parse(localStorage.getItem('nxty_session') || 'null');
-    const approvedLateCompensation = type === 'ignored' ? 0 : (log.late_compensation_minutes || 0);
-    const targetEmployee = employees.find(emp => emp.id === log.employee_id);
-    const liveTikTokBonus = targetEmployee?.default_live_tiktok_bonus ?? 20000;
+    const lateComp = Math.max(0, Math.round(v.lateComp));
+    const overtime = Math.max(0, Math.round(v.overtime));
+    const live = Math.max(0, Math.round(v.live));
+    const primary = overtime > 0 ? 'overtime' : live > 0 ? 'live_tiktok' : 'late_compensation';
     dataStore.approveAttendanceAdjustment({
       id: Math.random().toString(36).slice(2, 11),
       attendance_id: log.id,
@@ -440,16 +464,57 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
       employee_name: log.employee_name,
       date: log.timestamp.slice(0, 10),
       checkout_time: log.timestamp.slice(11, 16),
-      type,
-      late_compensation_minutes: approvedLateCompensation,
-      overtime_minutes: type === 'overtime' ? (log.overtime_minutes || 0) : 0,
-      bonus_amount: type === 'live_tiktok' ? liveTikTokBonus : 0,
-      note: type === 'live_tiktok' ? 'Bonus live TikTok' : type === 'overtime' ? 'ACC lembur' : type === 'late_compensation' ? 'Pengganti telat disetujui' : 'Tidak dihitung tambahan',
+      type: primary,
+      status: 'approved',
+      late_compensation_minutes: lateComp,
+      overtime_minutes: overtime,
+      bonus_amount: live,
+      note: [lateComp > 0 && `pengganti telat ${lateComp}m`, overtime > 0 && `lembur ${overtime}m`, live > 0 && `live TikTok ${formatIDR(live)}`].filter(Boolean).join(' · ') || 'Tanpa tambahan',
       approved_by_id: actor?.employeeId,
       approved_by_name: actor?.name,
       approved_at: wibNowISO()
     });
+    clearDraft(log.id);
     loadData();
+  };
+
+  const saveReview = (log: Attendance) => saveReviewValues(log, draftFor(log));
+
+  const rejectReview = (log: Attendance, presetReason?: string) => {
+    const reason = presetReason ?? window.prompt(`Alasan menolak pengajuan ${log.employee_name} (${log.timestamp.slice(0, 10)}):`);
+    if (reason === null) return;
+    const actor = JSON.parse(localStorage.getItem('nxty_session') || 'null');
+    dataStore.approveAttendanceAdjustment({
+      id: Math.random().toString(36).slice(2, 11),
+      attendance_id: log.id,
+      employee_id: log.employee_id,
+      employee_name: log.employee_name,
+      date: log.timestamp.slice(0, 10),
+      checkout_time: log.timestamp.slice(11, 16),
+      type: 'ignored',
+      status: 'rejected',
+      rejection_reason: reason.trim() || 'Ditolak',
+      late_compensation_minutes: 0,
+      overtime_minutes: 0,
+      bonus_amount: 0,
+      note: `Pengajuan ditolak: ${reason.trim() || '-'}`,
+      approved_by_id: actor?.employeeId,
+      approved_by_name: actor?.name,
+      approved_at: wibNowISO()
+    });
+    clearDraft(log.id);
+    loadData();
+  };
+
+  // Kompatibilitas untuk blok review ringkas di modal generate satuan.
+  const approveAdjustment = (log: Attendance, type: 'late_compensation' | 'overtime' | 'live_tiktok' | 'ignored') => {
+    if (type === 'ignored') { rejectReview(log, 'Tidak dihitung sebagai tambahan'); return; }
+    const emp = employees.find(e => e.id === log.employee_id);
+    saveReviewValues(log, {
+      lateComp: log.late_compensation_minutes || 0,
+      overtime: type === 'overtime' ? (log.overtime_minutes || 0) : 0,
+      live: type === 'live_tiktok' ? (emp?.default_live_tiktok_bonus ?? 20000) : 0,
+    });
   };
 
 
@@ -1056,9 +1121,9 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
   const selectedPendingAdjustmentLogs = selectedEmpId
     ? attendance
         .filter(log => {
-          if (log.employee_id !== selectedEmpId || log.type_scan !== 'pulang') return false;
+          if (log.employee_id !== selectedEmpId || !needsReview(log)) return false;
           const date = log.timestamp.slice(0, 10);
-          return date >= periodStart && date <= periodEnd && ((log.overtime_minutes || 0) > 0 || (log.late_compensation_minutes || 0) > 0);
+          return date >= periodStart && date <= periodEnd;
         })
         .filter(log => !adjustments.some(item => item.attendance_id === log.id))
         .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
@@ -1157,28 +1222,48 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
           <div className="bg-white border border-amber-200 rounded-xl p-4 space-y-3">
             <div>
               <h3 className="font-black text-sm text-gray-800">Perlu Review Pengganti Telat / Lembur / Live TikTok</h3>
-              <p className="text-xs text-gray-500">Jam tambahan dipakai untuk menutup telat dulu. Sisa setelah telat tertutup baru masuk lembur.</p>
+              <p className="text-xs text-gray-500">Jam tambahan menutup telat dulu, sisanya baru masuk lembur. Nilai di bawah bisa dikoreksi sebelum disimpan. Pengajuan dari karyawan ditandai biru.</p>
             </div>
             <div className="space-y-2">
-              {pendingAdjustmentLogs.map(log => (
-                <div key={log.id} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center bg-amber-50/60 border border-amber-100 rounded-lg p-3 text-xs">
-                  <div className="md:col-span-5">
-                    <p className="font-black text-gray-800">{log.employee_name}</p>
-                    <p className="text-gray-500">{log.timestamp.slice(0, 10)} · pulang {log.timestamp.slice(11, 16)}</p>
-                    <p className="text-gray-500">Pengganti telat {log.late_compensation_minutes || 0} menit · lembur {log.overtime_minutes || 0} menit</p>
+              {pendingAdjustmentLogs.map(log => {
+                const d = draftFor(log);
+                const diajukan = !!log.overtime_request || !!log.live_tiktok_request;
+                return (
+                <div key={log.id} className="bg-amber-50/60 border border-amber-100 rounded-lg p-3 text-xs space-y-2">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="font-black text-gray-800">{log.employee_name}</p>
+                      <p className="text-gray-500">{log.timestamp.slice(0, 10)} · pulang {log.timestamp.slice(11, 16)}</p>
+                    </div>
+                    {diajukan && <span className="rounded-full bg-sky-100 text-sky-800 border border-sky-200 px-2 py-0.5 text-[10px] font-black uppercase">Diajukan karyawan</span>}
                   </div>
-                  <div className="md:col-span-7 grid grid-cols-2 gap-2">
-                    {(log.late_compensation_minutes || 0) > 0 && (
-                      <button type="button" onClick={() => approveAdjustment(log, 'late_compensation')} className="px-3 py-2 rounded-lg bg-emerald-700 text-white font-bold cursor-pointer">Setujui Pengganti</button>
-                    )}
-                    {(log.overtime_minutes || 0) > 0 && (
-                      <button type="button" onClick={() => approveAdjustment(log, 'overtime')} className="px-3 py-2 rounded-lg bg-[var(--color-evergreen)] text-white font-bold cursor-pointer">ACC Lembur</button>
-                    )}
-                    <button type="button" onClick={() => approveAdjustment(log, 'live_tiktok')} className="px-3 py-2 rounded-lg bg-pink-600 text-white font-bold cursor-pointer">Live TikTok {formatIDR(employees.find(emp => emp.id === log.employee_id)?.default_live_tiktok_bonus ?? 20000)}</button>
-                    <button type="button" onClick={() => approveAdjustment(log, 'ignored')} className="px-3 py-2 rounded-lg bg-white border border-gray-200 text-gray-600 font-bold cursor-pointer">Abaikan</button>
+
+                  {log.overtime_request && <p className="text-gray-700 bg-white border border-sky-100 rounded p-1.5"><b className="text-sky-800">Alasan lembur:</b> {log.overtime_request.reason}</p>}
+                  {log.live_tiktok_request && <p className="text-gray-700 bg-white border border-sky-100 rounded p-1.5"><b className="text-sky-800">Keterangan live:</b> {log.live_tiktok_request.reason}</p>}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <label className="flex flex-col gap-1">
+                      <span className="font-bold text-gray-600">Pengganti telat (menit)</span>
+                      <input type="number" min="0" value={d.lateComp} onChange={e => setDraft(log, { lateComp: Number(e.target.value) })} className="border border-gray-200 rounded px-2 py-1 bg-white" />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="font-bold text-gray-600">Lembur disetujui (menit)</span>
+                      <input type="number" min="0" step="30" value={d.overtime} onChange={e => setDraft(log, { overtime: Number(e.target.value) })} className="border border-gray-200 rounded px-2 py-1 bg-white" />
+                      {(log.overtime_minutes || 0) > 0 && <span className="text-[10px] text-gray-400">perkiraan sistem {log.overtime_minutes} mnt</span>}
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="font-bold text-gray-600">Bonus Live TikTok (Rp){!log.live_tiktok_request && ' — opsional'}</span>
+                      <input type="number" min="0" step="1000" value={d.live} onChange={e => setDraft(log, { live: Number(e.target.value) })} className="border border-gray-200 rounded px-2 py-1 bg-white" />
+                    </label>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => saveReview(log)} className="px-3 py-2 rounded-lg bg-[var(--color-evergreen)] text-white font-bold cursor-pointer">Simpan Keputusan</button>
+                    <button type="button" onClick={() => rejectReview(log)} className="px-3 py-2 rounded-lg bg-white border border-rose-200 text-rose-700 font-bold cursor-pointer">{diajukan ? 'Tolak Pengajuan' : 'Abaikan'}</button>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -1656,6 +1741,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                   <label className="block font-bold text-emerald-800 uppercase tracking-wider mb-1">Awal Periode</label>
                   <input
                     type="date"
+                    aria-label="Awal periode generate satuan"
                     value={periodStart}
                     onChange={(e) => setPeriodStart(e.target.value)}
                     className="w-full bg-emerald-50/10 border border-emerald-800/25 rounded-lg px-3 py-2 font-mono text-emerald-950 font-bold focus:bg-white focus:outline-none focus:border-emerald-700"
@@ -1675,6 +1761,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                   </div>
                   <input
                     type="date"
+                    aria-label="Akhir periode generate satuan"
                     value={periodEnd}
                     onChange={(e) => setPeriodEnd(e.target.value)}
                     className="w-full bg-emerald-50/10 border border-emerald-800/25 rounded-lg px-3 py-2 font-mono text-emerald-950 font-bold focus:bg-white focus:outline-none focus:border-emerald-700"
@@ -1728,6 +1815,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                   <label className="block font-bold text-emerald-800 uppercase tracking-wider mb-1">Jam Lembur ACC</label>
                   <input
                     type="number"
+                    aria-label="Jam Lembur ACC"
                     value={overtimeHours}
                     onChange={(e) => setOvertimeHours(Number(e.target.value))}
                     className="w-full bg-emerald-50/10 border border-emerald-800/25 rounded-lg px-3 py-2 text-emerald-950 font-semibold focus:bg-white focus:outline-none focus:border-emerald-700"
@@ -1741,6 +1829,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                     <span className="absolute left-3 top-2 text-emerald-800/60 font-bold">Rp</span>
                     <input
                       type="number"
+                      aria-label="Bonus Otomatis / Tambahan"
                       value={bonus}
                       onChange={(e) => setBonus(Number(e.target.value))}
                       className="pl-9 w-full bg-emerald-50/10 border border-emerald-800/25 rounded-lg px-3 py-2 font-mono text-emerald-950 font-bold focus:bg-white focus:outline-none focus:border-emerald-700"
