@@ -3,6 +3,7 @@ import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { QRCodeSVG } from 'qrcode.react';
 import { Employee, Attendance, AttendanceType, AttendanceFailure, WorkSettings } from '../types';
 import { dataStore, wibNowISO } from '../dataStore';
+import { resyncAttendanceFromCloud, isCloudEnabled } from '../cloudSync';
 import { brandName, brandLegalName } from '../brand';
 import { exportExcel } from '../exportExcel';
 import { 
@@ -252,6 +253,9 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
 
   // Real-time Clock for Kiosk mode
   const [currentTime, setCurrentTime] = useState(new Date());
+  // Jaring pengaman realtime: tampilan admin ditarik ulang dari server berkala
+  const [lastSync, setLastSync] = useState<Date | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -268,6 +272,50 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
       window.removeEventListener('nxty_storage_change', handleStorageChange);
     };
   }, []);
+
+  // Realtime bisa putus tanpa mengejar ketinggalan, jadi absensi ditarik ulang
+  // dari server (hanya ~2 hari, ringan) saat halaman dibuka dan saat tab kembali
+  // fokus. Poll tiap 60 detik HANYA di layar pemantauan admin — kios & portal
+  // karyawan menyala seharian, tak perlu poll dan boros kuota.
+  const isMonitoringView = !lockedEmployee && activeMode === 'pola_b_dashboard';
+  useEffect(() => {
+    if (!isCloudEnabled) return;
+    let alive = true;
+    let running = false;
+    const pull = async () => {
+      if (document.visibilityState !== 'visible' || running) return;
+      running = true;
+      setIsSyncing(true);
+      const at = await resyncAttendanceFromCloud();
+      running = false;
+      if (!alive) return;
+      setIsSyncing(false);
+      if (at) { setLastSync(at); loadData(); }
+    };
+    void pull();
+    const onVisible = () => { void pull(); };
+    document.addEventListener('visibilitychange', onVisible);
+    const poll = isMonitoringView ? setInterval(() => { void pull(); }, 60000) : null;
+    return () => { alive = false; document.removeEventListener('visibilitychange', onVisible); if (poll) clearInterval(poll); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMonitoringView]);
+
+  const refreshFromCloud = async () => {
+    setIsSyncing(true);
+    try {
+      const at = await resyncAttendanceFromCloud();
+      if (at) setLastSync(at);
+    } finally {
+      setIsSyncing(false);
+      loadData();
+    }
+  };
+
+  const syncAgoLabel = (() => {
+    if (!lastSync) return '';
+    const sec = Math.max(0, Math.round((currentTime.getTime() - lastSync.getTime()) / 1000));
+    return sec < 60 ? `${sec} dtk lalu` : `${Math.round(sec / 60)} mnt lalu`;
+  })();
 
   const loadData = () => {
     const all = dataStore.getEmployees();
@@ -1245,7 +1293,21 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
               <button onClick={exportAttendanceExcel} className="ml-auto px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-100 cursor-pointer"><Download className="w-3 h-3 inline mr-1" /> Excel</button>
             </div>
             {historyPeriod === 'custom' && <div className="grid grid-cols-2 gap-2 max-w-md"><input type="date" value={historyStart} onChange={e => setHistoryStart(e.target.value)} className="border border-gray-200 rounded-lg p-2 text-xs" /><input type="date" value={historyEnd} min={historyStart} onChange={e => setHistoryEnd(e.target.value)} className="border border-gray-200 rounded-lg p-2 text-xs" /></div>}
-            <p className="text-[10px] text-gray-400">Periode analisa: {periodBounds.start} s/d {periodBounds.end}</p>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <p className="text-[10px] text-gray-400">Periode analisa: {periodBounds.start} s/d {periodBounds.end}</p>
+              {isCloudEnabled && (
+                <button
+                  type="button"
+                  onClick={() => void refreshFromCloud()}
+                  disabled={isSyncing}
+                  title="Tarik ulang absensi terkini dari server"
+                  className="flex items-center gap-1.5 text-[10px] font-medium text-gray-400 hover:text-gray-700 cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
+                  {isSyncing ? 'Menyinkron…' : lastSync ? `Tersinkron ${syncAgoLabel}` : 'Tarik dari server'}
+                </button>
+              )}
+            </div>
           </div>
           
           {/* Real-time stats Cards */}
@@ -1309,6 +1371,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
               </div>
               <div className="lg:col-span-5 bg-white rounded-2xl border border-gray-200 p-5 space-y-4 shadow-xs text-left">
                 <h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider">Perlu Perhatian</h3>
+                <p className="text-[10px] text-gray-400 leading-relaxed">Ringkasan cepat, bukan bukti final. Sebelum menegur karyawan, tekan "Tersinkron/Tarik dari server" di atas atau cek tab <b>Riwayat Scan</b> — patokan sah bagi karyawan adalah layar hijau "BERHASIL" saat scan.</p>
                 <div className="space-y-2 max-h-64 overflow-y-auto overscroll-contain">
                   {[...notCheckedInToday.map(emp => ({ name: emp.name, text: 'Belum absen masuk', tone: 'text-rose-700 bg-rose-50 border-rose-100' })),
                     ...notCheckedOutToday.map(emp => ({ name: emp.name, text: 'Belum absen pulang', tone: 'text-sky-700 bg-sky-50 border-sky-100' }))].map((item, index) => (
@@ -1469,13 +1532,14 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                   <p className="text-[10px] text-gray-400 mt-0.5">Semua data scan absensi karyawan yang sudah tersimpan.</p>
                 </div>
 
-                {/* Clean Button */}
+                {/* Tarik ulang dari server (bukan cache lokal) */}
                 <button
-                  onClick={loadData}
-                  className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-gray-900 transition-all cursor-pointer border border-gray-200"
-                  title="Segarkan Log"
+                  onClick={() => void refreshFromCloud()}
+                  disabled={isSyncing}
+                  className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-gray-900 transition-all cursor-pointer border border-gray-200 disabled:opacity-50"
+                  title="Tarik ulang absensi terkini dari server"
                 >
-                  <RefreshCw className="w-3.5 h-3.5" />
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
                 </button>
               </div>
 

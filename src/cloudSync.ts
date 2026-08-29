@@ -293,6 +293,42 @@ const fetchAllRows = async (table: string): Promise<{ id: string; value: unknown
 const sortAttendance = (rows: AttendanceRecordLike[]) =>
   rows.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
 
+/**
+ * Tarik ulang absensi TERKINI dari cloud (bawaan: 2 hari terakhir WIB) lalu
+ * gabungkan ke localStorage berdasarkan id — tidak menghapus apa pun.
+ *
+ * Halaman Absensi memakainya sebagai jaring pengaman: realtime kadang putus
+ * (tab tidur, sinyal kedip) dan TIDAK mengejar ketinggalan, jadi scan yang
+ * masuk selama putus tak pernah muncul sampai halaman di-reload penuh. Ini
+ * menutup celah itu tanpa menarik seluruh riwayat.
+ *
+ * @returns waktu sinkron berhasil, atau null bila cloud mati / gagal.
+ */
+export const resyncAttendanceFromCloud = async (sinceDays = 2): Promise<Date | null> => {
+  if (!client) return null;
+  try {
+    const since = new Date(Date.now() + 7 * 3600e3 - sinceDays * 86400e3).toISOString().slice(0, 10);
+    const { data, error } = await client
+      .from(ATT_TABLE)
+      .select('id, value')
+      .gte('value->>timestamp', since);
+    if (error) throw error;
+    const fresh = (data || []).map(r => (r as { value: AttendanceRecordLike }).value).filter(r => r && r.id);
+    if (fresh.length > 0) {
+      const freshIds = new Set(fresh.map(r => r.id));
+      const kept = readLocalAttendance().filter(r => r.id && !freshIds.has(r.id));
+      writeLocalAttendance(sortAttendance([...fresh, ...kept]));
+    }
+    void flushPendingAttendance();
+    if (status !== 'online') setStatus('online');
+    return new Date();
+  } catch (e) {
+    console.error('[cloudSync] Gagal tarik ulang absensi terkini:', e);
+    setStatus('error');
+    return null;
+  }
+};
+
 /** Terapkan satu nilai dari cloud ke localStorage tanpa memicu push balik. */
 const applyRemoteValue = (key: string, value: unknown) => {
   applyingRemote = true;
