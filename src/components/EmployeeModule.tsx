@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Employee, Department, PayrollWeekly, CashAdvance, Attendance, UserRole, EmploymentStatus, EMPLOYMENT_STATUSES, employmentStatusOf, isEligibleForAttendanceBonus, divisionLabel, nextEmployeeNumber } from '../types';
-import { dataStore, hashPin, currentWeeklyPayrollPeriod, dayFraction } from '../dataStore';
+import { dataStore, hashPin, lastCompletedWeeklyPayrollPeriod, dayFraction } from '../dataStore';
 import { employeeChangeLog, ChangeEntry } from '../employeeChangeLog';
 import { QRCodeSVG } from 'qrcode.react';
 import { EmployeeIdCards, printIdCards } from './EmployeeIdCards';
@@ -159,8 +159,8 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
   // Jejak perubahan gaji, dibaca dari audit log (tidak ada data baru yang disimpan)
   const [changeLog, setChangeLog] = useState<ChangeEntry[]>([]);
   
-  const [modalPeriodStart, setModalPeriodStart] = useState(currentWeeklyPayrollPeriod().start);
-  const [modalPeriodEnd, setModalPeriodEnd] = useState(currentWeeklyPayrollPeriod().end);
+  const [modalPeriodStart, setModalPeriodStart] = useState(lastCompletedWeeklyPayrollPeriod().start);
+  const [modalPeriodEnd, setModalPeriodEnd] = useState(lastCompletedWeeklyPayrollPeriod().end);
   const [modalDaysWorked, setModalDaysWorked] = useState(6);
   const [modalOvertimeHours, setModalOvertimeHours] = useState(0);
   const [modalBasePay, setModalBasePay] = useState(0);
@@ -217,7 +217,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
     setModalOutstandingKasbon(totalOutstanding);
 
     // Reset default inputs for new slip
-    const weeklyRange = currentWeeklyPayrollPeriod();
+    const weeklyRange = lastCompletedWeeklyPayrollPeriod();
     setModalPeriodStart(weeklyRange.start);
     setModalPeriodEnd(weeklyRange.end);
     setModalDaysWorked(6);

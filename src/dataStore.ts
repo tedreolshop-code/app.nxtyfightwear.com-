@@ -104,6 +104,21 @@ export const currentWeeklyPayrollPeriod = (): { start: string; end: string; payD
   return { start: fmt(start), end: fmt(end), payDate: fmt(payDate) };
 };
 
+/**
+ * Periode gaji TERAKHIR yang sudah lengkap: Sabtu–Jumat tepat sebelum periode
+ * berjalan. Inilah yang digenerate & dibayar tiap Sabtu. Periode berjalan belum
+ * selesai — memakainya membuat hari yang belum terjadi terhitung nol.
+ */
+export const lastCompletedWeeklyPayrollPeriod = (): { start: string; end: string; payDate: string } => {
+  const current = currentWeeklyPayrollPeriod();
+  const shift = (d: string, days: number): string => {
+    const dt = new Date(`${d}T00:00:00Z`);
+    dt.setUTCDate(dt.getUTCDate() + days);
+    return dt.toISOString().slice(0, 10);
+  };
+  return { start: shift(current.start, -7), end: shift(current.end, -7), payDate: current.start };
+};
+
 const INITIAL_DEPARTMENTS: Department[] = [
   { id: 'dept-eva-foam', name: 'Eva Foam', latitude: COORDS.eva_foam.lat, longitude: COORDS.eva_foam.lng },
   { id: 'dept-konveksi', name: 'Departemen Konveksi', latitude: COORDS.konveksi.lat, longitude: COORDS.konveksi.lng },

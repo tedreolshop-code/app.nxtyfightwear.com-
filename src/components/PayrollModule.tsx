@@ -5,7 +5,7 @@ import { brandName, brandLegalName, brandInitials } from '../brand';
 import { exportExcel } from '../exportExcel';
 import { Printer, Landmark, DollarSign, Plus, CheckCircle2, Sliders, History, Trash2, X, Calculator, Edit2, FileSpreadsheet, Wallet, Award } from 'lucide-react';
 import { AttendanceBonusPanel, AttendanceBonusBalanceCard, AttendanceBonusHistoryList } from './AttendanceBonusPanel';
-import { currentWeeklyPayrollPeriod } from '../dataStore';
+import { currentWeeklyPayrollPeriod, lastCompletedWeeklyPayrollPeriod } from '../dataStore';
 
 interface PayrollModuleProps {
   isAdmin: boolean;
@@ -72,7 +72,9 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
 
   // Creation/Edit states
   const [selectedEmpId, setSelectedEmpId] = useState('');
-  const defaultWeeklyPeriod = currentWeeklyPayrollPeriod();
+  // Default generate = periode terakhir yang sudah lengkap (dibayar Sabtu ini),
+  // bukan periode berjalan yang belum selesai.
+  const defaultWeeklyPeriod = lastCompletedWeeklyPayrollPeriod();
   const [periodStart, setPeriodStart] = useState(defaultWeeklyPeriod.start);
   const [periodEnd, setPeriodEnd] = useState(defaultWeeklyPeriod.end);
   const [daysWorked, setDaysWorked] = useState(6);
@@ -109,7 +111,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
   };
 
   const applyDefaultWeeklyPeriod = () => {
-    const range = currentWeeklyPayrollPeriod();
+    const range = lastCompletedWeeklyPayrollPeriod();
     setPeriodStart(range.start);
     setPeriodEnd(range.end);
   };
@@ -250,7 +252,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
       .map(e => buildBulkRow(e, pStart, pEnd));
 
   const openBulkGenerate = () => {
-    const range = currentWeeklyPayrollPeriod();
+    const range = lastCompletedWeeklyPayrollPeriod();
     setBulkPeriodStart(range.start);
     setBulkPeriodEnd(range.end);
     setBulkRows(bulkRowsFor(range.start, range.end));
@@ -1756,7 +1758,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                       onClick={applyDefaultWeeklyPeriod}
                       className="text-[10px] font-black text-emerald-800 bg-emerald-50 border border-emerald-100 rounded px-2 py-0.5 cursor-pointer hover:bg-emerald-100"
                     >
-                      Sabtu-Jumat
+                      Sabtu-Jumat terakhir
                     </button>
                   </div>
                   <input
@@ -1893,7 +1895,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
               <div className="p-5 space-y-3 text-xs text-left overflow-y-auto">
                 <div className="rounded-xl border border-emerald-100 bg-emerald-50/70 px-4 py-3 text-[11px] text-emerald-900">
                   <p className="font-black uppercase tracking-wide">Hitung otomatis dari absensi &amp; ACC</p>
-                  <p className="mt-1">Hari kerja dari scan absensi, lembur dari adjustment yang sudah di-ACC, bonus dari Live TikTok, potongan kasbon dari saldo aktif. Semua angka masih bisa dikoreksi per baris sebelum diposting. Bonus KEHADIRAN tidak termasuk — dibayar terpisah tiap tanggal 1.</p>
+                  <p className="mt-1">Bawaan periode = <b>Sabtu-Jumat terakhir yang sudah selesai</b> (dibayar Sabtu ini). Periode berjalan belum lengkap, kalau dipilih hari yang belum lewat terhitung nol. Hari kerja dari scan absensi, lembur dari adjustment yang sudah di-ACC, bonus dari Live TikTok, potongan kasbon dari saldo aktif. Semua angka masih bisa dikoreksi per baris sebelum diposting. Bonus KEHADIRAN tidak termasuk — dibayar terpisah tiap tanggal 1.</p>
                 </div>
 
                 <div className="flex flex-wrap items-end gap-3">
@@ -1905,8 +1907,8 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                     <label className="block font-bold text-emerald-800 uppercase tracking-wider mb-1">Akhir Periode</label>
                     <input type="date" aria-label="Akhir periode generate massal" value={bulkPeriodEnd} min={bulkPeriodStart} onChange={(e) => setBulkPeriod(bulkPeriodStart, e.target.value)} className="bg-emerald-50/10 border border-emerald-800/25 rounded-lg px-3 py-2 font-mono text-emerald-950 font-bold focus:bg-white focus:outline-none focus:border-emerald-700" />
                   </div>
-                  <button type="button" onClick={() => { const r = currentWeeklyPayrollPeriod(); setBulkPeriod(r.start, r.end); }} className="text-[10px] font-black text-emerald-800 bg-emerald-50 border border-emerald-100 rounded px-2 py-2 cursor-pointer hover:bg-emerald-100">
-                    Pakai Sabtu-Jumat berjalan
+                  <button type="button" onClick={() => { const r = lastCompletedWeeklyPayrollPeriod(); setBulkPeriod(r.start, r.end); }} className="text-[10px] font-black text-emerald-800 bg-emerald-50 border border-emerald-100 rounded px-2 py-2 cursor-pointer hover:bg-emerald-100">
+                    Periode Sabtu-Jumat terakhir
                   </button>
                 </div>
 

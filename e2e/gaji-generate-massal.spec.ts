@@ -51,6 +51,15 @@ test('Generate Semua membuat slip untuk semua karyawan aktif yang punya kehadira
 
   await page.getByRole('button', { name: 'Generate Semua' }).click();
 
+  // Bawaan periode = Sabtu-Jumat TERAKHIR yang sudah selesai (bukan periode berjalan
+  // yang belum lengkap → semua 0). Dihitung relatif terhadap hari tes berjalan.
+  const t = new Date(new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10) + 'T00:00:00Z');
+  const start = new Date(t); start.setUTCDate(t.getUTCDate() - ((t.getUTCDay() + 1) % 7) - 7);
+  const end = new Date(start); end.setUTCDate(start.getUTCDate() + 6);
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  await expect(page.getByLabel('Awal periode generate massal')).toHaveValue(iso(start));
+  await expect(page.getByLabel('Akhir periode generate massal')).toHaveValue(iso(end));
+
   // Setel periode ke rentang tetap 15-21 Agustus 2026
   await page.getByLabel('Awal periode generate massal').fill('2026-08-15');
   await page.getByLabel('Akhir periode generate massal').fill('2026-08-21');
