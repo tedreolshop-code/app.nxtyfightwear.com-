@@ -201,6 +201,9 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
 
   // Common states
   const [employees, setEmployees] = useState<Employee[]>([]);
+  // Semua karyawan termasuk resign & yang sudah dihapus tidak masuk sini —
+  // dipakai rekap agar absensi milik mereka tetap terhitung, bukan hilang.
+  const [employeesAll, setEmployeesAll] = useState<Employee[]>([]);
   const [attendanceLogs, setAttendanceLogs] = useState<Attendance[]>([]);
   
   // Search state for employee selector
@@ -267,7 +270,9 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
   }, []);
 
   const loadData = () => {
-    setEmployees(dataStore.getEmployees().filter(e => e.status_aktif));
+    const all = dataStore.getEmployees();
+    setEmployeesAll(all);
+    setEmployees(all.filter(e => e.status_aktif));
     setAttendanceLogs(dataStore.getAttendance());
     setWorkSettings(dataStore.getWorkSettings());
   };
@@ -636,12 +641,24 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
       return [] as Attendance[];
     }
   })();
-  const employeeRecaps = employees.map(employee => {
-    const logs = periodLogs.filter(log => log.employee_id === employee.id);
+  // Rekap dibangun dari log absensi periode itu, bukan dari daftar karyawan aktif:
+  // karyawan yang resign atau dihapus tetap muncul untuk periode saat mereka kerja,
+  // sesuai janji dialog hapus ("riwayat absensi lama tetap tersimpan").
+  const employeeRecaps = [...new Set(periodLogs.map(log => log.employee_id))].map(empId => {
+    const logs = periodLogs.filter(log => log.employee_id === empId);
+    const known = employeesAll.find(e => e.id === empId);
+    const employee = known || ({
+      id: empId,
+      name: logs[0]?.employee_name || empId,
+      username: '',
+      department_id: '',
+      status_aktif: false,
+    } as Employee);
     const checkInLogs = logs.filter(log => log.type_scan === 'masuk');
     const checkOutLogs = logs.filter(log => log.type_scan === 'pulang');
     return {
       employee,
+      resignedOrGone: !known || !known.status_aktif,
       hadir: new Set(checkInLogs.map(log => log.timestamp.slice(0, 10))).size,
       pulang: new Set(checkOutLogs.map(log => log.timestamp.slice(0, 10))).size,
       telat: logs.reduce((sum, log) => sum + (log.late_minutes || 0), 0),
@@ -1312,7 +1329,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead className="bg-evergreen text-white font-bold uppercase tracking-wider text-[10px]"><tr><th className="p-2 text-left">Karyawan</th><th className="p-2 text-left">Departemen</th><th className="p-2 text-right">Hadir</th><th className="p-2 text-right">Pulang</th><th className="p-2 text-right">Telat</th><th className="p-2 text-right">Pengganti</th><th className="p-2 text-right">Lembur</th><th className="p-2 text-right">Bantuan</th></tr></thead>
-                  <tbody>{employeeRecaps.filter(item => !historySearch.trim() || `${item.employee.name} ${item.employee.username || ''}`.toLowerCase().includes(historySearch.trim().toLowerCase())).map(item => <tr key={item.employee.id} className="border-t border-emerald-200"><td className="p-2 font-bold text-gray-800">{item.employee.name}<p className="text-[10px] text-gray-400 font-normal">@{item.employee.username}</p></td><td className="p-2">{departmentLabel(item.employee.department_id)}</td><td className="p-2 text-right font-mono font-black">{item.hadir}</td><td className="p-2 text-right font-mono">{item.pulang}</td><td className="p-2 text-right font-mono text-amber-700">{item.telat}m</td><td className="p-2 text-right font-mono text-emerald-700">{item.penggantiTelat}m</td><td className="p-2 text-right font-mono text-sky-700">{item.lembur}m</td><td className="p-2 text-right font-mono">{item.bantuanAdmin}</td></tr>)}{employeeRecaps.length === 0 && <tr><td colSpan={8} className="p-8 text-center text-gray-400">Belum ada data pada periode ini.</td></tr>}</tbody>
+                  <tbody>{employeeRecaps.filter(item => !historySearch.trim() || `${item.employee.name} ${item.employee.username || ''}`.toLowerCase().includes(historySearch.trim().toLowerCase())).map(item => <tr key={item.employee.id} className="border-t border-emerald-200"><td className="p-2 font-bold text-gray-800">{item.employee.name}{item.resignedOrGone && <span className="ml-1.5 text-[9px] bg-rose-50 text-rose-600 border border-rose-100 px-1 py-0.5 rounded font-bold uppercase">Resign/Dihapus</span>}<p className="text-[10px] text-gray-400 font-normal">{item.employee.username ? `@${item.employee.username}` : '—'}</p></td><td className="p-2">{departmentLabel(item.employee.department_id) || '—'}</td><td className="p-2 text-right font-mono font-black">{item.hadir}</td><td className="p-2 text-right font-mono">{item.pulang}</td><td className="p-2 text-right font-mono text-amber-700">{item.telat}m</td><td className="p-2 text-right font-mono text-emerald-700">{item.penggantiTelat}m</td><td className="p-2 text-right font-mono text-sky-700">{item.lembur}m</td><td className="p-2 text-right font-mono">{item.bantuanAdmin}</td></tr>)}{employeeRecaps.length === 0 && <tr><td colSpan={8} className="p-8 text-center text-gray-400">Belum ada data pada periode ini.</td></tr>}</tbody>
                 </table>
               </div>
             </div>
