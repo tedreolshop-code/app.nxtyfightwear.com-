@@ -25,6 +25,17 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
   // Calculator modal state
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
 
+  // Generate massal (semua karyawan aktif sekaligus)
+  type BulkRow = {
+    employeeId: string; name: string; rateHarian: number; rateLembur: number;
+    days: number; overtimeHrs: number; bonus: number; kasbon: number;
+    outstanding: number; selected: boolean; alreadyExists: boolean;
+  };
+  const [isBulkOpen, setIsBulkOpen] = useState(false);
+  const [bulkPeriodStart, setBulkPeriodStart] = useState('');
+  const [bulkPeriodEnd, setBulkPeriodEnd] = useState('');
+  const [bulkRows, setBulkRows] = useState<BulkRow[]>([]);
+
   // Calibration settings modal state
 
   // Date Range Filter states
@@ -198,6 +209,104 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
       alert(err.message || 'Gagal menyimpan payroll');
     }
   };
+
+  // ---- Generate massal ------------------------------------------------------
+  // Hitung draft slip satu karyawan — logika sama dengan auto-calc modal satuan:
+  // hari kerja dari absensi, lembur dari adjustment ACC, bonus live dari
+  // adjustment, potongan kasbon dari saldo aktif (dibatasi default karyawan).
+  const buildBulkRow = (emp: Employee, pStart: string, pEnd: string): BulkRow => {
+    const ws = dataStore.getWorkSettings();
+    const empAtt = attendance.filter(a => {
+      const d = a.timestamp.slice(0, 10);
+      return a.employee_id === emp.id && d >= pStart && d <= pEnd;
+    });
+    const dayFractions = Array.from(new Set(empAtt.map(a => a.timestamp.split('T')[0]))).map(date =>
+      dayFraction(empAtt.filter(l => l.timestamp.startsWith(date)), ws));
+    const days = dayFractions.reduce((sum, value) => sum + value, 0);
+    const acc = adjustments.filter(i => i.employee_id === emp.id && i.date >= pStart && i.date <= pEnd);
+    const overtimeHrs = Math.round(acc.filter(i => i.type === 'overtime').reduce((s, i) => s + (i.overtime_minutes || 0), 0) / 60 * 100) / 100;
+    const bonus = acc.filter(i => i.type === 'live_tiktok').reduce((s, i) => s + (i.bonus_amount || 0), 0);
+    const outstanding = cashAdvances.filter(c => c.employee_id === emp.id).reduce((s, c) => s + c.remaining_balance, 0);
+    const kasbon = Math.min(outstanding, emp.default_weekly_cash_advance_deduction ?? 50000);
+    const alreadyExists = payrolls.some(p => p.employee_id === emp.id && p.period_start === pStart && p.period_end === pEnd);
+    return {
+      employeeId: emp.id, name: emp.name, rateHarian: emp.rate_harian, rateLembur: emp.rate_lembur_per_jam,
+      days, overtimeHrs, bonus, kasbon, outstanding,
+      alreadyExists,
+      selected: !alreadyExists && days > 0,
+    };
+  };
+
+  const bulkRowsFor = (pStart: string, pEnd: string) =>
+    employees.filter(e => e.status_aktif)
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(e => buildBulkRow(e, pStart, pEnd));
+
+  const openBulkGenerate = () => {
+    const range = currentWeeklyPayrollPeriod();
+    setBulkPeriodStart(range.start);
+    setBulkPeriodEnd(range.end);
+    setBulkRows(bulkRowsFor(range.start, range.end));
+    setIsBulkOpen(true);
+  };
+
+  const setBulkPeriod = (pStart: string, pEnd: string) => {
+    setBulkPeriodStart(pStart);
+    setBulkPeriodEnd(pEnd);
+    if (pStart && pEnd && pStart <= pEnd) setBulkRows(bulkRowsFor(pStart, pEnd));
+  };
+
+  const updateBulkRow = (employeeId: string, patch: Partial<BulkRow>) =>
+    setBulkRows(rows => rows.map(r => r.employeeId === employeeId ? { ...r, ...patch } : r));
+
+  const bulkThp = (r: BulkRow) => r.days * r.rateHarian + r.overtimeHrs * r.rateLembur + r.bonus - r.kasbon;
+
+  const handleBulkGenerate = () => {
+    const picked = bulkRows.filter(r => r.selected && !r.alreadyExists);
+    if (picked.length === 0) return;
+    let ok = 0;
+    const fails: string[] = [];
+    picked.forEach(r => {
+      if (r.kasbon > r.outstanding) { fails.push(`${r.name}: potongan kasbon melebihi sisa kasbon`); return; }
+      const base_pay = r.days * r.rateHarian;
+      const newPayroll: PayrollWeekly = {
+        id: Math.random().toString(36).substring(2, 11),
+        employee_id: r.employeeId,
+        employee_name: r.name,
+        period_start: bulkPeriodStart,
+        period_end: bulkPeriodEnd,
+        days_worked: r.days,
+        overtime_hours: r.overtimeHrs,
+        base_pay,
+        bonus: r.bonus,
+        cash_advance_deduction: r.kasbon,
+        total_pay: base_pay + r.overtimeHrs * r.rateLembur + r.bonus - r.kasbon,
+        is_printed: false,
+        payment_status: 'unpaid',
+      };
+      try {
+        dataStore.recordPayroll(newPayroll);
+        if (r.kasbon > 0) {
+          dataStore.applyCashAdvancePayment({
+            employee_id: r.employeeId,
+            amount: r.kasbon,
+            type: 'deduction',
+            date: bulkPeriodEnd,
+            note: `Potongan kasbon dari slip gaji ${bulkPeriodStart} s/d ${bulkPeriodEnd}`,
+            payroll_id: newPayroll.id,
+          });
+        }
+        ok++;
+      } catch (err: any) {
+        fails.push(`${r.name}: ${err.message || 'gagal'}`);
+      }
+    });
+    setIsBulkOpen(false);
+    loadData();
+    alert(`${ok} slip gaji berhasil dibuat & diposting untuk periode ${bulkPeriodStart} s/d ${bulkPeriodEnd}.`
+      + (fails.length ? `\n\nDilewati/gagal ${fails.length}:\n- ${fails.join('\n- ')}` : ''));
+  };
+  // -------------------------------------------------------------------------
 
   // Dynamic recalculation for edited payroll
   useEffect(() => {
@@ -1098,6 +1207,14 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
               </button>
               <button
                 type="button"
+                onClick={openBulkGenerate}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-800/30 rounded-lg text-xs font-bold shadow-xs transition-all cursor-pointer"
+              >
+                <Calculator className="w-3.5 h-3.5" />
+                <span>Generate Semua</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => {
                   applyDefaultWeeklyPeriod();
                   setEmployeeSearchQuery('');
@@ -1106,7 +1223,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-800 hover:bg-emerald-900 text-white border border-emerald-950 rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer hover:scale-[1.02]"
               >
                 <Calculator className="w-3.5 h-3.5 text-emerald-200 animate-bounce" />
-                <span>Generate Gaji Mingguan</span>
+                <span>Generate Satuan</span>
               </button>
             </div>
           </div>
@@ -1666,6 +1783,112 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
           </div>
         </div>
       )}
+
+      {/* POP-UP GENERATE MASSAL (SEMUA KARYAWAN AKTIF) */}
+      {isBulkOpen && (() => {
+        const picked = bulkRows.filter(r => r.selected && !r.alreadyExists);
+        const eligible = bulkRows.filter(r => !r.alreadyExists);
+        const totalThp = picked.reduce((s, r) => s + bulkThp(r), 0);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 no-print animate-fade-in overflow-y-auto overscroll-contain">
+            <div className="bg-white rounded-2xl w-full max-w-4xl border border-emerald-800/30 overflow-hidden shadow-2xl my-auto flex flex-col max-h-[92vh]" onClick={(e) => e.stopPropagation()}>
+              <div className="bg-emerald-800 px-6 py-4 flex items-center justify-between text-white shrink-0">
+                <h3 className="font-bold text-sm flex items-center gap-2 uppercase tracking-wide">
+                  <Calculator className="w-4 h-4 text-emerald-100" /> Generate Gaji Mingguan — Semua Karyawan
+                </h3>
+                <button type="button" onClick={() => setIsBulkOpen(false)} className="text-white/80 hover:text-white hover:bg-white/10 p-1 rounded-full transition-all cursor-pointer">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-5 space-y-3 text-xs text-left overflow-y-auto">
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50/70 px-4 py-3 text-[11px] text-emerald-900">
+                  <p className="font-black uppercase tracking-wide">Hitung otomatis dari absensi &amp; ACC</p>
+                  <p className="mt-1">Hari kerja dari scan absensi, lembur dari adjustment yang sudah di-ACC, bonus dari Live TikTok, potongan kasbon dari saldo aktif. Semua angka masih bisa dikoreksi per baris sebelum diposting. Bonus KEHADIRAN tidak termasuk — dibayar terpisah tiap tanggal 1.</p>
+                </div>
+
+                <div className="flex flex-wrap items-end gap-3">
+                  <div>
+                    <label className="block font-bold text-emerald-800 uppercase tracking-wider mb-1">Awal Periode</label>
+                    <input type="date" aria-label="Awal periode generate massal" value={bulkPeriodStart} onChange={(e) => setBulkPeriod(e.target.value, bulkPeriodEnd)} className="bg-emerald-50/10 border border-emerald-800/25 rounded-lg px-3 py-2 font-mono text-emerald-950 font-bold focus:bg-white focus:outline-none focus:border-emerald-700" />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-emerald-800 uppercase tracking-wider mb-1">Akhir Periode</label>
+                    <input type="date" aria-label="Akhir periode generate massal" value={bulkPeriodEnd} min={bulkPeriodStart} onChange={(e) => setBulkPeriod(bulkPeriodStart, e.target.value)} className="bg-emerald-50/10 border border-emerald-800/25 rounded-lg px-3 py-2 font-mono text-emerald-950 font-bold focus:bg-white focus:outline-none focus:border-emerald-700" />
+                  </div>
+                  <button type="button" onClick={() => { const r = currentWeeklyPayrollPeriod(); setBulkPeriod(r.start, r.end); }} className="text-[10px] font-black text-emerald-800 bg-emerald-50 border border-emerald-100 rounded px-2 py-2 cursor-pointer hover:bg-emerald-100">
+                    Pakai Sabtu-Jumat berjalan
+                  </button>
+                </div>
+
+                <div className="overflow-x-auto border border-gray-200 rounded-xl">
+                  <table className="w-full text-[11px]">
+                    <thead className="bg-gray-50 text-gray-600 font-bold uppercase tracking-wider text-[10px]">
+                      <tr>
+                        <th className="p-2 text-center w-8">
+                          <input
+                            type="checkbox"
+                            checked={eligible.length > 0 && eligible.every(r => r.selected)}
+                            onChange={(e) => setBulkRows(rows => rows.map(r => r.alreadyExists ? r : { ...r, selected: e.target.checked }))}
+                          />
+                        </th>
+                        <th className="p-2 text-left">Karyawan</th>
+                        <th className="p-2 text-right w-20">Hari</th>
+                        <th className="p-2 text-right w-24">Lembur (jam)</th>
+                        <th className="p-2 text-right w-28">Bonus</th>
+                        <th className="p-2 text-right w-32">Potong Kasbon</th>
+                        <th className="p-2 text-right w-32">THP</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bulkRows.map(r => (
+                        <tr key={r.employeeId} className={`border-t border-gray-100 ${r.alreadyExists ? 'bg-gray-50 text-gray-400' : r.selected ? '' : 'opacity-60'}`}>
+                          <td className="p-2 text-center">
+                            <input type="checkbox" disabled={r.alreadyExists} checked={r.selected && !r.alreadyExists} onChange={(e) => updateBulkRow(r.employeeId, { selected: e.target.checked })} />
+                          </td>
+                          <td className="p-2 font-bold text-gray-800">
+                            {r.name}
+                            {r.alreadyExists && <span className="ml-1.5 text-[9px] bg-gray-200 text-gray-600 px-1 py-0.5 rounded font-bold uppercase">Slip sudah ada</span>}
+                            {!r.alreadyExists && r.days === 0 && <span className="ml-1.5 text-[9px] bg-rose-50 text-rose-600 border border-rose-100 px-1 py-0.5 rounded font-bold uppercase">0 hari</span>}
+                          </td>
+                          <td className="p-1">
+                            <input type="number" step="0.5" min="0" disabled={r.alreadyExists} value={r.days} onChange={(e) => updateBulkRow(r.employeeId, { days: Number(e.target.value) })} className="w-full text-right bg-white border border-gray-200 rounded px-1.5 py-1 disabled:bg-transparent disabled:border-transparent" />
+                          </td>
+                          <td className="p-1">
+                            <input type="number" step="0.5" min="0" disabled={r.alreadyExists} value={r.overtimeHrs} onChange={(e) => updateBulkRow(r.employeeId, { overtimeHrs: Number(e.target.value) })} className="w-full text-right bg-white border border-gray-200 rounded px-1.5 py-1 disabled:bg-transparent disabled:border-transparent" />
+                          </td>
+                          <td className="p-1">
+                            <input type="number" step="1000" min="0" disabled={r.alreadyExists} value={r.bonus} onChange={(e) => updateBulkRow(r.employeeId, { bonus: Number(e.target.value) })} className="w-full text-right bg-white border border-gray-200 rounded px-1.5 py-1 disabled:bg-transparent disabled:border-transparent" />
+                          </td>
+                          <td className="p-1">
+                            <input type="number" step="1000" min="0" disabled={r.alreadyExists} value={r.kasbon} onChange={(e) => updateBulkRow(r.employeeId, { kasbon: Number(e.target.value) })} className={`w-full text-right bg-white border rounded px-1.5 py-1 disabled:bg-transparent disabled:border-transparent ${r.kasbon > r.outstanding ? 'border-rose-400 text-rose-600' : 'border-gray-200'}`} />
+                          </td>
+                          <td className="p-2 text-right font-mono font-black text-gray-800">{r.alreadyExists ? '—' : formatIDR(bulkThp(r))}</td>
+                        </tr>
+                      ))}
+                      {bulkRows.length === 0 && <tr><td colSpan={7} className="p-6 text-center text-gray-400">Tidak ada karyawan aktif.</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+                <div className="text-[11px] text-slate-600">
+                  <span className="font-black text-slate-800">{picked.length}</span> slip dipilih · Total THP <span className="font-mono font-black text-emerald-800">{formatIDR(totalThp)}</span>
+                  {bulkRows.some(r => r.alreadyExists) && <span className="ml-2 text-slate-400">({bulkRows.filter(r => r.alreadyExists).length} sudah ada, dilewati)</span>}
+                </div>
+                <div className="flex gap-3">
+                  <button type="button" onClick={() => setIsBulkOpen(false)} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-lg transition-colors cursor-pointer text-xs">Batal</button>
+                  <button type="button" onClick={handleBulkGenerate} disabled={picked.length === 0} className="px-4 py-2 bg-emerald-800 hover:bg-emerald-900 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors shadow-sm cursor-pointer text-xs flex items-center gap-1.5">
+                    <DollarSign className="w-3.5 h-3.5" />
+                    Posting {picked.length} Slip
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* POP-UP EDIT PAYROLL WEEKLY MODAL */}
       {editingPayroll && (
