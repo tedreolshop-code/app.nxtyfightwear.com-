@@ -669,6 +669,16 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
   const availablePoMonths = Array.from(new Set(purchases.map(p => p.date.substring(0, 7)))).sort().reverse() as string[];
   const availableExpenseMonths = Array.from(new Set(expenses.map(e => e.date.substring(0, 7)))).sort().reverse() as string[];
 
+  // Cetak PO: isolasi dokumen dari sisa dashboard lewat body class (pola sama
+  // dengan cetak QR lokasi), lalu buang class-nya setelah dialog print selesai.
+  const handlePrintPo = () => {
+    document.body.classList.add('po-printing');
+    const cleanup = () => document.body.classList.remove('po-printing');
+    window.addEventListener('afterprint', cleanup, { once: true });
+    window.print();
+    window.setTimeout(cleanup, 1000);
+  };
+
   // Share / Copy PO Summary Text
   const handleCopyPoSummary = (po: Purchase) => {
     if (!po) return;
@@ -1684,7 +1694,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                           </button>
                           
                           <button
-                            onClick={() => window.print()}
+                            onClick={handlePrintPo}
                             className="py-1.5 px-3 bg-emerald-800 hover:bg-emerald-900 text-white font-bold rounded-lg text-xs flex items-center gap-1 transition-all border border-emerald-950 shadow-xs"
                           >
                             <Printer className="w-3.5 h-3.5" /> Cetak PO

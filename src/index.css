@@ -58,6 +58,27 @@
     border: 0 !important;
   }
 
+  /* Cetak PO Pembelian: hanya dokumen PO, bukan seluruh dashboard. */
+  body.po-printing * {
+    visibility: hidden !important;
+  }
+
+  body.po-printing #printable-po-document,
+  body.po-printing #printable-po-document * {
+    visibility: visible !important;
+  }
+
+  body.po-printing #printable-po-document {
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    padding: 8mm !important;
+    box-sizing: border-box !important;
+    /* Dokumen PO desainnya sans-serif (bukan form dot-matrix), jadi jangan
+       ikut aturan monospace global. */
+    font-family: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif !important;
+  }
+
   body {
     background: white !important;
     color: black !important;
