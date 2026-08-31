@@ -15,8 +15,8 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+const SUPABASE_URL = import.meta.env?.VITE_SUPABASE_URL as string | undefined;
+const SUPABASE_ANON_KEY = import.meta.env?.VITE_SUPABASE_ANON_KEY as string | undefined;
 
 const TABLE = 'ari_store';
 // Absensi disimpan SATU BARIS PER SCAN di tabel terpisah, agar absen bersamaan
@@ -109,10 +109,20 @@ const readLocalRows = (key: string): RowLike[] => {
   try { return JSON.parse(localStorage.getItem(`nxty_${key}`) || '[]'); } catch { return []; }
 };
 
+// Cuplikan baris yang TERAKHIR diketahui sama dengan cloud (id -> JSON value).
+// Dipakai push per-baris untuk hanya mengirim baris yang benar-benar berubah —
+// tanpa ini setiap simpan menyetel updated_at SEMUA baris, dan sinkron bertahap
+// (updated_at > watermark) jadi menarik seluruh tabel lagi.
+const cloudSnapshot = new Map<string, Map<string, string>>();
+const snapshotFrom = (rows: RowLike[]): Map<string, string> =>
+  new Map(rows.filter(r => r && r.id).map(r => [r.id, JSON.stringify(r)]));
+
 const writeLocalRows = (key: string, rows: RowLike[]) => {
   applyingRemote = true;
   try {
     localStorage.setItem(`nxty_${key}`, JSON.stringify(rows));
+    // Data dari cloud = baseline baru; simpan lokal berikutnya membandingkan ke sini.
+    cloudSnapshot.set(key, snapshotFrom(rows));
     window.dispatchEvent(new Event('nxty_storage_change'));
   } finally {
     applyingRemote = false;
@@ -131,24 +141,46 @@ const pushRowsToCloud = (cfg: PerRowSync, list: RowLike[]): void => {
   void (async () => {
     try {
       const clean = list.filter(r => r && r.id);
-      if (clean.length > 0) {
-        const rows = clean.map(r => ({ id: r.id, value: r, updated_at: new Date().toISOString() }));
-        const { error: upErr } = await client!.from(cfg.table).upsert(rows, { onConflict: 'id' });
-        if (upErr) throw upErr;
-        // Log append-only: jangan hapus baris lama (filter NOT IN bisa membengkak).
-        if (!cfg.appendOnly) {
-          const keep = `(${clean.map(r => `"${r.id}"`).join(',')})`;
-          const { error: delErr } = await client!.from(cfg.table).delete().not('id', 'in', keep);
-          if (delErr) throw delErr;
-        }
-      } else {
+      if (clean.length === 0) {
         const { error } = await client!.from(cfg.table).delete().neq('id', '');
         if (error) throw error;
+        cloudSnapshot.set(cfg.key, new Map());
+        if (status !== 'online') setStatus('online');
+        return;
       }
+
+      const prev = cloudSnapshot.get(cfg.key);
+      // Baris baru / berubah saja yang di-upsert (updated_at ikut ter-refresh).
+      const changed = prev
+        ? clean.filter(r => prev.get(r.id) !== JSON.stringify(r))
+        : clean;
+      if (changed.length > 0) {
+        const rows = changed.map(r => ({ id: r.id, value: r, updated_at: new Date().toISOString() }));
+        const { error: upErr } = await client!.from(cfg.table).upsert(rows, { onConflict: 'id' });
+        if (upErr) throw upErr;
+      }
+      // Baris yang hilang dari daftar → hapus di cloud (kecuali log append-only).
+      if (!cfg.appendOnly && prev) {
+        const currentIds = new Set(clean.map(r => r.id));
+        const removed = [...prev.keys()].filter(id => !currentIds.has(id));
+        if (removed.length > 0) {
+          const { error: delErr } = await client!.from(cfg.table).delete().in('id', removed);
+          if (delErr) throw delErr;
+        }
+      } else if (!cfg.appendOnly && !prev) {
+        // Belum ada baseline (sinkron awal gagal / offline saat start) → jaga
+        // konsistensi seperti sebelumnya: hapus baris yang tidak ada di daftar.
+        const keep = `(${clean.map(r => `"${r.id}"`).join(',')})`;
+        const { error: delErr } = await client!.from(cfg.table).delete().not('id', 'in', keep);
+        if (delErr) throw delErr;
+      }
+
+      cloudSnapshot.set(cfg.key, snapshotFrom(clean));
       if (status !== 'online') setStatus('online');
     } catch (e) {
       console.error(`[cloudSync] Gagal menyimpan "${cfg.key}" ke Supabase:`, e);
       setStatus('error');
+      // Jangan perbarui snapshot: percobaan simpan berikutnya mengirim ulang.
     }
   })();
 };
@@ -278,17 +310,66 @@ export const clearAttendanceInCloud = (): void => {
  * request, jadi tarik bertahap sampai habis — tanpa ini absensi lama/baru bisa
  * "hilang" begitu jumlah baris melewati 1000.
  */
-const fetchAllRows = async (table: string): Promise<{ id: string; value: unknown }[]> => {
+const fetchAllRows = async (table: string, opts?: { sinceCol?: string; since?: string }): Promise<{ id: string; value: unknown }[]> => {
   const PAGE = 1000;
   const all: { id: string; value: unknown }[] = [];
   for (let from = 0; ; from += PAGE) {
-    const { data, error } = await client!.from(table).select('id, value').range(from, from + PAGE - 1);
+    let q = client!.from(table).select('id, value').range(from, from + PAGE - 1);
+    if (opts?.sinceCol && opts.since) q = q.gt(opts.sinceCol, opts.since);
+    const { data, error } = await q;
     if (error) throw error;
     all.push(...((data || []) as { id: string; value: unknown }[]));
     if (!data || data.length < PAGE) break;
   }
   return all;
 };
+
+/**
+ * Gabungkan hasil sinkron bertahap ke data lokal, dedup berdasarkan id:
+ * - `changed` (baris baru/berubah dari cloud) menang,
+ * - baris lokal lain dipertahankan KECUALI (a) sudah tergantikan `changed`, atau
+ *   (b) `cloudIds` ada isinya dan baris itu tak ada di sana (= dihapus di cloud).
+ * `cloudIds` null / kosong → jangan buang apa-apa (tabel yang pakai data bawaan).
+ */
+export const mergeRowsById = <T extends { id: string }>(
+  changed: T[], localRows: T[], cloudIds: Set<string> | null
+): T[] => {
+  const changedIds = new Set(changed.map(r => r.id));
+  const kept = localRows.filter(r => r && r.id && !changedIds.has(r.id)
+    && (!cloudIds || cloudIds.size === 0 || cloudIds.has(r.id)));
+  return [...changed, ...kept];
+};
+
+/** Semua id sebuah tabel (ringan, ~15 byte/baris) — untuk mendeteksi baris yang dihapus. */
+const fetchAllIds = async (table: string): Promise<Set<string>> => {
+  const PAGE = 1000;
+  const ids = new Set<string>();
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await client!.from(table).select('id').range(from, from + PAGE - 1);
+    if (error) throw error;
+    for (const r of (data || []) as { id: string }[]) ids.add(r.id);
+    if (!data || data.length < PAGE) break;
+  }
+  return ids;
+};
+
+// Watermark sinkron bertahap: waktu sinkron cloud terakhir yang berhasil.
+const SYNC_AT_KEY = 'nxty_cloud_synced_at';
+// updated_at diisi jam perangkat penulis (bukan server). Mundurkan watermark
+// jauh (2 jam) supaya beda jam antar-tablet tidak membuat perubahan terlewat —
+// tetap murah, biasanya cuma menambah beberapa baris.
+const CLOCK_SKEW_MS = 2 * 60 * 60 * 1000;
+const FULL_RESYNC_AFTER_MS = 7 * 86400 * 1000;
+const readSyncSince = (): string | null => {
+  try {
+    const raw = localStorage.getItem(SYNC_AT_KEY);
+    if (!raw) return null;
+    const t = Number(raw);
+    if (!t || Date.now() - t > FULL_RESYNC_AFTER_MS) return null; // lama tak dibuka → tarik penuh
+    return new Date(t - CLOCK_SKEW_MS).toISOString();
+  } catch { return null; }
+};
+const writeSyncNow = () => { try { localStorage.setItem(SYNC_AT_KEY, String(Date.now())); } catch { /* penuh: abaikan */ } };
 
 const sortAttendance = (rows: AttendanceRecordLike[]) =>
   rows.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
@@ -341,82 +422,102 @@ const applyRemoteValue = (key: string, value: unknown) => {
 };
 
 /**
- * Tarik seluruh data dari Supabase ke localStorage, lalu dengarkan perubahan realtime.
- * Panggil sekali saat aplikasi start. Aman dipanggil saat cloud tidak dikonfigurasi (no-op).
+ * Sinkronkan data Supabase ke localStorage, lalu dengarkan perubahan realtime.
+ * Panggil sekali saat aplikasi start. Aman saat cloud tidak dikonfigurasi (no-op).
+ *
+ * Tarikan PENUH hanya pada pemakaian pertama / setelah lama tidak dibuka
+ * (>7 hari). Selebihnya BERTAHAP: cuma menarik baris yang berubah sejak sinkron
+ * terakhir — localStorage jadi cache, hemat egress drastis tanpa kehilangan data
+ * (realtime + fetchAllIds menangani penghapusan).
  */
 export const initCloudSync = async (): Promise<void> => {
   if (!client) return;
   setStatus('connecting');
+  const since = readSyncSince();
+  const incremental = since !== null;
   try {
-    const { data, error } = await client.from(TABLE).select('key, value');
+    // ---- ari_store (audit log, recycle bin, brand/work settings) ----
+    let storeQ = client.from(TABLE).select('key, value');
+    if (incremental) storeQ = storeQ.gt('updated_at', since!);
+    const { data, error } = await storeQ;
     if (error) throw error;
 
-    // Nilai model-lama (array utuh) di ari_store — dipakai sebagai sumber isian
-    // awal saat migrasi ke tabel per-baris, agar data lama tidak hilang.
     const legacyStore = new Map((data || []).map(row => [row.key as string, row.value]));
 
     applyingRemote = true;
     try {
       for (const row of data || []) {
-        if (row.key === ATT_KEY) continue; // absensi model lama diabaikan — pakai tabel per-baris
-        if (perRowByKey.has(row.key)) continue; // key per-baris diabaikan — pakai tabelnya sendiri
+        if (row.key === ATT_KEY) continue;
+        if (perRowByKey.has(row.key)) continue;
         localStorage.setItem(`nxty_${row.key}`, JSON.stringify(row.value));
       }
     } finally {
       applyingRemote = false;
     }
-    if (data && data.length > 0) {
-      window.dispatchEvent(new Event('nxty_storage_change'));
-    }
+    if (data && data.length > 0) window.dispatchEvent(new Event('nxty_storage_change'));
 
-    // Absensi: tarik semua baris dari cloud, gabung dengan lokal berdasarkan id,
-    // lalu push balik scan yang hanya ada di lokal (mis. direkam saat offline).
+    // ---- Absensi ----
     try {
-      const attRows = await fetchAllRows(ATT_TABLE);
-      const cloudRecs = attRows
-        .map(r => r.value as AttendanceRecordLike)
-        .filter(r => r && r.id);
-      const cloudIds = new Set(cloudRecs.map(r => r.id));
-      const localOnly = readLocalAttendance().filter(r => r.id && !cloudIds.has(r.id));
-      writeLocalAttendance(sortAttendance([...cloudRecs, ...localOnly]));
-      for (const rec of localOnly) pushAttendanceToCloud(rec);
+      const attRows = await fetchAllRows(ATT_TABLE, incremental ? { sinceCol: 'created_at', since: since! } : undefined);
+      const freshRecs = attRows.map(r => r.value as AttendanceRecordLike).filter(r => r && r.id);
+      const local = readLocalAttendance();
+      if (incremental) {
+        const cloudIds = await fetchAllIds(ATT_TABLE);
+        const merged = mergeRowsById(freshRecs as { id: string }[], local as { id: string }[], cloudIds) as AttendanceRecordLike[];
+        const localOnly = local.filter(r => r.id && !cloudIds.has(r.id));
+        writeLocalAttendance(sortAttendance(merged));
+        for (const rec of localOnly) pushAttendanceToCloud(rec);
+      } else {
+        const cloudIds = new Set(freshRecs.map(r => r.id));
+        const localOnly = local.filter(r => r.id && !cloudIds.has(r.id));
+        writeLocalAttendance(sortAttendance([...freshRecs, ...localOnly]));
+        for (const rec of localOnly) pushAttendanceToCloud(rec);
+      }
       void flushPendingAttendance();
     } catch (e) {
       console.error('[cloudSync] Gagal sinkron tabel absensi (sudah jalankan supabase/setup.sql terbaru?):', e);
     }
 
-    // Key per-baris (karyawan, produk, bahan baku, mutasi stok): Supabase adalah
-    // sumber data utama. Tarik semua baris dan jadikan itu isi lokal. Bila database
-    // masih kosong (instalasi baru), unggah data lokal (seed) sebagai isian awal.
-    // Setelah ini cfg.ready = true, sehingga tambah/edit/hapus mulai tersimpan
-    // langsung ke database dan tidak bisa "hilang kembali ke data awal".
+    // ---- Tabel per-baris ----
+    let anyTableFailed = false;
     for (const cfg of PER_ROW) {
       try {
-        const rows = await fetchAllRows(cfg.table);
-        const cloudRows = rows
-          .map(r => r.value as RowLike)
-          .filter(r => r && r.id);
         cfg.ready = true;
+        if (incremental) {
+          const changed = (await fetchAllRows(cfg.table, { sinceCol: 'updated_at', since: since! }))
+            .map(r => r.value as RowLike).filter(r => r && r.id);
+          const localRows = readLocalRows(cfg.key);
+          // Log append-only tidak pernah hapus baris → lewati cek id (hemat egress).
+          const cloudIds = cfg.appendOnly ? null : await fetchAllIds(cfg.table);
+          const merged = mergeRowsById(changed, localRows, cloudIds);
+          if (merged.length !== localRows.length || changed.length > 0) writeLocalRows(cfg.key, merged);
+          else cloudSnapshot.set(cfg.key, snapshotFrom(localRows));
+          continue;
+        }
+
+        const cloudRows = (await fetchAllRows(cfg.table)).map(r => r.value as RowLike).filter(r => r && r.id);
         if (cloudRows.length > 0) {
           writeLocalRows(cfg.key, cloudRows);
         } else {
-          // Tabel per-baris masih kosong → isi awal dari data lokal, atau dari
-          // data model-lama (array di ari_store) bila lokal kosong (mis. migrasi
-          // di perangkat baru). Pakai upsert TANPA hapus agar aman antar perangkat.
-          const local = readLocalRows(cfg.key);
+          const localRows = readLocalRows(cfg.key);
           const legacy = Array.isArray(legacyStore.get(cfg.key)) ? legacyStore.get(cfg.key) as RowLike[] : [];
-          const seed = local.length > 0 ? local : legacy;
+          const seed = localRows.length > 0 ? localRows : legacy;
           if (seed.length > 0) {
-            if (local.length === 0) writeLocalRows(cfg.key, seed);
+            if (localRows.length === 0) writeLocalRows(cfg.key, seed);
             await seedRowsToCloud(cfg, seed);
+            cloudSnapshot.set(cfg.key, snapshotFrom(seed));
           }
         }
       } catch (e) {
-        // Tabel belum dibuat (setup.sql terbaru belum dijalankan) → jalan lokal saja.
         cfg.ready = true;
+        anyTableFailed = true;
         console.error(`[cloudSync] Gagal sinkron tabel "${cfg.table}" (sudah jalankan supabase/setup.sql terbaru?):`, e);
       }
     }
+
+    // Watermark hanya maju bila semua tabel tersinkron — kalau ada yang gagal,
+    // pemakaian berikutnya mengulang rentang yang sama, bukan melewatinya.
+    if (!anyTableFailed) writeSyncNow();
 
     // Realtime: perubahan dari perangkat lain langsung masuk
     const channel = client.channel('ari_store_changes');
