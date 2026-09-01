@@ -860,6 +860,9 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
 
       return (
         <div className="space-y-6">
+          {/* Semua tampilan layar disembunyikan saat mencetak; slip A4 (gaji / bonus)
+              dirender terpisah sebagai .print-only di bawah. */}
+          <div className="space-y-6 no-print">
           {/* Header Title */}
           <div className="bg-[var(--color-evergreen)] text-white p-6 rounded-lg shadow-sm space-y-2">
             <div className="flex items-center justify-between">
@@ -1024,6 +1027,8 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
               </table>
             </div>
           </div>
+          </div>
+          {/* /no-print */}
 
           {/* Riwayat bonus kehadiran bulanan (termasuk bulan gugur + alasannya) */}
           <AttendanceBonusHistoryList employeeId={loggedEmployee.id} />

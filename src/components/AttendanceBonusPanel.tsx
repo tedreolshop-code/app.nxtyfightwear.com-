@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Attendance, AttendanceBonusPayout, Employee, isEligibleForAttendanceBonus, workingDaysInMonth, terbilang, divisionLabel } from '../types';
+import { Attendance, AttendanceBonusPayout, Employee, isEligibleForAttendanceBonus, workingDaysInMonth, divisionLabel } from '../types';
 import { dataStore, wibNowISO, wibTodayStr } from '../dataStore';
-import { brandInitials } from '../brand';
 import { exportExcel } from '../exportExcel';
 import { withA4PageSize } from '../printA4';
+import { renderBonusSlipLayout } from '../bonusSlip';
 import { DivisionFilter } from './DivisionFilter';
 import { AttendanceCalendar } from './AttendanceCalendar';
 import { Award, CalendarCheck2, CheckCircle2, XCircle, Gift, History, AlertTriangle, FileSpreadsheet, Printer, ChevronDown } from 'lucide-react';
@@ -97,6 +97,7 @@ export const AttendanceBonusHistoryList: React.FC<{ employeeId: string }> = ({ e
   const [payouts, setPayouts] = useState<AttendanceBonusPayout[]>([]);
   const [logs, setLogs] = useState<Attendance[]>([]);
   const [openMonth, setOpenMonth] = useState('');
+  const [printPayout, setPrintPayout] = useState<AttendanceBonusPayout | null>(null);
 
   useEffect(() => {
     const load = () => {
@@ -108,11 +109,19 @@ export const AttendanceBonusHistoryList: React.FC<{ employeeId: string }> = ({ e
     return () => window.removeEventListener('nxty_storage_change', load);
   }, [employeeId]);
 
-  const joinDate = dataStore.getEmployees().find(e => e.id === employeeId)?.join_date;
+  const employee = dataStore.getEmployees().find(e => e.id === employeeId);
+  const joinDate = employee?.join_date;
+  const deptLabel = divisionLabel(employee?.department_id, 'Umum');
   const sorted = [...payouts].sort((a, b) => b.month.localeCompare(a.month));
 
+  const cetakSlip = (p: AttendanceBonusPayout) => {
+    setPrintPayout(p);
+    setTimeout(() => withA4PageSize(() => window.print()), 150);
+  };
+
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-4 shadow-xs">
+    <>
+    <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-4 shadow-xs no-print">
       <div>
         <h3 className="font-bold text-sm text-gray-800 flex items-center gap-1.5">
           <Gift className="w-4 h-4 text-amber-500" /> Riwayat Bonus Kehadiran Anda
@@ -160,6 +169,17 @@ export const AttendanceBonusHistoryList: React.FC<{ employeeId: string }> = ({ e
                     )}
                   </div>
                 </button>
+                {p.status === 'cair' && (
+                  <div className="px-3 pb-3 -mt-1">
+                    <button
+                      type="button"
+                      onClick={() => cetakSlip(p)}
+                      className="bg-white border border-emerald-200 hover:bg-emerald-50 text-emerald-800 text-[10px] font-bold px-2.5 py-1 rounded cursor-pointer inline-flex items-center gap-1.5"
+                    >
+                      <Printer className="w-3 h-3" /> Lihat / Cetak Slip Bonus
+                    </button>
+                  </div>
+                )}
                 {open && (
                   <div className="border-t border-gray-200/70 p-3">
                     <AttendanceCalendar logs={logs} joinDate={joinDate} initialMonth={p.month} />
@@ -171,6 +191,13 @@ export const AttendanceBonusHistoryList: React.FC<{ employeeId: string }> = ({ e
         </div>
       )}
     </div>
+
+    {printPayout && (
+      <div className="print-only" style={{ width: '180mm', boxSizing: 'border-box' }}>
+        {renderBonusSlipLayout(printPayout, deptLabel)}
+      </div>
+    )}
+    </>
   );
 };
 
@@ -388,89 +415,6 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
     void exportExcel(`Rekap_Bonus_Kehadiran_${wibTodayStr()}`, [{
       name: 'Bonus Kehadiran', rows, currencyColumns: ['Jumlah'],
     }]);
-  };
-
-  // Dokumen slip bonus A4 — sejajar dengan slip gaji mingguan.
-  const renderBonusSlipLayout = (p: AttendanceBonusPayout) => {
-    const brand = dataStore.getBrandSettings();
-    const warna = brand.primary_color || '#1F4B36';
-    const dept = divisionLabel(employeeDept.get(p.employee_id), 'Umum').toUpperCase();
-    const dailyRate = p.working_days > 0 ? Math.round(p.amount / Math.max(1, p.present_days - p.half_days)) : 0;
-    return (
-      <div className="bg-white text-slate-800 text-[11px] leading-relaxed flex flex-col gap-4 select-text">
-        <div className="flex items-start justify-between gap-4 pb-3 border-b-2" style={{ borderColor: warna }}>
-          <div className="flex items-center gap-3 min-w-0">
-            {brand.logo_data_url
-              ? <img src={brand.logo_data_url} alt="" className="w-14 h-14 object-contain shrink-0" />
-              : <div className="w-14 h-14 shrink-0 rounded flex items-center justify-center text-white font-black text-lg" style={{ backgroundColor: warna }}>{brandInitials(brand.company_name)}</div>}
-            <div className="min-w-0">
-              <p className="font-black text-base uppercase tracking-wide truncate" style={{ color: warna }}>{brand.company_name}</p>
-              {brand.legal_name && brand.legal_name !== brand.company_name && <p className="text-[10px] text-slate-500 truncate">{brand.legal_name}</p>}
-              {brand.tagline && <p className="text-[10px] text-slate-400 truncate">{brand.tagline}</p>}
-            </div>
-          </div>
-          <div className="text-right shrink-0">
-            <p className="font-black text-sm uppercase tracking-widest" style={{ color: warna }}>Slip Bonus</p>
-            <p className="text-[10px] text-slate-500">Bonus Kehadiran Bulanan</p>
-            <p className="text-[10px] text-slate-400 mt-1">No. {p.id.toUpperCase()}</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-x-6 gap-y-1">
-          <div className="space-y-1">
-            <div className="flex gap-2"><span className="w-20 shrink-0 text-slate-500">Nama</span><span className="font-bold uppercase">: {p.employee_name}</span></div>
-            <div className="flex gap-2"><span className="w-20 shrink-0 text-slate-500">Divisi</span><span className="font-semibold">: {dept}</span></div>
-          </div>
-          <div className="space-y-1">
-            <div className="flex gap-2"><span className="w-20 shrink-0 text-slate-500">Bulan</span><span className="font-semibold">: {monthLabel(p.month)}</span></div>
-            <div className="flex gap-2"><span className="w-20 shrink-0 text-slate-500">Status</span><span className="font-semibold">: {p.status !== 'cair' ? 'Gugur' : p.payment_status === 'paid' ? 'Lunas' : 'Belum Dibayar'}</span></div>
-          </div>
-        </div>
-
-        <div>
-          <p className="font-bold text-[10px] uppercase tracking-wider text-slate-500 mb-1">Rekap Penilaian Kehadiran</p>
-          <table className="w-full border-collapse">
-            <tbody>
-              <tr className="border-b border-slate-100"><td className="py-1.5 pr-2">Hari kerja bulan ini</td><td className="py-1.5 text-right font-semibold tabular-nums">{p.working_days} hari</td></tr>
-              <tr className="border-b border-slate-100"><td className="py-1.5 pr-2">Hari hadir</td><td className="py-1.5 text-right font-semibold tabular-nums">{p.present_days} hari</td></tr>
-              <tr className="border-b border-slate-100"><td className="py-1.5 pr-2">Total keterlambatan (bersih)</td><td className="py-1.5 text-right font-semibold tabular-nums">{p.late_minutes_net} menit</td></tr>
-              <tr className="border-b border-slate-100"><td className="py-1.5 pr-2">Setengah hari</td><td className="py-1.5 text-right font-semibold tabular-nums">{p.half_days}x</td></tr>
-            </tbody>
-          </table>
-          {p.status !== 'cair' && p.reason && (
-            <p className="text-[10px] text-rose-700 mt-1.5">Bonus gugur: {p.reason}</p>
-          )}
-        </div>
-
-        <div className="rounded-lg px-4 py-3 text-white flex items-center justify-between gap-4" style={{ backgroundColor: p.status === 'cair' ? warna : '#9f1239' }}>
-          <div className="min-w-0">
-            <p className="text-[10px] uppercase tracking-widest opacity-80">{p.status === 'cair' ? 'Bonus Diterima' : 'Bonus Gugur'}</p>
-            <p className="text-[9px] italic opacity-90 capitalize leading-tight break-words">{p.status === 'cair' ? terbilang(p.amount) : 'nol rupiah'}</p>
-            {dailyRate > 0 && p.status === 'cair' && <p className="text-[9px] opacity-80">≈ {(p.present_days - p.half_days)} hari layak × {formatIDR(dailyRate)}</p>}
-          </div>
-          <p className="text-xl font-black tabular-nums whitespace-nowrap">{formatIDR(p.status === 'cair' ? p.amount : 0)}</p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-6 pt-2 text-center text-[10px]">
-          <div>
-            <p className="text-slate-500">Diterima oleh,</p>
-            <div className="h-14 border-b border-slate-300 mx-6" />
-            <p className="mt-1 font-semibold uppercase">{p.employee_name}</p>
-            <p className="text-slate-400">Karyawan</p>
-          </div>
-          <div>
-            <p className="text-slate-500">Dibayarkan oleh,</p>
-            <div className="h-14 border-b border-slate-300 mx-6" />
-            <p className="mt-1 font-semibold uppercase">&nbsp;</p>
-            <p className="text-slate-400">Bagian Keuangan</p>
-          </div>
-        </div>
-
-        <p className="text-[9px] text-slate-400 text-center border-t border-slate-100 pt-2">
-          Dinilai otomatis dari catatan absensi. Dibayarkan setiap tanggal 1. Dokumen diterbitkan oleh sistem {brand.company_name}.
-        </p>
-      </div>
-    );
   };
 
   return (
@@ -871,7 +815,7 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
 
     {printPayout && (
       <div className="print-only" style={{ width: '180mm', boxSizing: 'border-box' }}>
-        {renderBonusSlipLayout(printPayout)}
+        {renderBonusSlipLayout(printPayout, divisionLabel(employeeDept.get(printPayout.employee_id), 'Umum'))}
       </div>
     )}
     </>
