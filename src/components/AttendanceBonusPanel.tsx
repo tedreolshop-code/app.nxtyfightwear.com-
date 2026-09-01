@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AttendanceBonusPayout, Employee, isEligibleForAttendanceBonus, workingDaysInMonth, terbilang, divisionLabel } from '../types';
+import { Attendance, AttendanceBonusPayout, Employee, isEligibleForAttendanceBonus, workingDaysInMonth, terbilang, divisionLabel } from '../types';
 import { dataStore, wibNowISO, wibTodayStr } from '../dataStore';
 import { brandInitials } from '../brand';
 import { exportExcel } from '../exportExcel';
 import { withA4PageSize } from '../printA4';
 import { DivisionFilter } from './DivisionFilter';
-import { Award, CalendarCheck2, CheckCircle2, XCircle, Gift, History, AlertTriangle, FileSpreadsheet, Printer } from 'lucide-react';
+import { AttendanceCalendar } from './AttendanceCalendar';
+import { Award, CalendarCheck2, CheckCircle2, XCircle, Gift, History, AlertTriangle, FileSpreadsheet, Printer, ChevronDown } from 'lucide-react';
 
 /** Tanggal hari ini dalam bahasa Indonesia, mis. "27 Juli 2026". */
 const todayLabel = () => new Date(`${wibTodayStr()}T00:00:00`).toLocaleDateString('id-ID', {
@@ -82,17 +83,32 @@ export const AttendanceBonusBalanceCard: React.FC<{ employee: Employee }> = ({ e
   );
 };
 
+/** Ringkasan hari & jam dari satu slip bonus, dari angka yang sudah tersimpan di slip. */
+const bonusRincian = (p: AttendanceBonusPayout): string => {
+  const bagian = [`Hadir ${p.present_days}/${p.working_days} hari`];
+  if (p.late_minutes_net > 0) bagian.push(`telat total ${p.late_minutes_net} mnt`);
+  if (p.half_days > 0) bagian.push(`setengah hari ${p.half_days}×`);
+  if (p.status === 'cair' && p.late_minutes_net === 0 && p.half_days === 0) bagian.push('tanpa telat');
+  return bagian.join(' · ');
+};
+
 /** Riwayat slip bonus kehadiran milik satu karyawan (termasuk bulan yang gugur). */
 export const AttendanceBonusHistoryList: React.FC<{ employeeId: string }> = ({ employeeId }) => {
   const [payouts, setPayouts] = useState<AttendanceBonusPayout[]>([]);
+  const [logs, setLogs] = useState<Attendance[]>([]);
+  const [openMonth, setOpenMonth] = useState('');
 
   useEffect(() => {
-    const load = () => setPayouts(dataStore.getAttendanceBonusPayouts().filter(p => p.employee_id === employeeId));
+    const load = () => {
+      setPayouts(dataStore.getAttendanceBonusPayouts().filter(p => p.employee_id === employeeId));
+      setLogs(dataStore.getAttendance().filter(a => a.employee_id === employeeId));
+    };
     load();
     window.addEventListener('nxty_storage_change', load);
     return () => window.removeEventListener('nxty_storage_change', load);
   }, [employeeId]);
 
+  const joinDate = dataStore.getEmployees().find(e => e.id === employeeId)?.join_date;
   const sorted = [...payouts].sort((a, b) => b.month.localeCompare(a.month));
 
   return (
@@ -101,7 +117,7 @@ export const AttendanceBonusHistoryList: React.FC<{ employeeId: string }> = ({ e
         <h3 className="font-bold text-sm text-gray-800 flex items-center gap-1.5">
           <Gift className="w-4 h-4 text-amber-500" /> Riwayat Bonus Kehadiran Anda
         </h3>
-        <p className="text-xs text-gray-400">Dinilai otomatis dari data absensi, dibayarkan setiap tanggal 1.</p>
+        <p className="text-xs text-gray-400">Dinilai otomatis dari data absensi, dibayarkan setiap tanggal 1. Klik bulan untuk lihat kalender jam kehadirannya.</p>
       </div>
       {sorted.length === 0 ? (
         <p className="text-xs text-gray-400 italic text-center py-6 bg-gray-50 rounded border border-dashed border-gray-200">
@@ -109,33 +125,49 @@ export const AttendanceBonusHistoryList: React.FC<{ employeeId: string }> = ({ e
         </p>
       ) : (
         <div className="space-y-2">
-          {sorted.map(p => (
-            <div key={p.id} className={`flex items-center justify-between gap-3 p-3 rounded-lg border text-xs ${
-              p.status === 'cair' ? 'bg-emerald-50/60 border-emerald-100' : 'bg-rose-50/50 border-rose-100'
-            }`}>
-              <div className="min-w-0">
-                <p className="font-bold text-gray-800">{monthLabel(p.month)}</p>
-                {p.status === 'cair' ? (
-                  <p className="text-[11px] text-emerald-700">Hadir {p.present_days}/{p.working_days} hari · tanpa telat</p>
-                ) : (
-                  <p className="text-[11px] text-rose-600">{p.reason}</p>
+          {sorted.map(p => {
+            const open = openMonth === p.month;
+            return (
+              <div key={p.id} className={`rounded-lg border text-xs ${
+                p.status === 'cair' ? 'bg-emerald-50/60 border-emerald-100' : 'bg-rose-50/50 border-rose-100'
+              }`}>
+                <button
+                  type="button"
+                  onClick={() => setOpenMonth(open ? '' : p.month)}
+                  className="w-full flex items-center justify-between gap-3 p-3 text-left cursor-pointer"
+                >
+                  <div className="min-w-0">
+                    <p className="font-bold text-gray-800 flex items-center gap-1">
+                      {monthLabel(p.month)}
+                      <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+                    </p>
+                    <p className={`text-[11px] ${p.status === 'cair' ? 'text-emerald-700' : 'text-gray-600'}`}>{bonusRincian(p)}</p>
+                    {p.status === 'gugur' && p.reason && (
+                      <p className="text-[11px] text-rose-600 mt-0.5">{p.reason}</p>
+                    )}
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className={`font-mono font-black ${p.status === 'cair' ? 'text-emerald-700' : 'text-rose-400'}`}>
+                      {p.status === 'cair' ? formatIDR(p.amount) : 'Rp0'}
+                    </p>
+                    <span className={`inline-flex items-center gap-1 text-[10px] font-bold ${p.status === 'cair' ? 'text-emerald-600' : 'text-rose-500'}`}>
+                      {p.status === 'cair' ? <><CheckCircle2 className="w-3 h-3" /> CAIR</> : <><XCircle className="w-3 h-3" /> GUGUR</>}
+                    </span>
+                    {p.status === 'cair' && (
+                      <span className={`block mt-0.5 text-[9px] font-bold ${p.payment_status === 'paid' ? 'text-emerald-600' : 'text-amber-600'}`}>
+                        {p.payment_status === 'paid' ? '✓ Sudah dibayar' : 'Belum dibayar'}
+                      </span>
+                    )}
+                  </div>
+                </button>
+                {open && (
+                  <div className="border-t border-gray-200/70 p-3">
+                    <AttendanceCalendar logs={logs} joinDate={joinDate} initialMonth={p.month} />
+                  </div>
                 )}
               </div>
-              <div className="text-right shrink-0">
-                <p className={`font-mono font-black ${p.status === 'cair' ? 'text-emerald-700' : 'text-rose-400'}`}>
-                  {p.status === 'cair' ? formatIDR(p.amount) : 'Rp0'}
-                </p>
-                <span className={`inline-flex items-center gap-1 text-[10px] font-bold ${p.status === 'cair' ? 'text-emerald-600' : 'text-rose-500'}`}>
-                  {p.status === 'cair' ? <><CheckCircle2 className="w-3 h-3" /> CAIR</> : <><XCircle className="w-3 h-3" /> GUGUR</>}
-                </span>
-                {p.status === 'cair' && (
-                  <span className={`block mt-0.5 text-[9px] font-bold ${p.payment_status === 'paid' ? 'text-emerald-600' : 'text-amber-600'}`}>
-                    {p.payment_status === 'paid' ? '✓ Sudah dibayar' : 'Belum dibayar'}
-                  </span>
-                )}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

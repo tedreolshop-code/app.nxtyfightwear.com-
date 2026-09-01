@@ -1,14 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { UserRole, orderRevenue } from '../types';
+import { UserRole, Employee, orderRevenue } from '../types';
 import { dataStore, wibTodayStr } from '../dataStore';
 import {
   ShoppingBag, Hammer, Archive, AlertTriangle, Wallet,
   Users, TrendingUp, Clock, ChevronRight, BarChart3, ShoppingCart,
 } from 'lucide-react';
+import { AttendanceCalendar } from './AttendanceCalendar';
 
 interface MainDashboardProps {
   role: UserRole;
   userName: string;
+  employee?: Employee | null; // admin/owner juga karyawan — kalender kehadirannya sendiri
 }
 
 const formatIDR = (val: number) =>
@@ -55,7 +57,7 @@ type ChannelTotals = Record<ChannelKey, number>;
 const emptyTotals = (): ChannelTotals => ({ shopee: 0, tokopedia: 0, tiktok: 0, lainnya: 0 });
 
 // Dashboard dengan angka NYATA yang dihitung dari data tersimpan (bukan contoh statis).
-export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName }) => {
+export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName, employee }) => {
   const [, setTick] = useState(0);
   const [hoverBar, setHoverBar] = useState<number | null>(null);
 
@@ -167,6 +169,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName }) 
   const totalStokProduk = products.reduce((sum, p) => sum + p.stock, 0);
 
   const attendance = dataStore.getAttendance();
+  const myAttendance = employee ? attendance.filter(a => a.employee_id === employee.id) : [];
   const todayWIB = wibTodayStr();
   const employees = dataStore.getEmployees().filter(e => e.status_aktif);
   const hadirHariIni = new Set(
@@ -579,6 +582,11 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName }) 
           );
         })}
       </div>
+
+      {/* Kalender kehadiran pribadi — admin/owner juga karyawan yang absen */}
+      {employee && (
+        <AttendanceCalendar logs={myAttendance} joinDate={employee.join_date} />
+      )}
 
       {/* Perlu perhatian (owner) */}
       {role === 'owner' && perluPerhatian.length > 0 && (

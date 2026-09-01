@@ -741,7 +741,7 @@ export default function App() {
             {activeTab === 'dashboard' && (
               <>
                 {currentRole !== 'karyawan' && (
-                  <MainDashboard role={currentRole} userName={session.name} />
+                  <MainDashboard role={currentRole} userName={session.name} employee={loggedEmployee} />
                 )}
 
                 {currentRole === 'karyawan' && (
