@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { dataStore, wibTodayStr, currentWeeklyPayrollPeriod, dayFraction } from '../dataStore';
 import { brandName, brandLegalName } from '../brand';
 import { Employee, Attendance, PayrollWeekly, AttendanceAdjustment } from '../types';
-import { Clock, Calendar, FileText, CheckCircle2, Fingerprint, MapPin, ExternalLink, Wallet } from 'lucide-react';
+import { Clock, FileText, CheckCircle2, Fingerprint, MapPin, ExternalLink, Wallet } from 'lucide-react';
 import { AttendanceBonusBalanceCard } from './AttendanceBonusPanel';
+import { AttendanceCalendar } from './AttendanceCalendar';
 
 interface EmployeeDashboardProps {
   loggedEmployee: Employee;
@@ -85,23 +86,6 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
       });
       return rows;
     });
-
-  // Calendar setup (Current month)
-  const getDaysInMonth = () => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth();
-    const date = new Date(year, month, 1);
-    const days = [];
-    while (date.getMonth() === month) {
-      days.push(new Date(date));
-      date.setDate(date.getDate() + 1);
-    }
-    return days;
-  };
-
-  const daysInMonth = getDaysInMonth();
-  const currentMonthName = new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
 
   // Saldo gaji berjalan (periode Sabtu-Jumat), dihitung otomatis dari absensi
   const formatIDR = (val: number) =>
@@ -268,70 +252,8 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
       {/* Grid: Kalender Kehadiran & Slip Gaji */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
-        {/* Box 3: Kalender Kehadiran Pribadi Bulanan */}
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-xs p-5 space-y-4">
-          <div className="border-b border-gray-100 pb-3 flex items-center justify-between">
-            <h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
-              <Calendar className="w-4 h-4 text-[var(--color-evergreen)]" /> Kalender Kehadiran Pribadi
-            </h3>
-            <span className="text-xs font-bold text-[var(--color-evergreen)]">{currentMonthName}</span>
-          </div>
-
-          <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100 pb-2">
-            <span>Min</span><span>Sen</span><span>Sel</span><span>Rab</span><span>Kam</span><span>Jum</span><span>Sab</span>
-          </div>
-
-          <div className="grid grid-cols-7 gap-1.5 text-center">
-            {/* Pad calendar starting day */}
-            {Array.from({ length: daysInMonth[0]?.getDay() || 0 }).map((_, i) => (
-              <div key={`pad-${i}`} className="p-2"></div>
-            ))}
-            
-            {/* Calendar Days */}
-            {daysInMonth.map((date, idx) => {
-              const dayStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-              const logOnDay = myLogs.find(l => l.timestamp.split('T')[0] === dayStr);
-              const isToday = dayStr === todayIso;
-
-              let dayBg = 'bg-gray-50 hover:bg-gray-100 text-gray-700';
-              if (logOnDay) {
-                dayBg = logOnDay.status === 'anomaly' 
-                  ? 'bg-amber-100 hover:bg-amber-200 text-amber-800 font-extrabold border border-amber-300' 
-                  : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-extrabold border border-emerald-300';
-              } else if (isToday) {
-                dayBg = 'bg-blue-50 text-blue-700 font-black border-2 border-blue-500';
-              }
-
-              return (
-                <div
-                  key={idx}
-                  className={`p-2 rounded-lg text-xs font-mono font-medium transition-colors flex flex-col items-center justify-between cursor-pointer ${dayBg}`}
-                  title={logOnDay ? `Absen: ${logOnDay.status === 'anomaly' ? 'Data lama luar radius' : 'Hadir'}` : 'Tanpa Scan'}
-                >
-                  <span>{date.getDate()}</span>
-                  {logOnDay && (
-                    <span className={`w-1 h-1 rounded-full mt-1 ${logOnDay.status === 'anomaly' ? 'bg-amber-600' : 'bg-emerald-600'}`}></span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="border-t border-gray-100 pt-3 flex items-center gap-4 text-[10px] font-bold">
-            <div className="flex items-center gap-1 text-emerald-700">
-              <span className="w-2.5 h-2.5 bg-emerald-100 border border-emerald-300 rounded"></span>
-              <span>Hadir (Normal)</span>
-            </div>
-            <div className="flex items-center gap-1 text-amber-700">
-              <span className="w-2.5 h-2.5 bg-amber-100 border border-amber-300 rounded"></span>
-              <span>Data Lama Luar Radius</span>
-            </div>
-            <div className="flex items-center gap-1 text-gray-500">
-              <span className="w-2.5 h-2.5 bg-gray-50 border border-gray-200 rounded"></span>
-              <span>Hari Kerja Biasa</span>
-            </div>
-          </div>
-        </div>
+        {/* Box 3: Kalender Kehadiran Pribadi */}
+        <AttendanceCalendar logs={myLogs} joinDate={loggedEmployee.join_date} />
 
         {/* Box 4: Slip Gaji Digital Terakhir */}
         <div className="bg-white rounded-2xl border border-gray-200 shadow-xs p-5 space-y-4">

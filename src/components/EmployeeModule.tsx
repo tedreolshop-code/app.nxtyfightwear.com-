@@ -4,6 +4,7 @@ import { dataStore, hashPin, lastCompletedWeeklyPayrollPeriod, dayFraction } fro
 import { employeeChangeLog, ChangeEntry } from '../employeeChangeLog';
 import { QRCodeSVG } from 'qrcode.react';
 import { EmployeeIdCards, printIdCards } from './EmployeeIdCards';
+import { AttendanceCalendar } from './AttendanceCalendar';
 import { Users, Plus, ShieldCheck, Key, Lock, LogIn, LogOut, Check, Save, DollarSign, X, Calendar, Clock, Printer, Trash2, History, Calculator, QrCode, Pencil } from 'lucide-react';
 
 // Rapikan nama: tiap kata awalan kapital, sisanya kecil (mis. "BUDI santoso" -> "Budi Santoso")
@@ -1413,10 +1414,18 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
               {/* TAB 2: ATTENDANCE HISTORY */}
               {activeModalTab === 'attendance' && (
                 <div className="space-y-4 animate-fadeIn">
+                  {profileModalEmp && (
+                    <AttendanceCalendar
+                      logs={employeeAttendance}
+                      joinDate={profileModalEmp.join_date}
+                      showLocation
+                    />
+                  )}
+
                   <div className="flex items-center justify-between">
                     <div>
                       <h4 className="text-sm font-bold text-gray-800">Log Check-In &amp; Check-Out Absensi</h4>
-                      <p className="text-[10px] text-gray-400">Menampilkan seluruh riwayat scan mesin absensi karyawan.</p>
+                      <p className="text-[10px] text-gray-400">Seluruh riwayat scan mesin absensi, untuk audit rinci di luar kalender.</p>
                     </div>
                     <span className="bg-[var(--color-evergreen)]/10 text-[var(--color-evergreen)] text-[10px] font-bold px-3 py-1 rounded-full font-mono">
                       Total Kehadiran: {employeeAttendance.length} Records
@@ -1453,9 +1462,9 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                                 <td className="p-3 font-bold text-gray-600">{dayName}</td>
                                 <td className="p-3">
                                   <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                                    att.type === 'masuk' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                                    att.type_scan === 'masuk' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
                                   }`}>
-                                    {att.type}
+                                    {att.type_scan}
                                   </span>
                                 </td>
                                 <td className="p-3 text-gray-400 font-mono text-[10px]">
