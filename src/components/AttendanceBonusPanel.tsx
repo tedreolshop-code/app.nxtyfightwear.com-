@@ -1,8 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AttendanceBonusPayout, Employee, isEligibleForAttendanceBonus, workingDaysInMonth } from '../types';
+import { AttendanceBonusPayout, Employee, isEligibleForAttendanceBonus, workingDaysInMonth, terbilang, divisionLabel } from '../types';
 import { dataStore, wibNowISO, wibTodayStr } from '../dataStore';
+import { brandInitials } from '../brand';
+import { exportExcel } from '../exportExcel';
+import { withA4PageSize } from '../printA4';
 import { DivisionFilter } from './DivisionFilter';
-import { Award, CalendarCheck2, CheckCircle2, XCircle, Gift, History, AlertTriangle } from 'lucide-react';
+import { Award, CalendarCheck2, CheckCircle2, XCircle, Gift, History, AlertTriangle, FileSpreadsheet, Printer } from 'lucide-react';
 
 /** Tanggal hari ini dalam bahasa Indonesia, mis. "27 Juli 2026". */
 const todayLabel = () => new Date(`${wibTodayStr()}T00:00:00`).toLocaleDateString('id-ID', {
@@ -151,9 +154,12 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
   // Sortir: cari nama karyawan dan batasi per divisi
   const [search, setSearch] = useState('');
   const [divFilter, setDivFilter] = useState('');
-  const [view, setView] = useState<'posisi' | 'evaluasi' | 'riwayat'>('posisi');
-  const [riwayatOnlyCair, setRiwayatOnlyCair] = useState(false);
+  const [view, setView] = useState<'posisi' | 'evaluasi' | 'slip'>('posisi');
   const [riwayatDivFilter, setRiwayatDivFilter] = useState('');
+  // Buku slip bonus: pisah yang belum dibayar dari arsip lunas (sama seperti gaji mingguan)
+  const [slipListView, setSlipListView] = useState<'aktif' | 'arsip'>('aktif');
+  const [openSlipMonth, setOpenSlipMonth] = useState('');
+  const [printPayout, setPrintPayout] = useState<AttendanceBonusPayout | null>(null);
 
   const load = () => {
     setEmployees(dataStore.getEmployees().filter(e => e.status_aktif));
@@ -293,20 +299,151 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
     load();
   };
 
-  // Riwayat penerbitan, dikelompokkan per bulan — bisa disortir hanya yang cair & per divisi
+  const handlePrintBonusSlip = (p: AttendanceBonusPayout) => {
+    setPrintPayout(p);
+    setTimeout(() => withA4PageSize(() => window.print()), 150);
+  };
+
   const employeeDept = useMemo(() => new Map(employees.map(e => [e.id, e.department_id])), [employees]);
-  const issuedMonths = useMemo(() => {
-    const filtered = payouts.filter(p =>
-      (!riwayatOnlyCair || p.status === 'cair') &&
-      (!riwayatDivFilter || employeeDept.get(p.employee_id) === riwayatDivFilter)
-    );
+
+  // Slip bonus yang sudah diterbitkan, disaring per divisi, dikelompokkan per bulan.
+  const filteredPayouts = useMemo(() =>
+    payouts.filter(p => !riwayatDivFilter || employeeDept.get(p.employee_id) === riwayatDivFilter),
+    [payouts, riwayatDivFilter, employeeDept]);
+
+  // Ringkasan seluruh slip (bukan cuma yang ditampilkan) — kartu di atas.
+  const slipTotals = useMemo(() => {
+    const cair = filteredPayouts.filter(p => p.status === 'cair');
+    return {
+      cairTotal: cair.reduce((s, p) => s + p.amount, 0),
+      paidTotal: cair.filter(p => p.payment_status === 'paid').reduce((s, p) => s + p.amount, 0),
+      unpaidTotal: cair.filter(p => p.payment_status !== 'paid').reduce((s, p) => s + p.amount, 0),
+      unpaidCount: cair.filter(p => p.payment_status !== 'paid').length,
+      paidCount: cair.filter(p => p.payment_status === 'paid').length,
+      gugurCount: filteredPayouts.filter(p => p.status === 'gugur').length,
+    };
+  }, [filteredPayouts]);
+
+  // Belum Dibayar = slip cair yang payment_status != paid. Arsip Lunas = yang paid.
+  // Slip gugur ikut di daftar bulannya sebagai catatan (tanpa aksi bayar).
+  const slipMonths = useMemo(() => {
+    const inView = filteredPayouts.filter(p => {
+      if (p.status === 'gugur') return slipListView === 'aktif'; // gugur cuma diselipkan di daftar aktif
+      return slipListView === 'arsip' ? p.payment_status === 'paid' : p.payment_status !== 'paid';
+    });
     const map = new Map<string, AttendanceBonusPayout[]>();
-    filtered.forEach(p => { map.set(p.month, [...(map.get(p.month) || []), p]); });
+    inView.forEach(p => map.set(p.month, [...(map.get(p.month) || []), p]));
     return Array.from(map.entries()).sort((a, b) => b[0].localeCompare(a[0]));
-  }, [payouts, riwayatOnlyCair, riwayatDivFilter, employeeDept]);
+  }, [filteredPayouts, slipListView]);
+
+  const handleExportBonusExcel = () => {
+    const rows = [...filteredPayouts]
+      .sort((a, b) => b.month.localeCompare(a.month) || a.employee_name.localeCompare(b.employee_name))
+      .map(p => ({
+        Bulan: monthLabel(p.month),
+        Nama: p.employee_name,
+        Divisi: divisionLabel(employeeDept.get(p.employee_id), 'Umum'),
+        Status: p.status === 'cair' ? 'Cair' : 'Gugur',
+        'Hari Hadir': p.present_days,
+        'Hari Kerja': p.working_days,
+        'Telat (menit)': p.late_minutes_net,
+        'Setengah Hari': p.half_days,
+        Jumlah: p.amount,
+        'Status Bayar': p.status !== 'cair' ? '-' : p.payment_status === 'paid' ? 'Lunas' : 'Belum Dibayar',
+        'Tanggal Bayar': p.paid_at?.slice(0, 10) || '',
+        Alasan: p.reason || '',
+      }));
+    void exportExcel(`Rekap_Bonus_Kehadiran_${wibTodayStr()}`, [{
+      name: 'Bonus Kehadiran', rows, currencyColumns: ['Jumlah'],
+    }]);
+  };
+
+  // Dokumen slip bonus A4 — sejajar dengan slip gaji mingguan.
+  const renderBonusSlipLayout = (p: AttendanceBonusPayout) => {
+    const brand = dataStore.getBrandSettings();
+    const warna = brand.primary_color || '#1F4B36';
+    const dept = divisionLabel(employeeDept.get(p.employee_id), 'Umum').toUpperCase();
+    const dailyRate = p.working_days > 0 ? Math.round(p.amount / Math.max(1, p.present_days - p.half_days)) : 0;
+    return (
+      <div className="bg-white text-slate-800 text-[11px] leading-relaxed flex flex-col gap-4 select-text">
+        <div className="flex items-start justify-between gap-4 pb-3 border-b-2" style={{ borderColor: warna }}>
+          <div className="flex items-center gap-3 min-w-0">
+            {brand.logo_data_url
+              ? <img src={brand.logo_data_url} alt="" className="w-14 h-14 object-contain shrink-0" />
+              : <div className="w-14 h-14 shrink-0 rounded flex items-center justify-center text-white font-black text-lg" style={{ backgroundColor: warna }}>{brandInitials(brand.company_name)}</div>}
+            <div className="min-w-0">
+              <p className="font-black text-base uppercase tracking-wide truncate" style={{ color: warna }}>{brand.company_name}</p>
+              {brand.legal_name && brand.legal_name !== brand.company_name && <p className="text-[10px] text-slate-500 truncate">{brand.legal_name}</p>}
+              {brand.tagline && <p className="text-[10px] text-slate-400 truncate">{brand.tagline}</p>}
+            </div>
+          </div>
+          <div className="text-right shrink-0">
+            <p className="font-black text-sm uppercase tracking-widest" style={{ color: warna }}>Slip Bonus</p>
+            <p className="text-[10px] text-slate-500">Bonus Kehadiran Bulanan</p>
+            <p className="text-[10px] text-slate-400 mt-1">No. {p.id.toUpperCase()}</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-x-6 gap-y-1">
+          <div className="space-y-1">
+            <div className="flex gap-2"><span className="w-20 shrink-0 text-slate-500">Nama</span><span className="font-bold uppercase">: {p.employee_name}</span></div>
+            <div className="flex gap-2"><span className="w-20 shrink-0 text-slate-500">Divisi</span><span className="font-semibold">: {dept}</span></div>
+          </div>
+          <div className="space-y-1">
+            <div className="flex gap-2"><span className="w-20 shrink-0 text-slate-500">Bulan</span><span className="font-semibold">: {monthLabel(p.month)}</span></div>
+            <div className="flex gap-2"><span className="w-20 shrink-0 text-slate-500">Status</span><span className="font-semibold">: {p.status !== 'cair' ? 'Gugur' : p.payment_status === 'paid' ? 'Lunas' : 'Belum Dibayar'}</span></div>
+          </div>
+        </div>
+
+        <div>
+          <p className="font-bold text-[10px] uppercase tracking-wider text-slate-500 mb-1">Rekap Penilaian Kehadiran</p>
+          <table className="w-full border-collapse">
+            <tbody>
+              <tr className="border-b border-slate-100"><td className="py-1.5 pr-2">Hari kerja bulan ini</td><td className="py-1.5 text-right font-semibold tabular-nums">{p.working_days} hari</td></tr>
+              <tr className="border-b border-slate-100"><td className="py-1.5 pr-2">Hari hadir</td><td className="py-1.5 text-right font-semibold tabular-nums">{p.present_days} hari</td></tr>
+              <tr className="border-b border-slate-100"><td className="py-1.5 pr-2">Total keterlambatan (bersih)</td><td className="py-1.5 text-right font-semibold tabular-nums">{p.late_minutes_net} menit</td></tr>
+              <tr className="border-b border-slate-100"><td className="py-1.5 pr-2">Setengah hari</td><td className="py-1.5 text-right font-semibold tabular-nums">{p.half_days}x</td></tr>
+            </tbody>
+          </table>
+          {p.status !== 'cair' && p.reason && (
+            <p className="text-[10px] text-rose-700 mt-1.5">Bonus gugur: {p.reason}</p>
+          )}
+        </div>
+
+        <div className="rounded-lg px-4 py-3 text-white flex items-center justify-between gap-4" style={{ backgroundColor: p.status === 'cair' ? warna : '#9f1239' }}>
+          <div className="min-w-0">
+            <p className="text-[10px] uppercase tracking-widest opacity-80">{p.status === 'cair' ? 'Bonus Diterima' : 'Bonus Gugur'}</p>
+            <p className="text-[9px] italic opacity-90 capitalize leading-tight break-words">{p.status === 'cair' ? terbilang(p.amount) : 'nol rupiah'}</p>
+            {dailyRate > 0 && p.status === 'cair' && <p className="text-[9px] opacity-80">≈ {(p.present_days - p.half_days)} hari layak × {formatIDR(dailyRate)}</p>}
+          </div>
+          <p className="text-xl font-black tabular-nums whitespace-nowrap">{formatIDR(p.status === 'cair' ? p.amount : 0)}</p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-6 pt-2 text-center text-[10px]">
+          <div>
+            <p className="text-slate-500">Diterima oleh,</p>
+            <div className="h-14 border-b border-slate-300 mx-6" />
+            <p className="mt-1 font-semibold uppercase">{p.employee_name}</p>
+            <p className="text-slate-400">Karyawan</p>
+          </div>
+          <div>
+            <p className="text-slate-500">Dibayarkan oleh,</p>
+            <div className="h-14 border-b border-slate-300 mx-6" />
+            <p className="mt-1 font-semibold uppercase">&nbsp;</p>
+            <p className="text-slate-400">Bagian Keuangan</p>
+          </div>
+        </div>
+
+        <p className="text-[9px] text-slate-400 text-center border-t border-slate-100 pt-2">
+          Dinilai otomatis dari catatan absensi. Dibayarkan setiap tanggal 1. Dokumen diterbitkan oleh sistem {brand.company_name}.
+        </p>
+      </div>
+    );
+  };
 
   return (
-    <div className="space-y-6">
+    <>
+    <div className="space-y-6 no-print">
       {/* Header + pemilih bulan */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
@@ -368,7 +505,7 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
           {([
             ['posisi', `Posisi Hari Ini`, 'bg-sky-50 text-sky-800 border-sky-100', 'bg-sky-50/50 text-sky-700/70'],
             ['evaluasi', `Evaluasi ${monthLabel(month)}`, 'bg-emerald-50 text-emerald-800 border-emerald-100', 'bg-emerald-50/50 text-emerald-700/70'],
-            ['riwayat', `Riwayat (${issuedMonths.length})`, 'bg-amber-50 text-amber-800 border-amber-100', 'bg-amber-50/50 text-amber-700/70'],
+            ['slip', `Buku Slip Bonus${slipTotals.unpaidCount > 0 ? ` (${slipTotals.unpaidCount})` : ''}`, 'bg-amber-50 text-amber-800 border-amber-100', 'bg-amber-50/50 text-amber-700/70'],
           ] as const).map(([key, label, activeColor, inactiveColor]) => (
             <button
               key={key}
@@ -563,73 +700,148 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
       </div>
       )}
 
-      {view === 'riwayat' && (
-      <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-xs space-y-3">
-        <h3 className="font-bold text-sm text-gray-800 flex items-center gap-1.5">
-          <History className="w-4 h-4 text-gray-400" /> Riwayat Penerbitan Bonus
-        </h3>
-        <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 pb-3">
-          <label className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-600 cursor-pointer">
-            <input type="checkbox" checked={riwayatOnlyCair} onChange={e => setRiwayatOnlyCair(e.target.checked)} />
-            Hanya yang dapat (cair)
-          </label>
-          <DivisionFilter value={riwayatDivFilter} onChange={setRiwayatDivFilter} />
-        </div>
-        {issuedMonths.length === 0 ? (
-          <p className="text-xs text-gray-400 italic text-center py-6 bg-gray-50 rounded border border-dashed border-gray-200">
-            Belum ada slip bonus yang diterbitkan.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {issuedMonths.map(([m, list]) => {
-              const cair = list.filter(p => p.status === 'cair');
-              return (
-                <details key={m} className="group bg-gray-50 border border-gray-100 rounded-lg">
-                  <summary className="flex items-center justify-between gap-3 p-3 cursor-pointer text-xs select-none">
-                    <span className="font-bold text-gray-800">{monthLabel(m)}</span>
-                    <span className="flex items-center gap-3">
-                      <span className="text-emerald-700 font-semibold">{cair.length} cair</span>
-                      <span className="text-rose-500 font-semibold">{list.length - cair.length} gugur</span>
-                      <span className="font-mono font-black text-emerald-800">{formatIDR(cair.reduce((s, p) => s + p.amount, 0))}</span>
-                      <button
-                        onClick={e => { e.preventDefault(); handleCancel(m); }}
-                        className="text-rose-600 hover:text-rose-700 font-semibold text-[10px] uppercase tracking-wide cursor-pointer"
-                      >
-                        Batalkan
-                      </button>
-                    </span>
-                  </summary>
-                  <div className="px-3 pb-3 space-y-1">
-                    {list.map(p => (
-                      <div key={p.id} className="flex items-center justify-between gap-3 text-[11px] bg-white border border-gray-200 rounded px-2.5 py-1.5">
-                        <span className="font-semibold text-gray-700">{p.employee_name}</span>
-                        <span className="flex items-center gap-2">
-                          {p.status === 'gugur' && <span className="text-rose-500 truncate max-w-[220px]" title={p.reason}>{p.reason}</span>}
-                          <span className={`font-mono font-bold ${p.status === 'cair' ? 'text-emerald-700' : 'text-rose-300'}`}>
-                            {p.status === 'cair' ? formatIDR(p.amount) : 'Rp0'}
-                          </span>
-                          {p.status === 'cair' && (
-                            <button
-                              onClick={() => handleTogglePaid(p)}
-                              title={p.payment_status === 'paid' ? 'Klik untuk batalkan status lunas' : 'Klik untuk tandai sudah dibayar'}
-                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold cursor-pointer ${
-                                p.payment_status === 'paid' ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
-                              }`}
-                            >
-                              {p.payment_status === 'paid' ? '✓ Lunas' : 'Belum Dibayar'}
-                            </button>
-                          )}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </details>
-              );
-            })}
+      {view === 'slip' && (
+      <div className="space-y-4">
+        {/* Kartu ringkasan — sejajar dengan tab Gaji Mingguan */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="bg-emerald-50/50 p-4 rounded-xl border border-emerald-800/10 shadow-xs">
+            <span className="text-[10px] uppercase font-bold text-emerald-800 tracking-wider">Total Cair</span>
+            <p className="text-sm font-bold font-mono text-emerald-950 mt-1">{formatIDR(slipTotals.cairTotal)}</p>
           </div>
-        )}
+          <div className="bg-emerald-50/50 p-4 rounded-xl border border-emerald-800/10 shadow-xs">
+            <span className="text-[10px] uppercase font-bold text-emerald-800 tracking-wider">Sudah Dibayar</span>
+            <p className="text-sm font-bold font-mono text-emerald-950 mt-1">{formatIDR(slipTotals.paidTotal)}</p>
+            <p className="text-[10px] text-gray-400">{slipTotals.paidCount} slip</p>
+          </div>
+          <div className="bg-amber-50/60 p-4 rounded-xl border border-amber-200 shadow-xs">
+            <span className="text-[10px] uppercase font-bold text-amber-700 tracking-wider">Belum Dibayar</span>
+            <p className="text-sm font-bold font-mono text-amber-800 mt-1">{formatIDR(slipTotals.unpaidTotal)}</p>
+            <p className="text-[10px] text-amber-600/80">{slipTotals.unpaidCount} slip</p>
+          </div>
+          <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 shadow-xs">
+            <span className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">Gugur</span>
+            <p className="text-sm font-bold font-mono text-rose-400 mt-1">{slipTotals.gugurCount} slip</p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-xs space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <h3 className="font-bold text-sm text-gray-800 flex items-center gap-1.5">
+              <History className="w-4 h-4 text-gray-400" /> Buku Slip Bonus Kehadiran
+            </h3>
+            <button
+              type="button"
+              onClick={handleExportBonusExcel}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-gray-50 text-emerald-800 border border-emerald-800/30 rounded-lg text-xs font-bold shadow-xs cursor-pointer"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" /> Ekspor Rekap (Excel)
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 pb-3">
+            <div className="bg-gray-50 p-1 rounded-xl border border-gray-200 inline-flex gap-1">
+              <button type="button" onClick={() => { setSlipListView('aktif'); setOpenSlipMonth(''); }}
+                className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer ${slipListView === 'aktif' ? 'bg-[var(--color-evergreen)] text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+                Belum Dibayar
+                {slipTotals.unpaidCount > 0 && <span className={`ml-1.5 text-[10px] font-mono px-1.5 rounded-full ${slipListView === 'aktif' ? 'bg-white/20' : 'bg-amber-100 text-amber-800'}`}>{slipTotals.unpaidCount}</span>}
+              </button>
+              <button type="button" onClick={() => { setSlipListView('arsip'); setOpenSlipMonth(''); }}
+                className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer ${slipListView === 'arsip' ? 'bg-[var(--color-evergreen)] text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+                Arsip Lunas
+                {slipTotals.paidCount > 0 && <span className={`ml-1.5 text-[10px] font-mono px-1.5 rounded-full ${slipListView === 'arsip' ? 'bg-white/20' : 'bg-emerald-100 text-emerald-800'}`}>{slipTotals.paidCount}</span>}
+              </button>
+            </div>
+            <DivisionFilter value={riwayatDivFilter} onChange={setRiwayatDivFilter} />
+          </div>
+
+          {slipMonths.length === 0 ? (
+            <p className="text-xs text-gray-400 italic text-center py-6 bg-gray-50 rounded border border-dashed border-gray-200">
+              {slipListView === 'arsip' ? 'Belum ada slip bonus yang ditandai lunas.' : 'Tidak ada slip bonus yang menunggu pembayaran.'}
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {slipMonths.map(([m, list]) => {
+                const cair = list.filter(p => p.status === 'cair');
+                const gugur = list.filter(p => p.status === 'gugur');
+                const open = openSlipMonth === m;
+                return (
+                  <div key={m} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                    <button type="button" onClick={() => setOpenSlipMonth(open ? '' : m)}
+                      className="w-full flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-left hover:bg-gray-50 cursor-pointer">
+                      <span>
+                        <span className="font-bold text-sm text-gray-800">{monthLabel(m)}</span>
+                        <span className="block text-[11px] text-gray-500">
+                          {cair.length} slip {slipListView === 'arsip' ? 'lunas' : 'belum dibayar'}
+                          {gugur.length > 0 && slipListView === 'aktif' && ` · ${gugur.length} gugur`}
+                        </span>
+                      </span>
+                      <span className="flex items-center gap-3">
+                        <span className="font-mono font-black text-[var(--color-evergreen)]">{formatIDR(cair.reduce((s, p) => s + p.amount, 0))}</span>
+                        <button type="button" onClick={e => { e.stopPropagation(); handleCancel(m); }}
+                          className="text-rose-600 hover:text-rose-700 font-semibold text-[10px] uppercase tracking-wide cursor-pointer">Batalkan</button>
+                        <span className="text-gray-400 text-xs">{open ? '▲' : '▼'}</span>
+                      </span>
+                    </button>
+
+                    {open && (
+                      <div className="overflow-x-auto border-t border-gray-100">
+                        <table className="w-full text-xs text-left">
+                          <thead>
+                            <tr className="bg-evergreen/90 text-white font-bold uppercase tracking-wider text-[10px]">
+                              <th className="p-2">Karyawan</th>
+                              <th className="p-2 w-28 text-center">Hadir</th>
+                              <th className="p-2 w-32 text-right">Jumlah</th>
+                              <th className="p-2 w-52 text-center">Aksi</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-emerald-100">
+                            {[...cair, ...gugur].map(p => (
+                              <tr key={p.id} className="hover:bg-emerald-50/20">
+                                <td className="p-2 font-semibold text-gray-700">
+                                  {p.employee_name}
+                                  {p.status === 'gugur' && <span className="ml-1.5 text-[9px] bg-rose-50 text-rose-600 border border-rose-100 px-1 py-0.5 rounded font-bold uppercase">Gugur</span>}
+                                  {p.status === 'gugur' && p.reason && <span className="block text-[10px] text-rose-500 truncate max-w-[220px]" title={p.reason}>{p.reason}</span>}
+                                </td>
+                                <td className="p-2 text-center font-mono text-gray-500">{p.present_days}/{p.working_days}</td>
+                                <td className={`p-2 text-right font-mono font-bold ${p.status === 'cair' ? 'text-emerald-700' : 'text-rose-300'}`}>
+                                  {p.status === 'cair' ? formatIDR(p.amount) : 'Rp0'}
+                                </td>
+                                <td className="p-2 text-center">
+                                  {p.status === 'cair' && (
+                                    <div className="inline-flex gap-1.5">
+                                      <button type="button" onClick={() => handlePrintBonusSlip(p)}
+                                        className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-[10px] font-bold px-2 py-1 rounded cursor-pointer inline-flex items-center gap-1">
+                                        <Printer className="w-3 h-3" /> {p.payment_status === 'paid' ? 'Cetak Ulang' : 'Cetak Slip'}
+                                      </button>
+                                      <button type="button" onClick={() => handleTogglePaid(p)}
+                                        className={`text-[10px] font-bold px-2 py-1 rounded cursor-pointer ${p.payment_status === 'paid' ? 'bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}>
+                                        {p.payment_status === 'paid' ? 'Batalkan Lunas' : 'Tandai Lunas'}
+                                      </button>
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
       )}
+
     </div>
+
+    {printPayout && (
+      <div className="print-only" style={{ width: '180mm', boxSizing: 'border-box' }}>
+        {renderBonusSlipLayout(printPayout)}
+      </div>
+    )}
+    </>
   );
 };

@@ -6,6 +6,7 @@ import { exportExcel } from '../exportExcel';
 import { Printer, Landmark, DollarSign, Plus, CheckCircle2, Sliders, History, Trash2, X, Calculator, Edit2, FileSpreadsheet, Wallet, Award } from 'lucide-react';
 import { AttendanceBonusPanel, AttendanceBonusBalanceCard, AttendanceBonusHistoryList } from './AttendanceBonusPanel';
 import { currentWeeklyPayrollPeriod, lastCompletedWeeklyPayrollPeriod } from '../dataStore';
+import { withA4PageSize } from '../printA4';
 
 interface PayrollModuleProps {
   isAdmin: boolean;
@@ -810,23 +811,6 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
         </p>
       </div>
     );
-  };
-
-  /**
-   * Ukuran @page global masih continuous form (dipakai faktur & order dot matrix).
-   * Slip gaji dicetak di A4, jadi aturannya ditimpa sementara lewat <style> yang
-   * disisipkan terakhir, lalu dibuang lagi setelah dialog cetak selesai.
-   */
-  const withA4PageSize = (cetak: () => void) => {
-    const style = document.createElement('style');
-    style.textContent = '@media print { @page { size: A4 portrait; margin: 15mm; } }';
-    document.head.appendChild(style);
-    const bersihkan = () => {
-      style.remove();
-      window.removeEventListener('afterprint', bersihkan);
-    };
-    window.addEventListener('afterprint', bersihkan);
-    cetak();
   };
 
   const triggerSystemPrintPayroll = (pay: PayrollWeekly) => {
@@ -2228,7 +2212,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
         </div>
       )}
 
-      {activePrintPayroll && (
+      {activePrintPayroll && payrollTab !== 'bonus' && (
         <div className="print-only slip-print-page" style={{ width: '180mm', boxSizing: 'border-box' }}>
           {renderSlipGajiLayout(activePrintPayroll)}
         </div>
