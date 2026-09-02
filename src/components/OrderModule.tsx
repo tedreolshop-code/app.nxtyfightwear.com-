@@ -3,6 +3,7 @@ import { Order, OrderItem, Product, Employee, orderRemaining, orderPaymentStatus
 import { DivisionFilter } from './DivisionFilter';
 import { PaymentLedger, LedgerRow } from './PaymentLedger';
 import { dataStore, wibTodayStr } from '../dataStore';
+import { withA4PageSize } from '../printA4';
 import { uploadPackingPhoto } from '../packingPhoto';
 import { ShoppingBag, Plus, User, Phone, CheckCircle2, Trash2, PackageCheck, Truck, Printer, X, Pencil, Ban, RotateCcw, Camera } from 'lucide-react';
 
@@ -377,9 +378,9 @@ export const OrderModule: React.FC = () => {
 
   const handlePrintNota = (order: Order) => {
     setPrintOrder(order);
-    setTimeout(() => {
-      window.print();
-    }, 150);
+    // Cetak di halaman A4 (sama seperti slip gaji): nota panjang mengalir ke
+    // halaman berikutnya, bukan terpotong seperti saat @page tanpa ukuran.
+    setTimeout(() => withA4PageSize(() => window.print()), 150);
   };
 
   const openOrderPanel = (order: Order) => {
@@ -471,7 +472,9 @@ export const OrderModule: React.FC = () => {
     const brand = dataStore.getBrandSettings();
     const subtotal = order.items.reduce((acc, curr) => acc + curr.subtotal, 0);
     return (
-      <div className="flex flex-col h-full font-mono select-text text-xs leading-relaxed" style={{ color: 'black' }}>
+      // Blok biasa (bukan flex): flex container tidak terpisah antar-halaman
+      // saat dicetak, jadi nota panjang jadi terpotong.
+      <div className="font-mono select-text text-xs leading-relaxed" style={{ color: 'black' }}>
         {/* Header */}
         <div className="text-center space-y-0.5 border-b-2 pb-2" style={{ borderColor: 'currentColor', borderStyle: 'double' }}>
           <h1 className="text-base font-black tracking-widest uppercase">{brand.company_name}</h1>
@@ -517,7 +520,7 @@ export const OrderModule: React.FC = () => {
         </table>
 
         {/* Ringkasan total */}
-        <div className="ml-auto w-56 space-y-1 text-[11px] border-t border-dashed pt-1" style={{ borderColor: 'currentColor' }}>
+        <div className="ml-auto w-56 space-y-1 text-[11px] border-t border-dashed pt-1" style={{ borderColor: 'currentColor', breakInside: 'avoid' }}>
           <div className="flex justify-between"><span>Subtotal</span><span className="font-bold">{formatIDRCompact(subtotal)}</span></div>
           {(order.discount ?? 0) > 0 && (
             <div className="flex justify-between"><span>Diskon</span><span className="font-bold">-{formatIDRCompact(order.discount!)}</span></div>
@@ -541,7 +544,7 @@ export const OrderModule: React.FC = () => {
         </div>
 
         {/* Catatan & footer */}
-        <div className="mt-auto pt-3 flex justify-between items-end text-[10px]">
+        <div className="mt-8 pt-3 flex justify-between items-end text-[10px]" style={{ breakInside: 'avoid' }}>
           <div className="max-w-[60%]">
             {order.notes && <p className="italic">Catatan: {order.notes}</p>}
             <p className="mt-1">Terima kasih atas pembelian Anda.</p>
@@ -1328,15 +1331,17 @@ export const OrderModule: React.FC = () => {
         </div>
       </div>
 
-      {/* Container cetak nota — hanya tampil saat print, format continuous form seperti slip gaji */}
+      {/* Container cetak nota — hanya tampil saat print, format A4 seperti slip gaji.
+          minHeight (bukan height) + margin (bukan transform) supaya nota panjang
+          mengalir ke halaman berikutnya, tidak terpotong. */}
       {printOrder && (
         <div className="print-only" style={{
-          transform: `translate(${calibration.offset_x}mm, ${calibration.offset_y}mm)`,
+          marginLeft: `${calibration.offset_x}mm`,
+          marginTop: `${calibration.offset_y}mm`,
           fontFamily: 'Courier, monospace',
           color: 'black',
-          width: '210mm',
-          height: '140mm',
-          padding: '10mm',
+          width: '180mm',
+          minHeight: '120mm',
           boxSizing: 'border-box'
         }}>
           {renderNotaLayout(printOrder)}

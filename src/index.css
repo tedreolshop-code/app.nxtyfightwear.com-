@@ -19,6 +19,20 @@
 
 /* Custom continuous form (CF) dot matrix print styling */
 @media print {
+  /* Cangkang aplikasi dikunci setinggi layar (h-dvh) + overflow-hidden supaya
+     area konten bisa di-scroll di layar. Saat mencetak, kunci itu memotong
+     nota / slip yang lebih tinggi dari satu layar. Lepaskan saat print supaya
+     konten .print-only mengalir dan berpindah halaman. */
+  #root,
+  #root > div,
+  #root > div > main,
+  #root > div > main > div {
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
   body.qr-printing * {
     visibility: hidden !important;
   }
