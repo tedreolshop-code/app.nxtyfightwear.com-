@@ -1265,10 +1265,12 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                     Muncul di menu admin "Perlu Review" untuk disetujui/ditolak. */}
                 {lockedEmployee && automaticScanType === 'pulang' && (
                   <div className="bg-[#122f21]/60 border border-[#1a422f] rounded-xl p-2.5 space-y-2">
-                    <p className="text-[10px] font-black uppercase tracking-wider text-emerald-300">Pengajuan (opsional)</p>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-emerald-300">
+                      Pengajuan (opsional){canRequestLiveBonus && <span className="text-emerald-200/50 font-semibold normal-case"> — pilih salah satu</span>}
+                    </p>
 
                     <label className="flex items-start gap-2 cursor-pointer">
-                      <input type="checkbox" checked={otRequest} onChange={e => setOtRequest(e.target.checked)} className="mt-0.5" />
+                      <input type="checkbox" checked={otRequest} onChange={e => { setOtRequest(e.target.checked); if (e.target.checked) { setLiveRequest(false); setLiveReason(''); } }} className="mt-0.5" />
                       <span className="text-[11px] text-emerald-100 font-bold">Ajukan lembur hari ini</span>
                     </label>
                     {otRequest && (
@@ -1284,7 +1286,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                     {canRequestLiveBonus && (
                       <>
                         <label className="flex items-start gap-2 cursor-pointer">
-                          <input type="checkbox" checked={liveRequest} onChange={e => setLiveRequest(e.target.checked)} className="mt-0.5" />
+                          <input type="checkbox" checked={liveRequest} onChange={e => { setLiveRequest(e.target.checked); if (e.target.checked) { setOtRequest(false); setOtReason(''); } }} className="mt-0.5" />
                           <span className="text-[11px] text-emerald-100 font-bold">Ajukan bonus Live TikTok</span>
                         </label>
                         {liveRequest && (

@@ -1883,7 +1883,9 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                                   {(log.late_compensation_minutes || 0) > 0 && (
                                     <button type="button" onClick={() => approveAdjustment(log, 'late_compensation')} className="px-2.5 py-1 rounded bg-emerald-700 text-white font-bold text-[10px] cursor-pointer">Setujui Pengganti</button>
                                   )}
-                                  {((log.overtime_minutes || 0) > 0 || log.overtime_request) && (
+                                  {/* Karyawan mengajukan lembur ATAU live TikTok, tidak dua-duanya.
+                                      Kalau yang diajukan live TikTok, jangan tawarkan ACC lembur. */}
+                                  {!log.live_tiktok_request && ((log.overtime_minutes || 0) > 0 || log.overtime_request) && (
                                     <button type="button" onClick={() => approveAdjustment(log, 'overtime')} className="px-2.5 py-1 rounded bg-[var(--color-evergreen)] text-white font-bold text-[10px] cursor-pointer">ACC Lembur</button>
                                   )}
                                   {log.live_tiktok_request && (
