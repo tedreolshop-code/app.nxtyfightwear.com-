@@ -1805,7 +1805,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
       {/* POP-UP WEEKLY PAYROLL CALCULATOR MODAL */}
       {isCalculatorOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 no-print animate-fade-in overflow-y-auto overscroll-contain">
-          <div className="bg-white rounded-2xl w-full max-w-2xl border border-emerald-800/30 overflow-hidden shadow-2xl my-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl w-full max-w-2xl border border-emerald-800/30 overflow-hidden shadow-2xl my-auto max-h-[92dvh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="bg-emerald-800 px-6 py-4 flex items-center justify-between text-white">
               <h3 className="font-bold text-sm flex items-center gap-2 uppercase tracking-wide">
                 <Calculator className="w-4 h-4 text-emerald-100 animate-pulse" /> Generate &amp; Posting Gaji Mingguan
@@ -1819,7 +1819,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
               </button>
             </div>
 
-            <form onSubmit={handleCreatePayroll} className="p-6 space-y-4 text-xs text-left">
+            <form onSubmit={handleCreatePayroll} className="p-6 space-y-4 text-xs text-left overflow-y-auto overscroll-contain">
               <div className="rounded-xl border border-emerald-100 bg-emerald-50/70 px-4 py-3 text-[11px] text-emerald-900">
                 <p className="font-black uppercase tracking-wide">Skema gaji mingguan Sabtu-Jumat</p>
                 <p className="mt-1">Pilih karyawan, sistem menghitung honor dari absensi, lembur dari ACC, bonus dari default karyawan, dan kasbon dari saldo aktif. Angka tetap bisa dikoreksi sebelum slip diposting.</p>
@@ -2122,7 +2122,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
       {/* POP-UP EDIT PAYROLL WEEKLY MODAL */}
       {editingPayroll && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 no-print animate-fade-in overflow-y-auto overscroll-contain">
-          <div className="bg-white rounded-2xl w-full max-w-2xl border border-emerald-800/30 overflow-hidden shadow-2xl my-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl w-full max-w-2xl border border-emerald-800/30 overflow-hidden shadow-2xl my-auto max-h-[92dvh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="bg-emerald-800 px-6 py-4 flex items-center justify-between text-white">
               <h3 className="font-bold text-sm flex items-center gap-2 uppercase tracking-wide">
                 <Edit2 className="w-4 h-4 text-emerald-100" /> Edit Slip Gaji: {editingPayroll.employee_name}
@@ -2136,7 +2136,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
               </button>
             </div>
 
-            <form onSubmit={handleSaveEditPayroll} className="p-6 space-y-4 text-xs text-left">
+            <form onSubmit={handleSaveEditPayroll} className="p-6 space-y-4 text-xs text-left overflow-y-auto overscroll-contain">
               <div className="bg-emerald-50/50 p-3 rounded-lg border border-emerald-800/10 mb-2">
                 <p className="font-bold text-emerald-950 uppercase text-[10px] tracking-wider mb-1">Informasi Periode Kerja</p>
                 <p className="text-[11px] font-mono text-gray-700 font-semibold">

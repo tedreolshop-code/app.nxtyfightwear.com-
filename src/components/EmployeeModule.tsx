@@ -1857,7 +1857,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
       {/* ============================================== */}
       {activePrintPayroll && (
         <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4 animate-fadeIn overflow-y-auto overscroll-contain print:bg-white print:p-0">
-          <div className="bg-white rounded-xl overflow-hidden shadow-2xl p-6 space-y-4 max-w-lg w-full my-auto print:shadow-none print:p-0">
+          <div className="bg-white rounded-xl overflow-hidden shadow-2xl p-6 space-y-4 max-w-lg w-full my-auto max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain print:max-h-none print:overflow-visible print:shadow-none print:p-0">
             <div className="flex justify-between items-center border-b pb-2 print:hidden">
               <span className="text-xs font-bold text-gray-700 flex items-center gap-1">
                 <Printer className="w-4 h-4 text-[var(--color-evergreen)]" /> Pratinjau Slip Gaji Continuous Form
