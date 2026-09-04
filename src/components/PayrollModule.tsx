@@ -388,7 +388,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
       'Hari Kerja': p.days_worked,
       'Jam Lembur': p.overtime_hours,
       'Gaji Pokok': p.base_pay,
-      Bonus: p.bonus,
+                  'Bonus Live TikTok': p.bonus,
       'Potongan Kasbon': p.cash_advance_deduction,
       'Total Bersih (THP)': p.total_pay,
       'Sudah Cetak': p.is_printed ? 'Ya' : 'Belum',
@@ -397,7 +397,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     void exportExcel(`Rekap_Gaji_Mingguan_${new Date().toISOString().split('T')[0]}`, [{
       name: 'Rekap Gaji Mingguan',
       rows,
-      currencyColumns: ['Gaji Pokok', 'Bonus', 'Potongan Kasbon', 'Total Bersih (THP)'],
+      currencyColumns: ['Gaji Pokok', 'Bonus Live TikTok', 'Potongan Kasbon', 'Total Bersih (THP)'],
     }]);
   };
 
@@ -622,6 +622,20 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     const nilaiLembur = pay.overtime_hours * rateLembur;
     const totalPenerimaan = pay.base_pay + pay.bonus + nilaiLembur;
 
+    // Sesi Live TikTok yang menambah bonus periode ini — pengajuan live yang di-ACC.
+    // Pembanding liveTotal vs pay.bonus menentukan nama baris di slip (live murni
+    // vs campur tambahan manual admin).
+    const bonusAdjs = adjustments.filter(i =>
+      i.employee_id === pay.employee_id && i.date >= pay.period_start && i.date <= pay.period_end
+      && i.status !== 'rejected' && (i.bonus_amount || 0) > 0);
+    const liveAdjs = bonusAdjs.filter(i => i.type === 'live_tiktok'
+      || attendance.some(a => a.id === i.attendance_id && a.live_tiktok_request));
+    const liveSesi = liveAdjs.length;
+    const liveTotal = liveAdjs.reduce((sum, item) => sum + (item.bonus_amount || 0), 0);
+    const bonusLabel = liveSesi === 0 ? 'Bonus'
+      : liveTotal >= pay.bonus ? 'Bonus Live TikTok'
+      : 'Bonus (Live TikTok + lainnya)';
+
     const empAdvances = cashAdvances.filter(c => c.employee_id === pay.employee_id);
     const sisaKasbon = empAdvances.reduce((sum, item) => sum + item.remaining_balance, 0);
 
@@ -746,7 +760,13 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
               <tbody>
                 <Baris label="Upah harian" qty={`${pay.days_worked} hari`} nilai={pay.base_pay} />
                 <Baris label="Lembur" qty={`${pay.overtime_hours} jam`} nilai={nilaiLembur} />
-                <Baris label="Bonus" nilai={pay.bonus} />
+                {pay.bonus > 0 && (
+                  <Baris
+                    label={bonusLabel}
+                    qty={liveSesi > 0 ? (liveTotal >= pay.bonus ? `${liveSesi} sesi` : `${liveSesi} sesi + lainnya`) : undefined}
+                    nilai={pay.bonus}
+                  />
+                )}
                 <tr className="border-t-2 border-slate-300">
                   <td className="py-1.5 font-bold" colSpan={2}>Total Penerimaan</td>
                   <td className="py-1.5 text-right font-black tabular-nums whitespace-nowrap">
@@ -755,6 +775,12 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                 </tr>
               </tbody>
             </table>
+            {pay.bonus > 0 && (
+              <p className="text-[9px] text-slate-400 mt-1 leading-snug">
+                Bonus = insentif kerja (Live TikTok/tambahan) periode ini. Bonus kehadiran dibayar
+                terpisah setiap tanggal 1 — lihat Slip Bonus Kehadiran.
+              </p>
+            )}
           </div>
 
           <div>
@@ -984,7 +1010,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                     <th className="py-2.5 px-3">Hari Kerja</th>
                     <th className="py-2.5 px-3">Jam Lembur</th>
                     <th className="py-2.5 px-3">Gaji Pokok</th>
-                    <th className="py-2.5 px-3">Bonus</th>
+                    <th className="py-2.5 px-3">Bonus Live TikTok</th>
                     <th className="py-2.5 px-3">Potongan Kasbon</th>
                     <th className="py-2.5 px-3 text-right">Total Bersih (Thp)</th>
                     <th className="py-2.5 px-3 text-center no-print">Aksi</th>
@@ -2157,7 +2183,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                   </div>
                 </div>
                 <div>
-                  <label className="block font-bold text-emerald-800 uppercase tracking-wider mb-1">Bonus Tambahan</label>
+                  <label className="block font-bold text-emerald-800 uppercase tracking-wider mb-1">Bonus Live TikTok / Tambahan</label>
                   <div className="relative">
                     <span className="absolute left-3 top-2 text-emerald-800/60 font-bold">Rp</span>
                     <input
