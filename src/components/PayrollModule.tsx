@@ -1595,22 +1595,45 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                         )}
                       </td>
                       <td className="p-3 border-r border-emerald-100/70 text-[11px] text-gray-500 font-mono space-y-0.5">
-                        <div className="flex justify-between gap-2 border-b border-gray-100 pb-0.5">
-                          <span>Gaji Pokok:</span>
-                          <span className="font-bold text-gray-700">{formatIDR(pay.base_pay)}</span>
-                        </div>
-                        {pay.bonus > 0 && (
-                          <div className="flex justify-between gap-2 text-emerald-700 font-bold">
-                            <span>Bonus Tambahan:</span>
-                            <span>+{formatIDR(pay.bonus)}</span>
-                          </div>
-                        )}
-                        {pay.cash_advance_deduction > 0 && (
-                          <div className="flex justify-between gap-2 text-amber-700 font-bold">
-                            <span>Potongan Kasbon:</span>
-                            <span>-{formatIDR(pay.cash_advance_deduction)}</span>
-                          </div>
-                        )}
+                        {/* Rincian lengkap: tiap komponen penerimaan & potongan satu baris,
+                            lalu subtotal. Rate lembur diambil dari profil karyawan. */}
+                        {(() => {
+                          const emp = employees.find(e => e.id === pay.employee_id);
+                          const nilaiLembur = pay.overtime_hours * (emp?.rate_lembur_per_jam || 0);
+                          const totalPotongan = pay.cash_advance_deduction;
+                          return (
+                            <>
+                              <div className="flex justify-between gap-2 border-b border-gray-100 pb-0.5">
+                                <span>Upah Harian:</span>
+                                <span className="font-bold text-gray-700">{formatIDR(pay.base_pay)}</span>
+                              </div>
+                              {pay.overtime_hours > 0 && (
+                                <div className="flex justify-between gap-2 border-b border-gray-100 pb-0.5">
+                                  <span>Upah Lembur:</span>
+                                  <span className="font-bold text-emerald-700">+{formatIDR(nilaiLembur)}</span>
+                                </div>
+                              )}
+                              {pay.bonus > 0 && (
+                                <div className="flex justify-between gap-2 border-b border-gray-100 pb-0.5 text-emerald-700 font-bold">
+                                  <span>Bonus Tambahan:</span>
+                                  <span>+{formatIDR(pay.bonus)}</span>
+                                </div>
+                              )}
+                              {pay.cash_advance_deduction > 0 && (
+                                <div className="flex justify-between gap-2 text-amber-700 font-bold">
+                                  <span>Potongan Kasbon:</span>
+                                  <span>-{formatIDR(pay.cash_advance_deduction)}</span>
+                                </div>
+                              )}
+                              {totalPotongan === 0 && (
+                                <div className="flex justify-between gap-2 text-gray-400">
+                                  <span>Tanpa potongan</span>
+                                  <span>-</span>
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
                       </td>
                       <td className="p-3 border-r border-emerald-100/70 text-right font-mono font-bold text-emerald-950 bg-emerald-50/25 text-sm">
                         {formatIDR(pay.total_pay)}
