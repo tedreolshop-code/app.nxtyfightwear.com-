@@ -815,19 +815,23 @@ export const clockMinutes = (value: string): number => {
 /**
  * Metrik satu scan pulang (durasi kerja, porsi hari, pengganti telat, lembur).
  * Dipakai scan normal DAN koreksi admin — supaya keduanya tidak pernah beda rumus.
+ *
+ * Lembur hanya dihitung bila karyawan mengajukan (centang pengajuan di scan pulang):
+ * mulai dari end_time (jam pulang normal) sampai jam scan, telat pagi ditutup dulu,
+ * dibulatkan ke atas per jam. Tanpa pengajuan tidak ada lembur otomatis.
  */
 export const checkoutMetrics = (
   checkIn: Attendance,
   checkoutTimestamp: string,
-  settings: WorkSettings
+  settings: WorkSettings,
+  overtimeRequested = false
 ): Partial<Attendance> => {
   const clock = checkoutTimestamp.slice(11, 16);
   const workedMinutes = Math.max(0, Math.round((new Date(checkoutTimestamp).getTime() - new Date(checkIn.timestamp).getTime()) / 60000));
   const lateMinutes = checkIn.late_minutes ?? Math.max(0, clockMinutes(checkIn.timestamp.slice(11, 16)) - clockMinutes(settings.start_time));
-  const OVERTIME_GRACE_MINUTES = 60; // toleransi 1 jam setelah end_time (mis. pulang jam 16:00 -> lembur baru mulai lewat 17:00)
-  const pastGraceMinutes = Math.max(0, clockMinutes(clock) - clockMinutes(settings.end_time) - OVERTIME_GRACE_MINUTES);
-  const lateCompensationMinutes = Math.min(lateMinutes, pastGraceMinutes);
-  const overtimeMinutesAfterLate = Math.max(0, pastGraceMinutes - lateCompensationMinutes);
+  const pastEndMinutes = Math.max(0, clockMinutes(clock) - clockMinutes(settings.end_time));
+  const lateCompensationMinutes = overtimeRequested ? Math.min(lateMinutes, pastEndMinutes) : 0;
+  const overtimeMinutesAfterLate = overtimeRequested ? Math.max(0, pastEndMinutes - lateCompensationMinutes) : 0;
   const overtimeHours = overtimeMinutesAfterLate > 0 ? Math.ceil(overtimeMinutesAfterLate / 60) : 0; // dibulatkan ke atas per jam
   return {
     worked_minutes: workedMinutes,
