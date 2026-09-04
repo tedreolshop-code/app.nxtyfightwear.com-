@@ -850,9 +850,11 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
       const myDayFractions = myPeriodDates.map(date =>
         dayFraction(myPeriodAtt.filter(log => log.timestamp.startsWith(date)), dataStore.getWorkSettings()));
       const myRunningDays = myDayFractions.reduce((sum, value) => sum + value, 0);
-      const myPeriodAdjustments = adjustments.filter(item => item.employee_id === loggedEmployee.id && item.date >= runningPeriod.start && item.date <= runningPeriod.end && item.type !== 'ignored');
-      const myRunningOvertimeHours = myPeriodAdjustments.filter(item => item.type === 'overtime').reduce((sum, item) => sum + (item.overtime_minutes || 0), 0) / 60;
-      const myRunningLiveBonus = myPeriodAdjustments.filter(item => item.type === 'live_tiktok').reduce((sum, item) => sum + (item.bonus_amount || 0), 0);
+      const myPeriodAdjustments = adjustments.filter(item => item.employee_id === loggedEmployee.id && item.date >= runningPeriod.start && item.date <= runningPeriod.end && item.status !== 'rejected');
+      // Jumlah per field (bukan per type) — satu ACC bisa memuat lembur + bonus sekaligus,
+      // sama dengan cara slip mingguan menghitungnya.
+      const myRunningOvertimeHours = myPeriodAdjustments.reduce((sum, item) => sum + (item.overtime_minutes || 0), 0) / 60;
+      const myRunningLiveBonus = myPeriodAdjustments.reduce((sum, item) => sum + (item.bonus_amount || 0), 0);
       const myRunningPay = myRunningDays * loggedEmployee.rate_harian
         + Math.round(myRunningOvertimeHours * loggedEmployee.rate_lembur_per_jam)
         + myRunningLiveBonus;

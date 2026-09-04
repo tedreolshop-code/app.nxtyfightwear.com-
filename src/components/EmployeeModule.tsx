@@ -278,7 +278,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
     // "Bonus Kehadiran"; kalau ikut, karyawan dibayar dua kali untuk hal yang sama.
     const liveBonus = dataStore.getAttendanceAdjustments()
       .filter(item => item.employee_id === empId
-        && item.type === 'live_tiktok'
+        && item.status !== 'rejected'
         && item.date >= modalPeriodStart && item.date <= modalPeriodEnd)
       .reduce((sum, item) => sum + (item.bonus_amount || 0), 0);
     setModalBonus(liveBonus);
