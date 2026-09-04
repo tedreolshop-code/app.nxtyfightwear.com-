@@ -37,17 +37,34 @@ const HANDOFF_MODES: Array<{ id: 'assign' | 'queue' | 'hybrid'; label: string; d
   { id: 'queue', label: 'Antrean / Ambil Sendiri', desc: 'Hasil kerja selalu masuk antrean — karyawan bagian berikutnya mengambil sendiri lewat "Tersedia untuk Diambil".' },
 ];
 
+// Opsi toleransi lembur: menit minimum lewat jam pulang normal agar lembur dihitung.
+// 0 = menit pertama lewat jam pulang (dengan pengajuan) sudah dihitung 1 jam lembur.
+const OVERTIME_GRACE_OPTIONS = [
+  { minutes: 0, label: 'Tanpa toleransi', desc: 'Menit pertama lewat jam pulang normal (16:00) dengan pengajuan sudah dihitung 1 jam lembur.' },
+  { minutes: 5, label: '5 menit', desc: 'Lembur dihitung bila pulang minimal 16:05. Di bawah itu tidak dihitung lembur.' },
+  { minutes: 15, label: '15 menit', desc: 'Lembur dihitung bila pulang minimal 16:15. Di bawah itu tidak dihitung lembur.' },
+];
+
 export const BrandSettingsModule: React.FC = () => {
   const saved = useBrand();
   const [draft, setDraft] = useState<BrandSettings>(saved);
   const [handoffMode, setHandoffMode] = useState<'assign' | 'queue' | 'hybrid'>(
     () => dataStore.getWorkSettings().production_handoff_mode || 'hybrid'
   );
+  const [otGrace, setOtGrace] = useState<number>(
+    () => dataStore.getWorkSettings().overtime_tolerance_minutes ?? 0
+  );
 
   const saveHandoffMode = (mode: 'assign' | 'queue' | 'hybrid') => {
     setHandoffMode(mode);
     dataStore.setWorkSettings({ ...dataStore.getWorkSettings(), production_handoff_mode: mode });
     dataStore.logAudit('update', 'work_settings', `Mengubah mode serah terima produksi menjadi "${HANDOFF_MODES.find(m => m.id === mode)?.label}"`);
+  };
+
+  const saveOvertimeGrace = (minutes: number) => {
+    setOtGrace(minutes);
+    dataStore.setWorkSettings({ ...dataStore.getWorkSettings(), overtime_tolerance_minutes: minutes });
+    dataStore.logAudit('update', 'work_settings', `Mengubah toleransi lembur menjadi ${minutes} menit setelah jam pulang normal`);
   };
   const [savedFlash, setSavedFlash] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -291,6 +308,38 @@ export const BrandSettingsModule: React.FC = () => {
                   <span>
                     <span className="block text-xs font-bold text-gray-800">{mode.label}</span>
                     <span className="block text-[10px] text-gray-500 leading-relaxed">{mode.desc}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Toleransi lembur — tersimpan langsung saat dipilih */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-xs space-y-3">
+            <div>
+              <h3 className="font-bold text-xs text-gray-700 flex items-center gap-1.5">
+                <Info className="w-3.5 h-3.5 text-evergreen" /> Toleransi Lembur
+              </h3>
+              <p className="text-[10px] text-gray-400 mt-0.5">
+                Menit minimum lewat jam pulang normal agar lembur dihitung (tetap wajib pengajuan lembur).
+                Lembur selalu dihitung dari jam pulang normal, dibulatkan ke atas per jam. Tersimpan otomatis saat dipilih.
+              </p>
+            </div>
+            <div className="space-y-2">
+              {OVERTIME_GRACE_OPTIONS.map(option => (
+                <label key={option.minutes} className={`flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer transition-colors ${
+                  otGrace === option.minutes ? 'border-evergreen bg-emerald-50/60' : 'border-gray-200 hover:bg-gray-50'
+                }`}>
+                  <input
+                    type="radio"
+                    name="overtime-tolerance"
+                    checked={otGrace === option.minutes}
+                    onChange={() => saveOvertimeGrace(option.minutes)}
+                    className="mt-0.5 text-evergreen focus:ring-evergreen"
+                  />
+                  <span>
+                    <span className="block text-xs font-bold text-gray-800">{option.minutes === 0 ? option.label : `${option.minutes} menit`}</span>
+                    <span className="block text-[10px] text-gray-500 leading-relaxed">{option.desc}</span>
                   </span>
                 </label>
               ))}

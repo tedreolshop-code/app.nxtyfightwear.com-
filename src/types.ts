@@ -306,6 +306,9 @@ export interface WorkSettings {
   // assign = wajib tunjuk penerima; queue = selalu lepas ke antrean (ambil sendiri);
   // hybrid = karyawan memilih salah satu saat serah terima
   production_handoff_mode?: 'assign' | 'queue' | 'hybrid';
+  // Toleransi lembur: menit minimum lewat end_time agar lembur dihitung (wajib pengajuan).
+  // Lembur sendiri selalu mulai dari end_time. Kosong/0 = tanpa toleransi.
+  overtime_tolerance_minutes?: number;
 }
 
 export interface AuditEntry {
@@ -819,6 +822,8 @@ export const clockMinutes = (value: string): number => {
  * Lembur hanya dihitung bila karyawan mengajukan (centang pengajuan di scan pulang):
  * mulai dari end_time (jam pulang normal) sampai jam scan, telat pagi ditutup dulu,
  * dibulatkan ke atas per jam. Tanpa pengajuan tidak ada lembur otomatis.
+ * Toleransi (overtime_tolerance_minutes): lembur baru dihitung bila jam pulang
+ * minimal end_time + toleransi — di bawah itu pengajuan tidak menghasilkan lembur.
  */
 export const checkoutMetrics = (
   checkIn: Attendance,
@@ -829,7 +834,7 @@ export const checkoutMetrics = (
   const clock = checkoutTimestamp.slice(11, 16);
   const workedMinutes = Math.max(0, Math.round((new Date(checkoutTimestamp).getTime() - new Date(checkIn.timestamp).getTime()) / 60000));
   const lateMinutes = checkIn.late_minutes ?? Math.max(0, clockMinutes(checkIn.timestamp.slice(11, 16)) - clockMinutes(settings.start_time));
-  const pastEndMinutes = Math.max(0, clockMinutes(clock) - clockMinutes(settings.end_time));
+  const pastEndMinutes = Math.max(0, clockMinutes(clock) - clockMinutes(settings.end_time) - Math.max(0, settings.overtime_tolerance_minutes ?? 0));
   const lateCompensationMinutes = overtimeRequested ? Math.min(lateMinutes, pastEndMinutes) : 0;
   const overtimeMinutesAfterLate = overtimeRequested ? Math.max(0, pastEndMinutes - lateCompensationMinutes) : 0;
   const overtimeHours = overtimeMinutesAfterLate > 0 ? Math.ceil(overtimeMinutesAfterLate / 60) : 0; // dibulatkan ke atas per jam
