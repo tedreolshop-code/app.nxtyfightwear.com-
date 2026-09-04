@@ -281,22 +281,14 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ loggedEmpl
                     <span className="text-gray-500">Jam Overtime (Lembur)</span>
                     <span className="font-bold text-gray-800">{myLastPayroll.overtime_hours} jam</span>
                   </div>
-                  {myLastPayroll.overtime_hours > 0 && (
-                    <div className="flex justify-between py-1.5 font-medium">
-                      <span className="text-gray-500">Upah Lembur</span>
-                      <span className="font-bold font-mono text-emerald-700">+ Rp {(myLastPayroll.overtime_hours * loggedEmployee.rate_lembur_per_jam).toLocaleString('id-ID')}</span>
-                    </div>
-                  )}
                   <div className="flex justify-between py-1.5 font-medium">
                     <span className="text-gray-500">Gaji Pokok / Harian</span>
                     <span className="font-bold font-mono text-gray-800">Rp {myLastPayroll.base_pay.toLocaleString('id-ID')}</span>
                   </div>
-                  {myLastPayroll.bonus > 0 && (
-                    <div className="flex justify-between py-1.5 font-medium text-emerald-700">
-                      <span className="text-gray-500">Bonus Live TikTok</span>
-                      <span className="font-bold font-mono">+ Rp {myLastPayroll.bonus.toLocaleString('id-ID')}</span>
-                    </div>
-                  )}
+                  <div className="flex justify-between py-1.5 font-medium">
+                    <span className="text-gray-500">Bonus / Insentif Lembur</span>
+                    <span className="font-bold font-mono text-emerald-700">+ Rp {myLastPayroll.bonus.toLocaleString('id-ID')}</span>
+                  </div>
                   {myLastPayroll.cash_advance_deduction > 0 && (
                     <div className="flex justify-between py-1.5 font-medium text-rose-600">
                       <span>Potongan Kasbon</span>
