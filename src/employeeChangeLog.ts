@@ -30,6 +30,15 @@ const TRACKED: Record<string, { label: string; format: Formatter }> = {
   join_date: { label: 'Tanggal masuk', format: value => String(value ?? '-') },
   status_aktif: { label: 'Status aktif', format: value => (value ? 'Aktif' : 'Nonaktif') },
   role: { label: 'Jabatan', format: value => (value === 'leader' ? 'Leader' : 'Karyawan') },
+  access_role: {
+    label: 'Akses sistem',
+    format: value => ({
+      '': 'Karyawan',
+      admin_penjualan: 'Admin Penjualan',
+      admin_gudang: 'Gudang & Produksi',
+      owner: 'Owner',
+    }[String(value ?? '')] || String(value ?? 'Karyawan')),
+  },
 };
 
 export interface FieldChange {

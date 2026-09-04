@@ -100,8 +100,16 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
     { value: '', label: 'Karyawan', description: 'Menu kerja pribadi karyawan.' },
     { value: 'admin_penjualan', label: 'Admin Penjualan', description: 'Menu penjualan, pembelian, absensi, dan gaji.' },
     { value: 'admin_gudang', label: 'Gudang & Produksi', description: 'Menu gudang, produksi, absensi, dan gaji.' },
+    // Owner tidak bisa dipilih lewat UI (akses owner hanya satu, dijaga agar tidak salah setting);
+    // opsi ini tetap dirender untuk profil yang MEMANG owner supaya dropdown-nya tidak salah tampil.
     { value: 'owner', label: 'Owner', description: 'Semua menu aplikasi.' },
   ];
+  // Owner disembunyikan dari pilihan kecuali untuk profil yang sudah owner — akses owner
+  // tidak bisa diberikan ke karyawan lain dari aplikasi.
+  const selectableAccessRoleOptions = (current?: string) =>
+    current === 'owner' ? accessRoleOptions : accessRoleOptions.filter(option => option.value !== 'owner');
+  // Hanya owner yang boleh mengubah akses sistem (menu Karyawan juga terbuka untuk admin penjualan)
+  const isOwnerActor = currentLoggedEmployee?.access_role === 'owner';
   const menusForAccessRole = (value: string) => {
     const roleForMenus = value || 'karyawan';
     return allTabs.filter(tab => !tab.roles || tab.roles.includes(roleForMenus));
@@ -390,6 +398,13 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
 
   // Ganti akses sistem karyawan (menu yang terbuka saat dia login) — langsung tersimpan
   const handleChangeAccessRole = (empId: string, accessRole: string) => {
+    if (!isOwnerActor) {
+      showNotification('Hanya owner yang dapat mengubah akses sistem.', 'error');
+      return;
+    }
+    const target = dataStore.getEmployees().find(e => e.id === empId);
+    if (target?.access_role === 'owner' && accessRole !== 'owner' &&
+        !window.confirm(`Turunkan akses OWNER "${target.name}"?\n\nSetelah ini dia tidak lagi melihat semua menu manajemen. Lanjutkan?`)) return;
     const updated = dataStore.getEmployees().map(e =>
       e.id === empId ? { ...e, access_role: (accessRole || undefined) as Employee['access_role'], allowed_tabs: defaultTabsForAccessRole(accessRole) } : e
     );
@@ -492,6 +507,9 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
 
     if (editEmpId) {
       // Mode edit: perbarui data; PIN hanya diganti bila diisi
+      const sebelum = dataStore.getEmployees().find(emp2 => emp2.id === editEmpId);
+      if (sebelum?.access_role === 'owner' && accessRole !== 'owner' &&
+          !window.confirm(`Turunkan akses OWNER "${sebelum.name}"?\n\nSetelah ini dia tidak lagi melihat semua menu manajemen. Lanjutkan?`)) return;
       const updated = dataStore.getEmployees().map(emp2 => {
         if (emp2.id !== editEmpId) return emp2;
         return {
@@ -878,10 +896,13 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                     <select
                       value={accessRole}
                       onChange={(e) => handleAccessRolePresetChange(e.target.value)}
-                      className="w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-xs text-gray-800 focus:outline-none focus:border-emerald-600"
+                      disabled={!isOwnerActor}
+                      title={isOwnerActor ? undefined : 'Hanya owner yang dapat mengubah akses sistem.'}
+                      className="w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-xs text-gray-800 focus:outline-none focus:border-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {accessRoleOptions.map(option => <option key={option.value || 'karyawan'} value={option.value}>{option.label}</option>)}
+                      {selectableAccessRoleOptions(accessRole).map(option => <option key={option.value || 'karyawan'} value={option.value}>{option.label}</option>)}
                     </select>
+                    {!isOwnerActor && <p className="text-[10px] text-gray-400 mt-1">Hanya owner yang dapat mengubah akses sistem.</p>}
                   </div>
                 </div>
 
@@ -1168,9 +1189,11 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                       <select
                         value={emp.access_role || ''}
                         onChange={(e) => handleChangeAccessRole(emp.id, e.target.value)}
-                        className="bg-white border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-800 focus:outline-none focus:border-emerald-600 cursor-pointer"
+                        disabled={!isOwnerActor}
+                        title={isOwnerActor ? undefined : 'Hanya owner yang dapat mengubah akses sistem.'}
+                        className="bg-white border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-800 focus:outline-none focus:border-emerald-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {accessRoleOptions.map(option => <option key={option.value || 'karyawan'} value={option.value}>{option.label}</option>)}
+                        {selectableAccessRoleOptions(emp.access_role).map(option => <option key={option.value || 'karyawan'} value={option.value}>{option.label}</option>)}
                       </select>
                       <p className="mt-1 text-[9px] text-gray-400">{menusForEmployeeAccess(emp.access_role || '', emp.allowed_tabs).length} menu aktif</p>
                     </td>
