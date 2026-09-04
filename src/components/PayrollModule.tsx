@@ -1036,7 +1036,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
           {/* ================= PRINT & PREVIEW SYSTEM ================= */}
           {previewPayroll && (
             <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-6 overflow-y-auto overscroll-contain no-print font-sans">
-              <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-4xl overflow-hidden flex flex-col my-auto">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-4xl overflow-hidden flex flex-col my-auto max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-3rem)]">
                 
                 {/* Modal Header Toolbar */}
                 <div className="bg-slate-50 border-b border-slate-100 p-4 sm:px-6 flex flex-wrap items-center justify-between gap-4">
@@ -1065,7 +1065,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                 </div>
 
                 {/* Lembar A4 */}
-                <div className="p-4 sm:p-6 bg-slate-200 max-h-[65dvh] overflow-auto overscroll-contain flex justify-center">
+                <div className="p-4 sm:p-6 bg-slate-200 min-h-0 flex-1 overflow-auto overscroll-contain flex justify-center">
                   <div className="w-[210mm] min-w-[640px] min-h-[297mm] bg-white shadow-lg p-[15mm] box-border">
                     {renderSlipGajiLayout(previewPayroll)}
                   </div>
@@ -1757,7 +1757,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
       {/* 1. Interactive Preview Modal (On-Screen Only) */}
       {previewPayroll && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-6 overflow-y-auto overscroll-contain no-print font-sans">
-          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-4xl overflow-hidden flex flex-col my-auto">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-4xl overflow-hidden flex flex-col my-auto max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-3rem)]">
             
             {/* Modal Header Toolbar */}
             <div className="bg-slate-50 border-b border-slate-100 p-4 sm:px-6 flex flex-wrap items-center justify-between gap-4">
@@ -1786,7 +1786,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
             </div>
 
             {/* Lembar A4 */}
-            <div className="p-4 sm:p-6 bg-slate-200 max-h-[65dvh] overflow-auto overscroll-contain flex justify-center">
+            <div className="p-4 sm:p-6 bg-slate-200 min-h-0 flex-1 overflow-auto overscroll-contain flex justify-center">
               <div className="w-[210mm] min-w-[640px] min-h-[297mm] bg-white shadow-lg p-[15mm] box-border">
                 {renderSlipGajiLayout(previewPayroll)}
               </div>
