@@ -57,6 +57,8 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
   const [payrollListView, setPayrollListView] = useState<'aktif' | 'arsip'>('aktif');
   // Bulan arsip yang sedang dibuka ('' = belum ada yang dibuka)
   const [openArchiveMonth, setOpenArchiveMonth] = useState('');
+  // Sortir tabel slip gaji lewat klik header kolom. Default: nama A-Z (sort lama).
+  const [payrollSort, setPayrollSort] = useState<{ key: 'name' | 'period' | 'days' | 'total'; dir: 'asc' | 'desc' }>({ key: 'name', dir: 'asc' });
   const PAYROLL_PAGE_SIZE = 20;
   const [payrollDetailView, setPayrollDetailView] = useState<'review' | 'register'>('register');
   const [employeeSearchQuery, setEmployeeSearchQuery] = useState('');
@@ -1113,6 +1115,13 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const empName = (id: string) => employees.find(e => e.id === id)?.name || '';
+
+  // Klik header kolom: kolom sama = balik arah, kolom lain = pakai arah defaultnya.
+  const togglePayrollSort = (key: 'name' | 'period' | 'days' | 'total') =>
+    setPayrollSort(prev => (prev.key === key
+      ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+      // Default tiap kolom: nama A-Z, sisanya yang "terbesar/terbaru" dulu biar cepat ketemu.
+      : { key, dir: key === 'name' ? 'asc' : 'desc' }));
   const payrollsInRange = payrolls.filter(pay => {
     if (filterStartDate && pay.period_start < filterStartDate) return false;
     if (filterEndDate && pay.period_end > filterEndDate) return false;
@@ -1121,8 +1130,22 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
 
   // Aktif = belum dibayar (yang masih perlu ditindak). Arsip = sudah lunas.
   const archivedPayrolls = payrollsInRange.filter(pay => pay.payment_status === 'paid');
+  // Nilai per baris untuk sortir; periode memakai akhir periode (koreksi Sabtu→Jumat)
+  // agar slip lama tidak terurut salah.
+  const payrollSortValue = (pay: PayrollWeekly): string | number =>
+    payrollSort.key === 'name' ? pay.employee_name
+    : payrollSort.key === 'period' ? weeklyPeriodEnd(pay.period_end)
+    : payrollSort.key === 'days' ? pay.days_worked * 100 + pay.overtime_hours
+    : pay.total_pay;
   const filteredPayrolls = (payrollListView === 'arsip' ? archivedPayrolls : payrollsInRange.filter(pay => pay.payment_status !== 'paid'))
-    .sort((a, b) => empName(a.employee_id).localeCompare(empName(b.employee_id)));
+    .sort((a, b) => {
+      const va = payrollSortValue(a);
+      const vb = payrollSortValue(b);
+      const cmp = typeof va === 'string' || typeof vb === 'string'
+        ? String(va).localeCompare(String(vb))
+        : va - vb;
+      return payrollSort.dir === 'asc' ? cmp : -cmp;
+    });
 
   /**
    * Arsip dikelompokkan per BULAN PERIODE KERJA (bukan tanggal bayar), karena yang
@@ -1568,11 +1591,25 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
             <table className="w-full text-left border-collapse text-xs border-2 border-evergreen/60 bg-white">
               <thead>
                 <tr className="sticky top-0 z-10 bg-evergreen text-white font-bold border-b-2 border-evergreen-dark uppercase text-[10px] tracking-wider text-center">
-                  <th className="p-3 border-r border-white/30 text-left">Nama Karyawan</th>
-                  <th className="p-3 border-r border-white/30 text-center">Periode Kerja</th>
-                  <th className="p-3 border-r border-white/30 text-center">Hari / Lembur</th>
+                  {[{ key: 'name', label: 'Nama Karyawan', align: 'text-left' },
+                     { key: 'period', label: 'Periode Kerja', align: 'text-center' },
+                     { key: 'days', label: 'Hari / Lembur', align: 'text-center' },
+                     { key: 'total', label: 'Total Bersih (IDR)', align: 'text-right' }].map(col => (
+                    <th key={col.key} className={`p-3 border-r border-white/30 ${col.align}`}>
+                      <button
+                        type="button"
+                        onClick={() => togglePayrollSort(col.key as typeof payrollSort.key)}
+                        className="inline-flex items-center gap-1 hover:text-emerald-200 transition-colors cursor-pointer"
+                        title={`Urutkan: ${col.label}`}
+                      >
+                        {col.label}
+                        <span className={`text-[8px] leading-none ${payrollSort.key === col.key ? 'text-amber-300' : 'text-white/40'}`}>
+                          {payrollSort.key === col.key ? (payrollSort.dir === 'asc' ? '▲' : '▼') : '⇅'}
+                        </span>
+                      </button>
+                    </th>
+                  ))}
                   <th className="p-3 border-r border-white/30 text-left">Detail Biaya &amp; Potongan</th>
-                  <th className="p-3 border-r border-white/30 text-right">Total Bersih (IDR)</th>
                   <th className="p-3 text-center">Aksi</th>
                 </tr>
               </thead>
