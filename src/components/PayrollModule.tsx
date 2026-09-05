@@ -7,6 +7,7 @@ import { Printer, Landmark, DollarSign, Plus, CheckCircle2, Sliders, History, Tr
 import { AttendanceBonusPanel, AttendanceBonusBalanceCard, AttendanceBonusHistoryList } from './AttendanceBonusPanel';
 import { currentWeeklyPayrollPeriod, lastCompletedWeeklyPayrollPeriod, weeklyPeriodEnd } from '../dataStore';
 import { withA4PageSize } from '../printA4';
+import { A4PreviewSheet } from './A4PreviewSheet';
 
 interface PayrollModuleProps {
   isAdmin: boolean;
@@ -1069,11 +1070,11 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                   </div>
                 </div>
 
-                {/* Lembar A4 */}
-                <div className="p-4 sm:p-6 bg-slate-200 min-h-0 flex-1 overflow-auto overscroll-contain flex justify-center">
-                  <div className="w-[210mm] min-w-[640px] min-h-[297mm] bg-white shadow-lg p-[15mm] box-border">
+                {/* Lembar A4 — di HP otomatis di-scale agar utuh terlihat */}
+                <div className="p-4 sm:p-6 bg-slate-200 min-h-0 flex-1 overflow-auto overscroll-contain">
+                  <A4PreviewSheet>
                     {renderSlipGajiLayout(previewPayroll)}
-                  </div>
+                  </A4PreviewSheet>
                 </div>
 
                 {/* Modal Bottom Information */}
@@ -1790,11 +1791,11 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
               </div>
             </div>
 
-            {/* Lembar A4 */}
-            <div className="p-4 sm:p-6 bg-slate-200 min-h-0 flex-1 overflow-auto overscroll-contain flex justify-center">
-              <div className="w-[210mm] min-w-[640px] min-h-[297mm] bg-white shadow-lg p-[15mm] box-border">
+            {/* Lembar A4 — di HP otomatis di-scale agar utuh terlihat */}
+            <div className="p-4 sm:p-6 bg-slate-200 min-h-0 flex-1 overflow-auto overscroll-contain">
+              <A4PreviewSheet>
                 {renderSlipGajiLayout(previewPayroll)}
-              </div>
+              </A4PreviewSheet>
             </div>
 
             {/* Modal Bottom Information */}

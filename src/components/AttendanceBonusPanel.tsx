@@ -3,6 +3,7 @@ import { Attendance, AttendanceBonusPayout, Employee, isEligibleForAttendanceBon
 import { dataStore, wibNowISO, wibTodayStr } from '../dataStore';
 import { exportExcel } from '../exportExcel';
 import { withA4PageSize } from '../printA4';
+import { A4PreviewSheet } from './A4PreviewSheet';
 import { renderBonusSlipLayout } from '../bonusSlip';
 import { DivisionFilter } from './DivisionFilter';
 import { AttendanceCalendar } from './AttendanceCalendar';
@@ -216,10 +217,10 @@ export const AttendanceBonusHistoryList: React.FC<{ employeeId: string }> = ({ e
               </button>
             </div>
           </div>
-          <div className="p-4 sm:p-6 bg-slate-200 min-h-0 flex-1 overflow-auto overscroll-contain flex justify-center">
-            <div className="w-[210mm] min-w-[640px] min-h-[297mm] bg-white shadow-lg p-[15mm] box-border">
+          <div className="p-4 sm:p-6 bg-slate-200 min-h-0 flex-1 overflow-auto overscroll-contain">
+            <A4PreviewSheet>
               {renderBonusSlipLayout(previewPayout, deptLabel)}
-            </div>
+            </A4PreviewSheet>
           </div>
           <div className="bg-slate-50 p-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between text-[11px] text-slate-500 gap-2">
             <span>● Slip dicetak pada kertas A4 biasa atau disimpan sebagai PDF.</span>
