@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Employee, Department, PayrollWeekly, CashAdvance, Attendance, UserRole, EmploymentStatus, EMPLOYMENT_STATUSES, employmentStatusOf, isEligibleForAttendanceBonus, divisionLabel, nextEmployeeNumber } from '../types';
-import { dataStore, hashPin, lastCompletedWeeklyPayrollPeriod, dayFraction } from '../dataStore';
+import { dataStore, hashPin, lastCompletedWeeklyPayrollPeriod, weeklyPeriodEnd, dayFraction } from '../dataStore';
 import { employeeChangeLog, ChangeEntry } from '../employeeChangeLog';
 import { QRCodeSVG } from 'qrcode.react';
 import { EmployeeIdCards, printIdCards } from './EmployeeIdCards';
@@ -1775,7 +1775,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                                   #{pay.id.toUpperCase()}
                                 </td>
                                 <td className="p-3 font-bold text-gray-700">
-                                  {pay.period_start} s/d {pay.period_end}
+                                  {pay.period_start} s/d {weeklyPeriodEnd(pay.period_end)}
                                 </td>
                                 <td className="p-3 text-center font-mono font-semibold text-gray-600">
                                   {pay.days_worked} Hari
@@ -1885,7 +1885,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                   <div className="p-8 font-mono text-xs select-text text-blue-800 leading-relaxed max-w-lg bg-[#FFFDF5] border border-dashed border-blue-300 rounded shadow-sm w-full">
                     <div className="text-center space-y-1 border-b border-dashed border-blue-400 pb-2 mb-2">
                       <h1 className="text-base font-black tracking-widest uppercase">SLIP GAJI KARYAWAN</h1>
-                      <p className="text-xs font-bold tracking-wider">PERIODE: {pay.period_start} s/d {pay.period_end}</p>
+                      <p className="text-xs font-bold tracking-wider">PERIODE: {pay.period_start} s/d {weeklyPeriodEnd(pay.period_end)}</p>
                     </div>
 
                     <div className="flex justify-between items-end border-b border-dashed border-blue-300 pb-1 mb-3">

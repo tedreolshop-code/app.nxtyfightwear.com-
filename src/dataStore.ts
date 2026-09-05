@@ -119,6 +119,19 @@ export const lastCompletedWeeklyPayrollPeriod = (): { start: string; end: string
   return { start: shift(current.start, -7), end: shift(current.end, -7), payDate: current.start };
 };
 
+/**
+ * Koreksi akhir periode gaji mingguan: periode kerja Sabtu–JUMAT, jadi Sabtu
+ * (hari bayar / awal minggu berikutnya) bukan bagian periode. Tanpa koreksi ini,
+ * slip yang akhirnya diisi tanggal Sabtu menampilkan DUA hari Sabtu di rekap
+ * kehadiran dan penyebut hari jadi 8, padahal gajian dihitung sampai Jumat.
+ */
+export const weeklyPeriodEnd = (end: string): string => {
+  const dt = new Date(`${end}T00:00:00Z`);
+  if (Number.isNaN(dt.getTime())) return end;
+  // 6 = Sabtu: geser satu hari ke Jumat.
+  return dt.getUTCDay() === 6 ? new Date(dt.getTime() - 86400000).toISOString().slice(0, 10) : end;
+};
+
 const INITIAL_DEPARTMENTS: Department[] = [
   { id: 'dept-eva-foam', name: 'Eva Foam', latitude: COORDS.eva_foam.lat, longitude: COORDS.eva_foam.lng },
   { id: 'dept-konveksi', name: 'Departemen Konveksi', latitude: COORDS.konveksi.lat, longitude: COORDS.konveksi.lng },
@@ -1563,16 +1576,19 @@ class DataStore {
   };
 
   recordPayroll = (payroll: PayrollWeekly): boolean => {
+    // Akhir periode Sabtu (hari bayar) dikembalikan ke Jumat: periode kerja
+    // selalu Sabtu–Jumat, supaya rekap slip tidak punya dua hari Sabtu.
+    const corrected: PayrollWeekly = { ...payroll, period_end: weeklyPeriodEnd(payroll.period_end) };
     const payrolls = this.getPayrollWeekly();
-    const exists = payrolls.some(p => 
-      p.employee_id === payroll.employee_id && 
-      p.period_start === payroll.period_start && 
-      p.period_end === payroll.period_end
+    const exists = payrolls.some(p =>
+      p.employee_id === corrected.employee_id &&
+      p.period_start === corrected.period_start &&
+      p.period_end === corrected.period_end
     );
     if (exists) {
-      throw new Error(`Payroll untuk ${payroll.employee_name} pada periode ${payroll.period_start} s/d ${payroll.period_end} sudah pernah dibuat.`);
+      throw new Error(`Payroll untuk ${corrected.employee_name} pada periode ${corrected.period_start} s/d ${corrected.period_end} sudah pernah dibuat.`);
     }
-    payrolls.unshift(payroll);
+    payrolls.unshift(corrected);
     this.setPayrollWeekly(payrolls);
     return true;
   };

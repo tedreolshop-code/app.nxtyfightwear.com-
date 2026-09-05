@@ -5,7 +5,7 @@ import { brandName, brandLegalName, brandInitials } from '../brand';
 import { exportExcel } from '../exportExcel';
 import { Printer, Landmark, DollarSign, Plus, CheckCircle2, Sliders, History, Trash2, X, Calculator, Edit2, FileSpreadsheet, Wallet, Award } from 'lucide-react';
 import { AttendanceBonusPanel, AttendanceBonusBalanceCard, AttendanceBonusHistoryList } from './AttendanceBonusPanel';
-import { currentWeeklyPayrollPeriod, lastCompletedWeeklyPayrollPeriod } from '../dataStore';
+import { currentWeeklyPayrollPeriod, lastCompletedWeeklyPayrollPeriod, weeklyPeriodEnd } from '../dataStore';
 import { withA4PageSize } from '../printA4';
 
 interface PayrollModuleProps {
@@ -384,7 +384,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
       'ID Slip': p.id,
       'Nama Karyawan': p.employee_name,
       'Awal Periode': p.period_start,
-      'Akhir Periode': p.period_end,
+      'Akhir Periode': weeklyPeriodEnd(p.period_end),
       'Hari Kerja': p.days_worked,
       'Jam Lembur': p.overtime_hours,
       'Gaji Pokok': p.base_pay,
@@ -594,10 +594,13 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
         .map(a => a.timestamp.slice(0, 10))
     );
 
+    // Data lama: sebagian slip tersimpan dengan akhir periode = Sabtu (hari bayar),
+    // bukan Jumat. Koreksi saat menampilkan supaya rekap tidak punya dua Sabtu.
+    const periodEnd = weeklyPeriodEnd(pay.period_end);
     const days: { dateStr: string; dateNum: number; dayLabel: string; isPresent: boolean }[] = [];
     for (const d = new Date(`${pay.period_start}T00:00:00`); days.length < 31; d.setDate(d.getDate() + 1)) {
       const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      if (dateStr > pay.period_end) break;
+      if (dateStr > periodEnd) break;
       days.push({
         dateStr,
         dateNum: d.getDate(),
@@ -687,7 +690,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
             <div className="flex gap-2">
               <span className="w-20 shrink-0 text-slate-500">Periode</span>
               <span className="font-semibold">
-                : {formatTanggalPanjang(pay.period_start)} &ndash; {formatTanggalPanjang(pay.period_end)}
+                : {formatTanggalPanjang(pay.period_start)} &ndash; {formatTanggalPanjang(weeklyPeriodEnd(pay.period_end))}
               </span>
             </div>
             <div className="flex gap-2">
@@ -1003,7 +1006,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                     myPayrolls.map((pay) => (
                       <tr key={pay.id} className="hover:bg-gray-50/50">
                         <td className="py-3 px-3 font-medium text-gray-800">
-                          {pay.period_start} s/d {pay.period_end}
+                          {pay.period_start} s/d {weeklyPeriodEnd(pay.period_end)}
                         </td>
                         <td className="py-3 px-3 font-mono text-gray-600">{pay.days_worked} hari</td>
                         <td className="py-3 px-3 font-mono text-gray-600">{pay.overtime_hours} jam</td>
@@ -1522,7 +1525,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                           {slips.map(pay => (
                             <tr key={pay.id} className="border-b border-emerald-100 hover:bg-emerald-50/20">
                               <td className="p-2 font-semibold text-gray-700">{empName(pay.employee_id)}</td>
-                              <td className="p-2 font-mono text-gray-500">{pay.period_start} → {pay.period_end}</td>
+                              <td className="p-2 font-mono text-gray-500">{pay.period_start} → {weeklyPeriodEnd(pay.period_end)}</td>
                               <td className="p-2 text-right font-mono font-bold text-gray-800">{formatIDR(pay.total_pay)}</td>
                               <td className="p-2 font-mono text-[10px] text-gray-500">{pay.paid_at?.slice(0, 10) || '—'}</td>
                               <td className="p-2 text-center">
@@ -1584,7 +1587,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                     <tr key={pay.id} className="hover:bg-emerald-50/40 transition-colors font-medium text-gray-700">
                       <td className="p-3 border-r border-emerald-100/70 font-bold text-emerald-950">{pay.employee_name}</td>
                       <td className="p-3 border-r border-emerald-100/70 font-mono text-center text-[11px] text-gray-600 bg-gray-50/10">
-                        {pay.period_start} <span className="text-gray-400">s/d</span> {pay.period_end}
+                        {pay.period_start} <span className="text-gray-400">s/d</span> {weeklyPeriodEnd(pay.period_end)}
                       </td>
                       <td className="p-3 border-r border-emerald-100/70 text-center text-gray-600">
                         <span className="px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200/50 rounded-full font-bold text-[10px]">
