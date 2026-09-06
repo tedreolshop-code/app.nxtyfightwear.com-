@@ -237,11 +237,30 @@ export interface AttendanceBonusPayout {
   present_days: number;
   late_minutes_net: number;
   half_days: number;
+  qualified_days?: number; // hari layak yang dibayarkan (slip lama tidak punya — dihitung balik)
+  daily_rate?: number; // tarif per hari layak saat diterbitkan = default_attendance_bonus karyawan
   issued_at: string;
   issued_by?: string;
   payment_status: 'paid' | 'unpaid';
   paid_at?: string;
 }
+
+/**
+ * Hari layak & tarif per hari milik satu slip bonus — sumber tampilan "N × Rp X".
+ * Slip baru menyimpan keduanya saat diterbitkan. Slip lama tidak punya, jadi tarif
+ * diambil dari setting karyawan sekarang dan hari layak dihitung balik dari amount
+ * (amount memang hari layak × tarif). Jangan membagi amount dengan present_days:
+ * hari telat/tidak penuh mengurangi hari layak, bukan menurunkan tarifnya.
+ */
+export const bonusHariLayakTarif = (
+  p: AttendanceBonusPayout,
+  employee?: { default_attendance_bonus?: number },
+  fallbackRate = 0,
+): { days: number; rate: number } => {
+  const rate = p.daily_rate ?? fallbackRate;
+  const days = p.qualified_days ?? (rate > 0 ? Math.round(p.amount / rate) : 0);
+  return { days: Math.max(0, days), rate: Math.max(0, rate) };
+};
 
 export interface Attendance {
   id: string;

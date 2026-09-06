@@ -1,5 +1,5 @@
 import React from 'react';
-import { AttendanceBonusPayout, terbilang } from './types';
+import { AttendanceBonusPayout, bonusHariLayakTarif, terbilang } from './types';
 import { dataStore } from './dataStore';
 import { brandInitials } from './brand';
 
@@ -20,7 +20,10 @@ export const renderBonusSlipLayout = (p: AttendanceBonusPayout, deptLabel: strin
   const brand = dataStore.getBrandSettings();
   const warna = brand.primary_color || '#1F4B36';
   const dept = deptLabel.toUpperCase();
-  const dailyRate = p.working_days > 0 ? Math.round(p.amount / Math.max(1, p.present_days - p.half_days)) : 0;
+  // Tarif = setting bonus/hari karyawan (tersimpan di slip; slip lama pakai setting sekarang)
+  const employee = dataStore.getEmployees().find(e => e.id === p.employee_id);
+  const fallbackRate = Math.round(Number(employee?.default_attendance_bonus ?? dataStore.getWorkSettings().monthly_bonus_amount) || 0);
+  const { days: hariLayak, rate: dailyRate } = bonusHariLayakTarif(p, employee, fallbackRate);
   return (
     <div className="bg-white text-slate-800 text-[11px] leading-relaxed flex flex-col gap-4 select-text">
       <div className="flex items-start justify-between gap-4 pb-3 border-b-2" style={{ borderColor: warna }}>
@@ -60,6 +63,9 @@ export const renderBonusSlipLayout = (p: AttendanceBonusPayout, deptLabel: strin
             <tr className="border-b border-slate-100"><td className="py-1.5 pr-2">Hari hadir</td><td className="py-1.5 text-right font-semibold tabular-nums">{p.present_days} hari</td></tr>
             <tr className="border-b border-slate-100"><td className="py-1.5 pr-2">Total keterlambatan (bersih)</td><td className="py-1.5 text-right font-semibold tabular-nums">{p.late_minutes_net} menit</td></tr>
             <tr className="border-b border-slate-100"><td className="py-1.5 pr-2">Setengah hari</td><td className="py-1.5 text-right font-semibold tabular-nums">{p.half_days}x</td></tr>
+            {p.status === 'cair' && dailyRate > 0 && (
+              <tr className="border-b border-slate-100"><td className="py-1.5 pr-2">Hari layak dibayar</td><td className="py-1.5 text-right font-semibold tabular-nums">{hariLayak} hari × {formatIDR(dailyRate)}</td></tr>
+            )}
           </tbody>
         </table>
         {p.status !== 'cair' && p.reason && (
@@ -71,7 +77,7 @@ export const renderBonusSlipLayout = (p: AttendanceBonusPayout, deptLabel: strin
         <div className="min-w-0">
           <p className="text-[10px] uppercase tracking-widest opacity-80">{p.status === 'cair' ? 'Bonus Diterima' : 'Bonus Gugur'}</p>
           <p className="text-[9px] italic opacity-90 capitalize leading-tight break-words">{p.status === 'cair' ? terbilang(p.amount) : 'nol rupiah'}</p>
-          {dailyRate > 0 && p.status === 'cair' && <p className="text-[9px] opacity-80">≈ {(p.present_days - p.half_days)} hari layak × {formatIDR(dailyRate)}</p>}
+          {dailyRate > 0 && p.status === 'cair' && <p className="text-[9px] opacity-80">≈ {hariLayak} hari layak × {formatIDR(dailyRate)}</p>}
         </div>
         <p className="text-xl font-black tabular-nums whitespace-nowrap">{formatIDR(p.status === 'cair' ? p.amount : 0)}</p>
       </div>

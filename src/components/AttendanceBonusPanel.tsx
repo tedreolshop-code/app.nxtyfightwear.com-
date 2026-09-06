@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Attendance, AttendanceBonusPayout, Employee, isEligibleForAttendanceBonus, workingDaysInMonth, divisionLabel } from '../types';
+import { Attendance, AttendanceBonusPayout, bonusHariLayakTarif, Employee, isEligibleForAttendanceBonus, workingDaysInMonth, divisionLabel } from '../types';
 import { dataStore, wibNowISO, wibTodayStr } from '../dataStore';
 import { exportExcel } from '../exportExcel';
 import { withA4PageSize } from '../printA4';
@@ -378,6 +378,8 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
       present_days: result.presentDays,
       late_minutes_net: result.lateMinutesNet,
       half_days: result.halfDays,
+      qualified_days: result.qualifiedDays,
+      daily_rate: result.dailyRate,
       issued_at: wibNowISO(),
       issued_by: issuedBy,
       payment_status: 'unpaid',
@@ -414,6 +416,9 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
   };
 
   const employeeDept = useMemo(() => new Map(employees.map(e => [e.id, e.department_id])), [employees]);
+  // Semua karyawan (bukan cuma aktif) — slip lama milik karyawan nonaktif tetap
+  // bisa menampilkan tarif fallback dari settingnya.
+  const employeeById = useMemo(() => new Map(dataStore.getEmployees().map(e => [e.id, e])), [employees]);
 
   // Slip bonus yang sudah diterbitkan, disaring per divisi, dikelompokkan per bulan.
   const filteredPayouts = useMemo(() =>
@@ -867,8 +872,11 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
                         </td>
                         <td className="hidden md:table-cell p-3 border-r border-emerald-100/70 text-[11px] text-gray-500 font-mono space-y-0.5">
                           {(() => {
-                            const hariLayak = Math.max(0, p.present_days - p.half_days);
-                            const tarif = hariLayak > 0 && p.status === 'cair' ? Math.round(p.amount / hariLayak) : 0;
+                            // Tarif asli = setting bonus/hari karyawan (tersimpan di slip saat
+                            // diterbitkan). Jangan bagi amount dengan present_days: hari telat
+                            // hanya mengurangi hari layak, bukan menurunkan tarifnya.
+                            const emp = employeeById.get(p.employee_id);
+                            const { days: hariLayak, rate: tarif } = bonusHariLayakTarif(p, emp, emp ? bonusOf(emp) : 0);
                             return (
                               <>
                                 <div className="flex justify-between gap-2 border-b border-gray-100 pb-0.5">
