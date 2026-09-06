@@ -53,6 +53,8 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
   const [payrollPage, setPayrollPage] = useState(1);
+  // Pencarian nama karyawan di Buku Register Slip Gaji (tabel bawah tab Gaji Mingguan).
+  const [payrollNameQuery, setPayrollNameQuery] = useState('');
   // Slip lunas pindah ke Arsip supaya daftar aktif hanya berisi yang perlu ditindak
   const [payrollListView, setPayrollListView] = useState<'aktif' | 'arsip'>('aktif');
   // Bulan arsip yang sedang dibuka ('' = belum ada yang dibuka)
@@ -1130,6 +1132,10 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
   const payrollsInRange = payrolls.filter(pay => {
     if (filterStartDate && pay.period_start < filterStartDate) return false;
     if (filterEndDate && pay.period_end > filterEndDate) return false;
+    // Pencarian nama: berlaku juga untuk badge jumlah & arsip lunas supaya
+    // semua angka di buku register konsisten dengan hasil pencarian.
+    const q = payrollNameQuery.trim().toLowerCase();
+    if (q && !pay.employee_name.toLowerCase().includes(q)) return false;
     return true;
   });
 
@@ -1453,12 +1459,22 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                   className="bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 font-mono text-xs text-gray-700 focus:border-emerald-800 outline-hidden"
                 />
               </div>
-              {(filterStartDate || filterEndDate) && (
+              <span className="font-bold text-gray-700">Cari Karyawan:</span>
+              <input
+                type="text"
+                value={payrollNameQuery}
+                onChange={(e) => { setPayrollNameQuery(e.target.value); setPayrollPage(1); }}
+                placeholder="Cari nama karyawan..."
+                className="bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-700 focus:border-emerald-800 outline-hidden w-44"
+              />
+              {(filterStartDate || filterEndDate || payrollNameQuery) && (
                 <button
                   type="button"
                   onClick={() => {
                     setFilterStartDate('');
                     setFilterEndDate('');
+                    setPayrollNameQuery('');
+                    setPayrollPage(1);
                   }}
                   className="text-xs text-rose-600 hover:text-rose-700 font-bold hover:underline"
                 >
@@ -1518,7 +1534,11 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
               </p>
 
               {archiveMonths.length === 0 ? (
-                <p className="text-xs text-gray-400 italic py-6 text-center">Belum ada slip lunas yang diarsipkan.</p>
+                <p className="text-xs text-gray-400 italic py-6 text-center">
+                  {payrollNameQuery || filterStartDate || filterEndDate
+                    ? 'Tidak ada slip lunas yang cocok dengan filter/pencarian.'
+                    : 'Belum ada slip lunas yang diarsipkan.'}
+                </p>
               ) : archiveMonths.map(({ month, slips, total, periods }) => (
                 <div key={month} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
                   <button
