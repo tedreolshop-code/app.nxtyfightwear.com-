@@ -7,7 +7,7 @@ import { A4PreviewSheet } from './A4PreviewSheet';
 import { renderBonusSlipLayout } from '../bonusSlip';
 import { DivisionFilter } from './DivisionFilter';
 import { AttendanceCalendar } from './AttendanceCalendar';
-import { Award, CalendarCheck2, CheckCircle2, XCircle, Gift, History, AlertTriangle, FileSpreadsheet, Printer, ChevronDown } from 'lucide-react';
+import { Award, CalendarCheck2, CheckCircle2, XCircle, Gift, History, AlertTriangle, FileSpreadsheet, Printer, ChevronDown, Trash2 } from 'lucide-react';
 
 /** Tanggal hari ini dalam bahasa Indonesia, mis. "27 Juli 2026". */
 const todayLabel = () => new Date(`${wibTodayStr()}T00:00:00`).toLocaleDateString('id-ID', {
@@ -255,8 +255,12 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
   const [riwayatDivFilter, setRiwayatDivFilter] = useState('');
   // Buku slip bonus: pisah yang belum dibayar dari arsip lunas (sama seperti gaji mingguan)
   const [slipListView, setSlipListView] = useState<'aktif' | 'arsip'>('aktif');
-  const [openSlipMonth, setOpenSlipMonth] = useState('');
   const [printPayout, setPrintPayout] = useState<AttendanceBonusPayout | null>(null);
+  // Buku slip mengikuti format Daftar Slip Gaji: tabel datar + sortir header + paginasi.
+  const [previewPayout, setPreviewPayout] = useState<AttendanceBonusPayout | null>(null);
+  const [slipPage, setSlipPage] = useState(1);
+  const [slipSort, setSlipSort] = useState<{ key: 'name' | 'month' | 'days' | 'amount'; dir: 'asc' | 'desc' }>({ key: 'name', dir: 'asc' });
+  const [deletePayoutId, setDeletePayoutId] = useState('');
 
   const load = () => {
     setEmployees(dataStore.getEmployees().filter(e => e.status_aktif));
@@ -389,16 +393,24 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
     load();
   };
 
-  const handleCancel = (m: string) => {
-    if (!window.confirm(`Batalkan seluruh slip bonus kehadiran ${monthLabel(m)}? Tindakan ini tidak bisa diurungkan.`)) return;
-    dataStore.setAttendanceBonusPayouts(dataStore.getAttendanceBonusPayouts().filter(p => p.month !== m));
-    dataStore.logAudit('delete', 'attendance_bonus', `Membatalkan slip bonus kehadiran ${monthLabel(m)}`);
-    load();
+  const handlePrintBonusSlip = (p: AttendanceBonusPayout) => {
+    // Cetak lewat pratinjau dulu (seperti slip gaji mingguan) — admin bisa
+    // memeriksa dokumen sebelum kertas keluar.
+    setPreviewPayout(p);
   };
 
-  const handlePrintBonusSlip = (p: AttendanceBonusPayout) => {
+  const triggerPrintBonusSlip = (p: AttendanceBonusPayout) => {
     setPrintPayout(p);
     setTimeout(() => withA4PageSize(() => window.print()), 150);
+  };
+
+  // Hapus per-slip menggantikan "batalkan seluruh bulan".
+  const confirmDeletePayout = () => {
+    if (!deletePayoutId) return;
+    dataStore.setAttendanceBonusPayouts(dataStore.getAttendanceBonusPayouts().filter(p => p.id !== deletePayoutId));
+    dataStore.logAudit('delete', 'attendance_bonus', `Menghapus slip bonus kehadiran ${deletePayoutId.replace(/^bonus-/, '')}`);
+    setDeletePayoutId('');
+    load();
   };
 
   const employeeDept = useMemo(() => new Map(employees.map(e => [e.id, e.department_id])), [employees]);
@@ -422,16 +434,35 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
   }, [filteredPayouts]);
 
   // Belum Dibayar = slip cair yang payment_status != paid. Arsip Lunas = yang paid.
-  // Slip gugur ikut di daftar bulannya sebagai catatan (tanpa aksi bayar).
-  const slipMonths = useMemo(() => {
-    const inView = filteredPayouts.filter(p => {
-      if (p.status === 'gugur') return slipListView === 'aktif'; // gugur cuma diselipkan di daftar aktif
-      return slipListView === 'arsip' ? p.payment_status === 'paid' : p.payment_status !== 'paid';
-    });
-    const map = new Map<string, AttendanceBonusPayout[]>();
-    inView.forEach(p => map.set(p.month, [...(map.get(p.month) || []), p]));
-    return Array.from(map.entries()).sort((a, b) => b[0].localeCompare(a[0]));
-  }, [filteredPayouts, slipListView]);
+  // Slip gugur ikut di daftar aktif sebagai baris Rp0 + alasan, supaya pertanyaan
+  // "kenapa dia tidak dapat bonus" terjawab langsung dari tabel.
+  const slipSortValue = (p: AttendanceBonusPayout): string | number =>
+    slipSort.key === 'name' ? p.employee_name
+    : slipSort.key === 'month' ? p.month
+    : slipSort.key === 'days' ? p.present_days
+    : p.amount;
+  const toggleSlipSort = (key: typeof slipSort.key) =>
+    setSlipSort(prev => (prev.key === key
+      ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+      : { key, dir: key === 'name' ? 'asc' : 'desc' }));
+  const flatSlips = useMemo(() => filteredPayouts
+    .filter(p => p.status === 'gugur'
+      ? slipListView === 'aktif'
+      : slipListView === 'arsip' ? p.payment_status === 'paid' : p.payment_status !== 'paid')
+    .sort((a, b) => {
+      const va = slipSortValue(a);
+      const vb = slipSortValue(b);
+      const cmp = typeof va === 'string' || typeof vb === 'string'
+        ? String(va).localeCompare(String(vb))
+        : va - vb;
+      return slipSort.dir === 'asc' ? cmp : -cmp;
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filteredPayouts, slipListView, slipSort]);
+  const SLIP_PAGE_SIZE = 20;
+  const slipTotalPages = Math.max(1, Math.ceil(flatSlips.length / SLIP_PAGE_SIZE));
+  const slipPageClamped = Math.min(slipPage, slipTotalPages);
+  const pagedSlips = flatSlips.slice((slipPageClamped - 1) * SLIP_PAGE_SIZE, slipPageClamped * SLIP_PAGE_SIZE);
 
   const handleExportBonusExcel = () => {
     const rows = [...filteredPayouts]
@@ -473,7 +504,7 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
               Dibayarkan setiap tanggal 1.
             </p>
           </div>
-          <div className="flex items-end gap-2">
+          <div className="flex flex-wrap items-end gap-2">
             <label className="space-y-1">
               <span className="text-[10px] font-bold text-gray-400 uppercase block">Bulan Penilaian</span>
               <select
@@ -535,7 +566,7 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
       </div>
 
       {view === 'posisi' && (
-      <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-xs space-y-4">
+      <div className="bg-white rounded-xl border border-gray-200 p-2 sm:p-5 shadow-xs space-y-4">
         <button
           onClick={() => setMonth(currentMonth)}
           className="w-full flex flex-wrap items-center justify-between gap-2 text-left bg-emerald-50/60 border border-emerald-100 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-emerald-50"
@@ -569,15 +600,16 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
           </summary>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
+            <table className="w-full text-left border-collapse text-[11px] md:text-xs">
               <thead>
                 <tr className="bg-evergreen/90 text-white font-bold uppercase tracking-wider text-[10px]">
-                  <th className="py-2 px-3">Karyawan</th>
-                  <th className="py-2 px-3 text-center w-24">Hadir</th>
-                  <th className="py-2 px-3 text-center w-24">Hari Layak</th>
-                  <th className="py-2 px-3 text-center w-24">Telat</th>
-                  <th className="py-2 px-3 text-right w-32">Saldo Berjalan</th>
-                  <th className="py-2 px-3 text-right w-28">Potensi</th>
+                  <th className="py-2 px-2 md:px-3">Karyawan</th>
+                  {/* Di HP kolom Hadir & Potensi disembunyikan: potensi sudah tampil di kartu saldo di atas */}
+                  <th className="hidden md:table-cell py-2 px-3 text-center w-24">Hadir</th>
+                  <th className="py-2 px-2 md:px-3 text-center w-14 md:w-24">Hari Layak</th>
+                  <th className="py-2 px-2 md:px-3 text-center w-14 md:w-24">Telat</th>
+                  <th className="py-2 px-2 md:px-3 text-right w-24 md:w-32">Saldo Berjalan</th>
+                  <th className="hidden md:table-cell py-2 px-3 text-right w-28">Potensi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-emerald-100">
@@ -587,7 +619,7 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
                   </td></tr>
                 ) : running.rows.map(({ emp, result, accrued }) => (
                   <tr key={emp.id} className="hover:bg-gray-50/50">
-                    <td className="py-2 px-3 font-bold text-gray-800">
+                    <td className="py-2 px-2 md:px-3 font-bold text-gray-800">
                       {emp.name}
                       {!isEligibleForAttendanceBonus(emp) && (
                         <span className="ml-1.5 px-1.5 py-0.5 rounded bg-violet-100 text-violet-800 text-[9px] font-bold uppercase align-middle">
@@ -595,21 +627,21 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
                         </span>
                       )}
                     </td>
-                    <td className="py-2 px-3 text-center font-mono text-gray-600">{result.presentDays}/{result.workingDays}</td>
-                    <td className="py-2 px-3 text-center font-mono font-bold text-emerald-700" title={result.reasons.join(' · ') || 'Semua hari kerja layak'}>
+                    <td className="hidden md:table-cell py-2 px-3 text-center font-mono text-gray-600">{result.presentDays}/{result.workingDays}</td>
+                    <td className="py-2 px-2 md:px-3 text-center font-mono font-bold text-emerald-700" title={result.reasons.join(' · ') || 'Semua hari kerja layak'}>
                       {result.qualifiedDays}
                       <span className="text-gray-400 font-normal">/{result.workingDays}</span>
                     </td>
-                    <td className={`py-2 px-3 text-center font-mono ${result.lateDates.length > 0 ? 'text-rose-600 font-bold' : 'text-gray-400'}`}>
+                    <td className={`py-2 px-2 md:px-3 text-center font-mono ${result.lateDates.length > 0 ? 'text-rose-600 font-bold' : 'text-gray-400'}`}>
                       {result.lateDates.length > 0 ? `${result.lateDates.length} hari` : '—'}
                     </td>
-                    <td className={`py-2 px-3 text-right font-mono font-black ${accrued > 0 ? 'text-emerald-700' : 'text-rose-400'}`}>
+                    <td className={`py-2 px-2 md:px-3 text-right font-mono font-black ${accrued > 0 ? 'text-emerald-700' : 'text-rose-400'}`}>
                       {formatIDR(accrued)}
                       <span className="block text-[9px] font-normal text-gray-400">
                         {result.qualifiedDays}x {formatIDR(result.dailyRate)}
                       </span>
                     </td>
-                    <td className="py-2 px-3 text-right font-mono text-gray-500">{formatIDR(result.potentialAmount)}</td>
+                    <td className="hidden md:table-cell py-2 px-3 text-right font-mono text-gray-500">{formatIDR(result.potentialAmount)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -628,7 +660,7 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
       )}
 
       {view === 'evaluasi' && (
-      <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-xs space-y-4">
+      <div className="bg-white rounded-xl border border-gray-200 p-2 sm:p-5 shadow-xs space-y-4">
         {isFutureOrCurrent && (
           <div className="flex items-start gap-2 text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
             <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
@@ -638,16 +670,17 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
 
         {/* Tabel evaluasi */}
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
+          <table className="w-full text-left border-collapse text-[10px] md:text-xs">
             <thead>
               <tr className="bg-evergreen text-white font-bold uppercase tracking-wider text-[10px]">
-                <th className="py-2.5 px-3">Karyawan</th>
-                <th className="py-2.5 px-3 text-center">Hadir</th>
-                <th className="py-2.5 px-3 text-center">Telat (Net)</th>
-                <th className="py-2.5 px-3 text-center">½ Hari</th>
-                <th className="py-2.5 px-3">Keterangan</th>
-                <th className="py-2.5 px-3 text-center">Hari Layak</th>
-                <th className="py-2.5 px-3 text-right">Bonus Terkumpul</th>
+                <th className="py-2.5 px-1 md:px-3">Karyawan</th>
+                {/* Di HP kolom Hadir/Telat/½ Hari disembunyikan — rinciannya tetap terbaca di Keterangan */}
+                <th className="hidden md:table-cell py-2.5 px-3 text-center">Hadir</th>
+                <th className="hidden md:table-cell py-2.5 px-3 text-center">Telat (Net)</th>
+                <th className="hidden md:table-cell py-2.5 px-3 text-center">½ Hari</th>
+                <th className="py-2.5 px-1 md:px-3">Keterangan</th>
+                <th className="py-2.5 px-1 md:px-3 text-center">Hari Layak</th>
+                <th className="py-2.5 px-1 md:px-3 text-right">Bonus Terkumpul</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-emerald-200">
@@ -657,7 +690,7 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
                 </td></tr>
               ) : evaluations.map(({ emp, result }) => (
                 <tr key={emp.id} className="hover:bg-gray-50/50">
-                  <td className="py-2.5 px-3 font-bold text-gray-800">
+                  <td className="py-2.5 px-1 md:px-3 font-bold text-gray-800">
                     {emp.name}
                     {!isEligibleForAttendanceBonus(emp) && (
                       <span className="ml-1.5 px-1.5 py-0.5 rounded bg-violet-100 text-violet-800 text-[9px] font-bold uppercase align-middle">
@@ -665,32 +698,33 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
                       </span>
                     )}
                   </td>
-                  <td className="py-2.5 px-3 text-center font-mono text-gray-600">{result.presentDays}/{result.workingDays}</td>
-                  <td className={`py-2.5 px-3 text-center font-mono ${result.lateMinutesNet > 0 ? 'text-rose-600 font-bold' : 'text-gray-500'}`}>
+                  <td className="hidden md:table-cell py-2.5 px-3 text-center font-mono text-gray-600">{result.presentDays}/{result.workingDays}</td>
+                  <td className={`hidden md:table-cell py-2.5 px-3 text-center font-mono ${result.lateMinutesNet > 0 ? 'text-rose-600 font-bold' : 'text-gray-500'}`}>
                     {result.lateMinutesNet > 0 ? `${result.lateMinutesNet} mnt` : '—'}
                   </td>
-                  <td className={`py-2.5 px-3 text-center font-mono ${result.halfDays > 0 ? 'text-amber-600 font-bold' : 'text-gray-500'}`}>
+                  <td className={`hidden md:table-cell py-2.5 px-3 text-center font-mono ${result.halfDays > 0 ? 'text-amber-600 font-bold' : 'text-gray-500'}`}>
                     {result.halfDays > 0 ? `${result.halfDays}x` : '—'}
                   </td>
-                  <td className="py-2.5 px-3 text-[11px] text-gray-500 max-w-[260px]">
+                  <td className="py-2.5 px-1 md:px-3 text-[11px] text-gray-500 md:max-w-[260px]">
                     {result.reasons.length > 0 ? result.reasons.join(' · ') : 'Kehadiran penuh, tanpa telat'}
                   </td>
-                  <td className="py-2.5 px-3 text-center">
+                  <td className="py-2.5 px-1 md:px-3 text-center">
                     {result.reasons.length === 0 && result.workingDays > 0 ? (
-                      <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                        <CheckCircle2 className="w-3 h-3" /> PENUH {result.qualifiedDays}/{result.workingDays}
+                      <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                        <CheckCircle2 className="w-3 h-3 shrink-0" />
+                        <span className="hidden sm:inline">PENUH</span> {result.qualifiedDays}/{result.workingDays}
                       </span>
                     ) : result.amount > 0 ? (
-                      <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                        {result.qualifiedDays}/{result.workingDays} HARI
+                      <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                        {result.qualifiedDays}/{result.workingDays} <span className="hidden sm:inline">HARI</span>
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 bg-rose-100 text-rose-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                        <XCircle className="w-3 h-3" /> TIDAK ADA
+                      <span className="inline-flex items-center gap-1 bg-rose-100 text-rose-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                        <XCircle className="w-3 h-3 shrink-0" /> <span className="hidden sm:inline">TIDAK ADA</span>
                       </span>
                     )}
                   </td>
-                  <td className={`py-2.5 px-3 text-right font-mono font-black ${result.amount > 0 ? 'text-emerald-700' : 'text-rose-300'}`}>
+                  <td className={`py-2.5 px-1 md:px-3 text-right font-mono font-black ${result.amount > 0 ? 'text-emerald-700' : 'text-rose-300'}`}>
                     {formatIDR(result.amount)}
                     <span className="block text-[9px] font-normal text-gray-400">
                       {result.qualifiedDays} x {formatIDR(result.dailyRate)}
@@ -702,10 +736,10 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
             {evaluations.length > 0 && (
               <tfoot>
                 <tr className="border-t border-gray-200 bg-emerald-50/40 font-bold">
-                  <td colSpan={6} className="py-2.5 px-3 text-right text-[11px] uppercase tracking-wide text-emerald-800">
+                  <td colSpan={6} className="py-2.5 px-1 md:px-3 text-right text-[11px] uppercase tracking-wide text-emerald-800">
                     Total akan cair ({evaluations.filter(e => e.result.amount > 0).length} dari {evaluations.length} karyawan):
                   </td>
-                  <td className="py-2.5 px-3 text-right font-mono text-emerald-800">{formatIDR(totalCair)}</td>
+                  <td className="py-2.5 px-1 md:px-3 text-right font-mono text-emerald-800">{formatIDR(totalCair)}</td>
                 </tr>
               </tfoot>
             )}
@@ -738,7 +772,7 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-xs space-y-3">
+        <div className="bg-white rounded-xl border border-gray-200 p-2 sm:p-5 shadow-xs space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <h3 className="font-bold text-sm text-gray-800 flex items-center gap-1.5">
               <History className="w-4 h-4 text-gray-400" /> Buku Slip Bonus Kehadiran
@@ -753,103 +787,249 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
           </div>
 
           <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 pb-3">
-            <div className="bg-gray-50 p-1 rounded-xl border border-gray-200 inline-flex gap-1">
-              <button type="button" onClick={() => { setSlipListView('aktif'); setOpenSlipMonth(''); }}
-                className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer ${slipListView === 'aktif' ? 'bg-[var(--color-evergreen)] text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
-                Belum Dibayar
-                {slipTotals.unpaidCount > 0 && <span className={`ml-1.5 text-[10px] font-mono px-1.5 rounded-full ${slipListView === 'aktif' ? 'bg-white/20' : 'bg-amber-100 text-amber-800'}`}>{slipTotals.unpaidCount}</span>}
-              </button>
-              <button type="button" onClick={() => { setSlipListView('arsip'); setOpenSlipMonth(''); }}
-                className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer ${slipListView === 'arsip' ? 'bg-[var(--color-evergreen)] text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
-                Arsip Lunas
-                {slipTotals.paidCount > 0 && <span className={`ml-1.5 text-[10px] font-mono px-1.5 rounded-full ${slipListView === 'arsip' ? 'bg-white/20' : 'bg-emerald-100 text-emerald-800'}`}>{slipTotals.paidCount}</span>}
-              </button>
+              <div className="bg-gray-50 p-1 rounded-xl border border-gray-200 inline-flex gap-1">
+                <button type="button" onClick={() => { setSlipListView('aktif'); setSlipPage(1); }}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer ${slipListView === 'aktif' ? 'bg-[var(--color-evergreen)] text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+                  Belum Dibayar
+                  {slipTotals.unpaidCount > 0 && <span className={`ml-1.5 text-[10px] font-mono px-1.5 rounded-full ${slipListView === 'aktif' ? 'bg-white/20' : 'bg-amber-100 text-amber-800'}`}>{slipTotals.unpaidCount}</span>}
+                </button>
+                <button type="button" onClick={() => { setSlipListView('arsip'); setSlipPage(1); }}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer ${slipListView === 'arsip' ? 'bg-[var(--color-evergreen)] text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+                  Arsip Lunas
+                  {slipTotals.paidCount > 0 && <span className={`ml-1.5 text-[10px] font-mono px-1.5 rounded-full ${slipListView === 'arsip' ? 'bg-white/20' : 'bg-emerald-100 text-emerald-800'}`}>{slipTotals.paidCount}</span>}
+                </button>
+              </div>
+              <DivisionFilter value={riwayatDivFilter} onChange={setRiwayatDivFilter} />
+              <span className="text-[10px] text-gray-400 sm:ml-auto">
+                {flatSlips.length === 0
+                  ? (slipListView === 'arsip' ? 'Belum ada slip bonus lunas.' : 'Tidak ada slip bonus yang menunggu pembayaran.')
+                  : `Menampilkan ${pagedSlips.length} dari ${flatSlips.length} slip${slipTotalPages > 1 ? ` (halaman ${slipPageClamped}/${slipTotalPages})` : ''}`}
+              </span>
             </div>
-            <DivisionFilter value={riwayatDivFilter} onChange={setRiwayatDivFilter} />
-          </div>
 
-          {slipMonths.length === 0 ? (
-            <p className="text-xs text-gray-400 italic text-center py-6 bg-gray-50 rounded border border-dashed border-gray-200">
-              {slipListView === 'arsip' ? 'Belum ada slip bonus yang ditandai lunas.' : 'Tidak ada slip bonus yang menunggu pembayaran.'}
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {slipMonths.map(([m, list]) => {
-                const cair = list.filter(p => p.status === 'cair');
-                const gugur = list.filter(p => p.status === 'gugur');
-                const open = openSlipMonth === m;
-                return (
-                  <div key={m} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                    <button type="button" onClick={() => setOpenSlipMonth(open ? '' : m)}
-                      className="w-full flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-left hover:bg-gray-50 cursor-pointer">
-                      <span>
-                        <span className="font-bold text-sm text-gray-800">{monthLabel(m)}</span>
-                        <span className="block text-[11px] text-gray-500">
-                          {cair.length} slip {slipListView === 'arsip' ? 'lunas' : 'belum dibayar'}
-                          {gugur.length > 0 && slipListView === 'aktif' && ` · ${gugur.length} gugur`}
-                        </span>
-                      </span>
-                      <span className="flex items-center gap-3">
-                        <span className="font-mono font-black text-[var(--color-evergreen)]">{formatIDR(cair.reduce((s, p) => s + p.amount, 0))}</span>
-                        <button type="button" onClick={e => { e.stopPropagation(); handleCancel(m); }}
-                          className="text-rose-600 hover:text-rose-700 font-semibold text-[10px] uppercase tracking-wide cursor-pointer">Batalkan</button>
-                        <span className="text-gray-400 text-xs">{open ? '▲' : '▼'}</span>
-                      </span>
-                    </button>
+            {flatSlips.length === 0 ? (
+              <p className="text-xs text-gray-400 italic text-center py-6 bg-gray-50 rounded border border-dashed border-gray-200">
+                {slipListView === 'arsip' ? 'Belum ada slip bonus yang ditandai lunas.' : 'Tidak ada slip bonus yang menunggu pembayaran.'}
+              </p>
+            ) : (
+              <div className="overflow-x-auto rounded-lg border border-emerald-800/10 border-t-0 shadow-inner bg-emerald-50/5">
+                <table className="w-full text-left border-collapse text-[11px] md:text-xs border-2 border-evergreen/60 bg-white">
+                  <thead>
+                    <tr className="bg-evergreen text-white font-bold border-b-2 border-evergreen-dark uppercase text-[10px] tracking-wider text-center">
+                      {[{ key: 'name', label: 'Nama Karyawan', align: 'text-left', hideOnMobile: false },
+                         { key: 'month', label: 'Bulan', align: 'text-center', hideOnMobile: true },
+                         { key: 'days', label: 'Hadir / Layak', align: 'text-center', hideOnMobile: true },
+                         { key: 'amount', label: 'Jumlah (IDR)', align: 'text-right', hideOnMobile: false }].map(col => (
+                        <th key={col.key} className={`p-2 md:p-3 border-r border-white/30 ${col.align} ${col.hideOnMobile ? 'hidden md:table-cell' : ''}`}>
+                          <button
+                            type="button"
+                            onClick={() => toggleSlipSort(col.key)}
+                            className="inline-flex items-center gap-1 hover:text-emerald-200 transition-colors cursor-pointer"
+                            title={`Urutkan: ${col.label}`}
+                          >
+                            {col.label}
+                            <span className={`text-[8px] leading-none ${slipSort.key === col.key ? 'text-amber-300' : 'text-white/40'}`}>
+                              {slipSort.key === col.key ? (slipSort.dir === 'asc' ? '▲' : '▼') : '⇅'}
+                            </span>
+                          </button>
+                        </th>
+                      ))}
+                      <th className="hidden md:table-cell p-3 border-r border-white/30 text-left">Detail Penilaian</th>
+                      <th className="p-2 md:p-3 text-center">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-emerald-200">
+                    {pagedSlips.map(p => (
+                      <tr key={p.id} className="hover:bg-emerald-50/40 transition-colors font-medium text-gray-700">
+                        <td className="p-1.5 md:p-3 border-r border-emerald-100/70 font-bold text-emerald-950">
+                          {p.employee_name}
+                          {p.status === 'gugur' && <span className="ml-1.5 px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 text-[9px] font-bold uppercase align-middle">Gugur</span>}
+                          {/* Di HP kolom Bulan/Hadir/Detail jadi sub-baris di bawah nama supaya tabel tetap muat */}
+                          <span className="block md:hidden text-[10px] font-normal text-gray-500 mt-0.5">
+                            {monthLabel(p.month)} · {p.present_days}/{p.working_days} hari
+                            {p.late_minutes_net > 0 && ` · telat ${p.late_minutes_net} mnt`}
+                            {p.half_days > 0 && ` · setengah ${p.half_days}x`}
+                          </span>
+                          {p.status === 'gugur' && p.reason && (
+                            <span className="block md:hidden text-[10px] text-rose-600 font-bold">{p.reason}</span>
+                          )}
+                        </td>
+                        <td className="hidden md:table-cell p-3 border-r border-emerald-100/70 font-mono text-center text-[11px] text-gray-600 bg-gray-50/10">
+                          {monthLabel(p.month)}
+                        </td>
+                        <td className="hidden md:table-cell p-3 border-r border-emerald-100/70 text-center text-gray-600">
+                          <span className="px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200/50 rounded-full font-bold text-[10px]">
+                            {p.present_days}/{p.working_days} Hari
+                          </span>
+                        </td>
+                        <td className={`p-1.5 md:p-3 border-r border-emerald-100/70 text-right font-mono font-bold text-[13px] md:text-sm bg-emerald-50/25 ${p.status === 'cair' ? 'text-emerald-950' : 'text-rose-400'}`}>
+                          {p.status === 'cair' ? formatIDR(p.amount) : 'Rp0'}
+                        </td>
+                        <td className="hidden md:table-cell p-3 border-r border-emerald-100/70 text-[11px] text-gray-500 font-mono space-y-0.5">
+                          {(() => {
+                            const hariLayak = Math.max(0, p.present_days - p.half_days);
+                            const tarif = hariLayak > 0 && p.status === 'cair' ? Math.round(p.amount / hariLayak) : 0;
+                            return (
+                              <>
+                                <div className="flex justify-between gap-2 border-b border-gray-100 pb-0.5">
+                                  <span>Hari Layak:</span>
+                                  <span className="font-bold text-gray-700">{hariLayak} hari</span>
+                                </div>
+                                {p.late_minutes_net > 0 && (
+                                  <div className="flex justify-between gap-2 border-b border-gray-100 pb-0.5 text-rose-600 font-bold">
+                                    <span>Telat (net):</span>
+                                    <span>{p.late_minutes_net} mnt</span>
+                                  </div>
+                                )}
+                                {p.half_days > 0 && (
+                                  <div className="flex justify-between gap-2 border-b border-gray-100 pb-0.5 text-amber-600 font-bold">
+                                    <span>Setengah hari:</span>
+                                    <span>{p.half_days}x</span>
+                                  </div>
+                                )}
+                                {p.status === 'cair' && tarif > 0 && (
+                                  <div className="flex justify-between gap-2 text-emerald-700 font-bold">
+                                    <span>Tarif:</span>
+                                    <span>{hariLayak} × {formatIDR(tarif)}</span>
+                                  </div>
+                                )}
+                                {p.status === 'gugur' && p.reason && (
+                                  <div className="text-rose-600 font-bold pt-0.5" title={p.reason}>
+                                    {p.reason}
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
+                        </td>
+                        <td className="p-1.5 md:p-3 text-center bg-gray-50/5">
+                          <div className="flex flex-col sm:flex-row items-center justify-center gap-1.5">
+                            <button type="button" onClick={() => handlePrintBonusSlip(p)}
+                              className="inline-flex items-center gap-1.5 bg-evergreen hover:bg-evergreen-dark text-white px-2 py-1.5 rounded-lg text-[10px] font-bold shadow-xs transition-colors cursor-pointer"
+                              title="Pratinjau & Cetak Slip Bonus (A4)">
+                              <Printer className="w-3.5 h-3.5" />
+                              <span>{p.payment_status === 'paid' ? 'Cetak Ulang' : 'Cetak Slip'}</span>
+                            </button>
+                            {p.status === 'cair' && (
+                              <button type="button" onClick={() => handleTogglePaid(p)}
+                                className={`text-[10px] font-bold px-2 py-1.5 rounded-lg cursor-pointer ${p.payment_status === 'paid'
+                                  ? 'bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100'
+                                  : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}>
+                                {p.payment_status === 'paid' ? 'Batalkan Lunas' : 'Tandai Lunas'}
+                              </button>
+                            )}
+                            <button type="button" onClick={() => setDeletePayoutId(p.id)}
+                              className="inline-flex items-center justify-center p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors cursor-pointer"
+                              title="Hapus Slip Bonus">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
 
-                    {open && (
-                      <div className="overflow-x-auto border-t border-gray-100">
-                        <table className="w-full text-xs text-left">
-                          <thead>
-                            <tr className="bg-evergreen/90 text-white font-bold uppercase tracking-wider text-[10px]">
-                              <th className="p-2">Karyawan</th>
-                              <th className="p-2 w-28 text-center">Hadir</th>
-                              <th className="p-2 w-32 text-right">Jumlah</th>
-                              <th className="p-2 w-52 text-center">Aksi</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-emerald-100">
-                            {[...cair, ...gugur].map(p => (
-                              <tr key={p.id} className="hover:bg-emerald-50/20">
-                                <td className="p-2 font-semibold text-gray-700">
-                                  {p.employee_name}
-                                  {p.status === 'gugur' && <span className="ml-1.5 text-[9px] bg-rose-50 text-rose-600 border border-rose-100 px-1 py-0.5 rounded font-bold uppercase">Gugur</span>}
-                                  {p.status === 'gugur' && p.reason && <span className="block text-[10px] text-rose-500 truncate max-w-[220px]" title={p.reason}>{p.reason}</span>}
-                                </td>
-                                <td className="p-2 text-center font-mono text-gray-500">{p.present_days}/{p.working_days}</td>
-                                <td className={`p-2 text-right font-mono font-bold ${p.status === 'cair' ? 'text-emerald-700' : 'text-rose-300'}`}>
-                                  {p.status === 'cair' ? formatIDR(p.amount) : 'Rp0'}
-                                </td>
-                                <td className="p-2 text-center">
-                                  {p.status === 'cair' && (
-                                    <div className="inline-flex gap-1.5">
-                                      <button type="button" onClick={() => handlePrintBonusSlip(p)}
-                                        className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-[10px] font-bold px-2 py-1 rounded cursor-pointer inline-flex items-center gap-1">
-                                        <Printer className="w-3 h-3" /> {p.payment_status === 'paid' ? 'Cetak Ulang' : 'Cetak Slip'}
-                                      </button>
-                                      <button type="button" onClick={() => handleTogglePaid(p)}
-                                        className={`text-[10px] font-bold px-2 py-1 rounded cursor-pointer ${p.payment_status === 'paid' ? 'bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}>
-                                        {p.payment_status === 'paid' ? 'Batalkan Lunas' : 'Tandai Lunas'}
-                                      </button>
-                                    </div>
-                                  )}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+            {slipTotalPages > 1 && (
+              <div className="p-3 bg-emerald-50/20 rounded-b-lg border border-emerald-800/10 border-t-0 flex items-center justify-between gap-3 text-xs">
+                <button
+                  type="button"
+                  disabled={slipPageClamped <= 1}
+                  onClick={() => setSlipPage(p => Math.max(1, p - 1))}
+                  className="px-3 py-1.5 rounded-lg font-bold border border-emerald-800/20 bg-white text-emerald-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer hover:bg-emerald-50"
+                >
+                  &larr; Sebelumnya
+                </button>
+                <span className="font-mono text-gray-500">Halaman {slipPageClamped} dari {slipTotalPages}</span>
+                <button
+                  type="button"
+                  disabled={slipPageClamped >= slipTotalPages}
+                  onClick={() => setSlipPage(p => Math.min(slipTotalPages, p + 1))}
+                  className="px-3 py-1.5 rounded-lg font-bold border border-emerald-800/20 bg-white text-emerald-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer hover:bg-emerald-50"
+                >
+                  Berikutnya &rarr;
+                </button>
+              </div>
+            )}
         </div>
       </div>
       )}
 
     </div>
+
+    {/* Pratinjau slip bonus sebelum cetak — sejajar dengan slip gaji mingguan */}
+    {previewPayout && (
+      <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-6 overflow-y-auto overscroll-contain no-print font-sans">
+        <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-3xl overflow-hidden flex flex-col my-auto max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-3rem)]">
+          <div className="bg-slate-50 border-b border-slate-100 p-4 sm:px-6 flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 bg-amber-500 rounded-full animate-pulse" />
+              <span className="font-bold text-xs sm:text-sm text-slate-800 uppercase tracking-wider">Pratinjau Slip Bonus (A4)</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPreviewPayout(null)}
+                className="px-3 py-1.5 border border-slate-200 text-slate-600 rounded-lg text-xs font-semibold hover:bg-slate-100 transition-all cursor-pointer"
+              >
+                Tutup
+              </button>
+              <button
+                onClick={() => triggerPrintBonusSlip(previewPayout)}
+                className="bg-emerald-800 text-white px-4 py-1.5 rounded-lg text-xs font-semibold hover:bg-emerald-900 transition-all flex items-center gap-1.5 shadow-md cursor-pointer"
+              >
+                <Printer className="w-3.5 h-3.5" /> Cetak Sekarang
+              </button>
+            </div>
+          </div>
+          <div className="p-4 sm:p-6 bg-slate-200 min-h-0 flex-1 overflow-auto overscroll-contain">
+            <A4PreviewSheet>
+              {renderBonusSlipLayout(previewPayout, divisionLabel(employeeDept.get(previewPayout.employee_id), 'Umum'))}
+            </A4PreviewSheet>
+          </div>
+          <div className="bg-slate-50 p-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between text-[11px] text-slate-500 gap-2">
+            <span>● Slip dicetak pada kertas A4 biasa atau disimpan sebagai PDF.</span>
+            <span className="font-semibold text-slate-700">Pilih &quot;Save as PDF&quot; di dialog cetak bila ingin disimpan.</span>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Konfirmasi hapus slip bonus (per-slip) */}
+    {deletePayoutId && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 no-print animate-fade-in"
+        onClick={() => setDeletePayoutId('')}
+      >
+        <div
+          className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-gray-200 text-center relative animate-scale-up"
+          onClick={e => e.stopPropagation()}
+        >
+          <Trash2 className="w-10 h-10 text-rose-500 mx-auto mb-3" />
+          <h4 className="font-bold text-base text-gray-800 mb-1">Hapus Slip Bonus?</h4>
+          <p className="text-xs text-gray-500 leading-relaxed mb-5">
+            Slip bonus karyawan ini akan dihapus permanen dari buku. Riwayat absensi tidak terpengaruh.
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setDeletePayoutId('')}
+              className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-xs font-bold hover:bg-gray-50 transition-colors cursor-pointer"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={confirmDeletePayout}
+              className="flex-1 px-4 py-2.5 rounded-xl bg-rose-600 text-white text-xs font-bold hover:bg-rose-700 transition-colors cursor-pointer"
+            >
+              Ya, Hapus
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
 
     {printPayout && (
       <div className="print-only" style={{ width: '180mm', boxSizing: 'border-box' }}>

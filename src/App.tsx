@@ -763,7 +763,7 @@ export default function App() {
             {/* PENJUALAN */}
             {activeTab === 'penjualan' && (
               <div className="space-y-4">
-                <div className="bg-white p-1 rounded-xl border border-gray-200 inline-flex gap-1 no-print">
+                <div className="bg-white p-1 rounded-xl border border-gray-200 inline-flex flex-wrap max-w-full gap-1 no-print">
                   <button
                     onClick={() => setSalesSubTab('marketplace')}
                     className={`px-4 py-1.5 rounded-lg text-sm font-semibold cursor-pointer ${
@@ -808,7 +808,7 @@ export default function App() {
             {/* KARYAWAN (owner): data + absensi + payroll */}
             {activeTab === 'karyawan' && (
               <div className="space-y-4">
-                <div className="bg-white p-1 rounded-xl border border-gray-200 inline-flex gap-1 no-print">
+                <div className="bg-white p-1 rounded-xl border border-gray-200 inline-flex flex-wrap max-w-full gap-1 no-print">
                   <button
                     onClick={() => setKaryawanSubTab('data')}
                     className={`px-4 py-1.5 rounded-lg text-sm font-semibold cursor-pointer ${
