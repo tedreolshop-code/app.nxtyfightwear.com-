@@ -539,19 +539,9 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
           </div>
         </div>
 
-        {/* Sortir karyawan & divisi — berlaku untuk tabel posisi hari ini maupun tabel bulan */}
+        {/* Filter divisi — berlaku untuk tabel posisi hari ini maupun tabel bulan */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 border-t border-gray-100 pt-3">
-          <input
-            type="text"
-            value={search}
-            onChange={e => { setSearch(e.target.value); setSlipPage(1); }}
-            placeholder="Cari nama karyawan..."
-            className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs w-full sm:w-56 focus:outline-none focus:ring-1 focus:ring-evergreen"
-          />
           <DivisionFilter value={divFilter} onChange={setDivFilter} />
-          <span className="text-[10px] text-gray-400 sm:ml-auto">
-            {evaluations.length} dari {employees.length} karyawan aktif
-          </span>
         </div>
 
         {/* Sub-tab: pisah 3 tabel supaya tidak scroll panjang */}
@@ -608,6 +598,18 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
             </span>
           </summary>
 
+          <div className="px-3 py-2 bg-gray-50/70 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center gap-2">
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Cari nama karyawan..."
+              className="bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs w-full sm:w-56 focus:outline-none focus:ring-1 focus:ring-evergreen"
+            />
+            <span className="text-[10px] text-gray-400 sm:ml-auto">
+              {running.rows.length} dari {running.employeeCount} karyawan
+            </span>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-[11px] md:text-xs">
               <thead>
@@ -676,6 +678,20 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
             <span>Bulan ini masih berjalan — status di bawah adalah posisi sementara dan bisa berubah sampai akhir bulan. Terbitkan slip setiap <b>tanggal 1</b> untuk bulan sebelumnya.</span>
           </div>
         )}
+
+        {/* Pencarian dekat tabel: menyaring tabel evaluasi bulan terpilih */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Cari nama karyawan..."
+            className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-xs w-full sm:w-56 focus:outline-none focus:ring-1 focus:ring-evergreen"
+          />
+          <span className="text-[10px] text-gray-400 sm:ml-auto">
+            {evaluations.length} dari {employees.length} karyawan
+          </span>
+        </div>
 
         {/* Tabel evaluasi */}
         <div className="overflow-x-auto">
@@ -809,6 +825,13 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
                 </button>
               </div>
               <DivisionFilter value={riwayatDivFilter} onChange={setRiwayatDivFilter} />
+              <input
+                type="text"
+                value={search}
+                onChange={e => { setSearch(e.target.value); setSlipPage(1); }}
+                placeholder="Cari nama karyawan..."
+                className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-xs w-full sm:w-48 focus:outline-none focus:ring-1 focus:ring-evergreen"
+              />
               <span className="text-[10px] text-gray-400 sm:ml-auto">
                 {flatSlips.length === 0
                   ? (search.trim() || riwayatDivFilter
