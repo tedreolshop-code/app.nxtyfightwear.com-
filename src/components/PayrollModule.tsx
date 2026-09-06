@@ -5,7 +5,7 @@ import { brandName, brandLegalName, brandInitials } from '../brand';
 import { exportExcel } from '../exportExcel';
 import { Printer, Landmark, DollarSign, Plus, CheckCircle2, Sliders, History, Trash2, X, Calculator, Edit2, FileSpreadsheet, Wallet, Award } from 'lucide-react';
 import { AttendanceBonusPanel, AttendanceBonusBalanceCard, AttendanceBonusHistoryList } from './AttendanceBonusPanel';
-import { currentWeeklyPayrollPeriod, lastCompletedWeeklyPayrollPeriod, weeklyPeriodEnd } from '../dataStore';
+import { currentWeeklyPayrollPeriod, lastCompletedWeeklyPayrollPeriod, weeklyPeriodEnd, payrollPeriodsOverlap } from '../dataStore';
 import { withA4PageSize } from '../printA4';
 import { A4PreviewSheet } from './A4PreviewSheet';
 
@@ -254,7 +254,12 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     ).length;
     const outstanding = cashAdvances.filter(c => c.employee_id === emp.id).reduce((s, c) => s + c.remaining_balance, 0);
     const kasbon = Math.min(outstanding, emp.default_weekly_cash_advance_deduction ?? 50000);
-    const alreadyExists = payrolls.some(p => p.employee_id === emp.id && p.period_start === pStart && p.period_end === pEnd);
+    // Slip periode ini atau yang beririsan dengannya → dobel bayar. Aturan
+    // irisannya satu dengan dataStore.recordPayroll (payrollPeriodsOverlap),
+    // jadi UI dan store tidak mungkin berbeda keputusan.
+    const alreadyExists = payrolls.some(p =>
+      p.employee_id === emp.id && payrollPeriodsOverlap(p, { period_start: pStart, period_end: pEnd })
+    );
     return {
       employeeId: emp.id, name: emp.name, rateHarian: emp.rate_harian, rateLembur: emp.rate_lembur_per_jam,
       days, overtimeHrs, bonus, kasbon, outstanding, accCount, pendingCount,

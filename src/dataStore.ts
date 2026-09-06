@@ -132,6 +132,45 @@ export const weeklyPeriodEnd = (end: string): string => {
   return dt.getUTCDay() === 6 ? new Date(dt.getTime() - 86400000).toISOString().slice(0, 10) : end;
 };
 
+/**
+ * Dua slip periode karyawan yang sama dianggap menyusut kalau rentang hari kerjanya
+ * (setelah akhir periode dinormalkan Sabtu→Jumat) beririsan. Periode mingguan
+ * memang Sabtu–Jumat penuh, jadi irisan apa pun = satu hari dibayar dua kali,
+ * meski tepi period_start/period_end-nya ditulis beda.
+ */
+export const payrollPeriodsOverlap = (
+  a: { period_start: string; period_end: string },
+  b: { period_start: string; period_end: string }
+): boolean => {
+  const aEnd = weeklyPeriodEnd(a.period_end);
+  const bEnd = weeklyPeriodEnd(b.period_end);
+  return a.period_start <= bEnd && b.period_start <= aEnd;
+};
+
+/**
+ * Buang slip gaji dobel satu periode (karyawan + periode sama setelah
+ * normalisasi akhir Sabtu→Jumat). Duplikat bisa lolos dari guard penulisan
+ * kalau DUA PERANGKAT sama-sama menerbitkan periode yang sama sebelum cloud
+ * sync bergabung — merge antar perangkat hanya mengenal id. Yang dipertahankan:
+ * yang lunas, lalu id terkecil, supaya hasilnya sama di semua perangkat.
+ */
+export const dedupePayrollRows = <T extends PayrollWeekly>(rows: T[]): { kept: T[]; dupes: number } => {
+  const byPeriod = new Map<string, T>();
+  let dupes = 0;
+  for (const p of rows) {
+    const key = `${p.employee_id}|${p.period_start}|${weeklyPeriodEnd(p.period_end)}`;
+    const kept = byPeriod.get(key);
+    if (!kept) { byPeriod.set(key, p); continue; }
+    dupes++;
+    const pMenang = (p.payment_status === 'paid') !== (kept.payment_status === 'paid')
+      ? p.payment_status === 'paid'
+      : p.id < kept.id;
+    if (pMenang) byPeriod.set(key, p);
+  }
+  const keptIds = new Set(Array.from(byPeriod.values()).map(p => p.id));
+  return { kept: rows.filter(p => keptIds.has(p.id)), dupes };
+};
+
 const INITIAL_DEPARTMENTS: Department[] = [
   { id: 'dept-eva-foam', name: 'Eva Foam', latitude: COORDS.eva_foam.lat, longitude: COORDS.eva_foam.lng },
   { id: 'dept-konveksi', name: 'Departemen Konveksi', latitude: COORDS.konveksi.lat, longitude: COORDS.konveksi.lng },
@@ -527,7 +566,20 @@ class DataStore {
   getCashAdvanceTransactions = (): CashAdvanceTransaction[] => this.get('cash_advance_transactions', INITIAL_CASH_ADVANCE_TRANSACTIONS);
   setCashAdvanceTransactions = (data: CashAdvanceTransaction[]) => this.set('cash_advance_transactions', data);
 
-  getPayrollWeekly = (): PayrollWeekly[] => this.get('payroll_weekly', INITIAL_PAYROLL_WEEKLY);
+  /**
+   * Guard ganda untuk slip gaji: dedup di titik baca (lihat dedupePayrollRows)
+   * karena duplikat bisa lolos dari guard penulisan kalau DUA PERANGKAT
+   * sama-sama menerbitkan periode yang sama sebelum cloud sync bergabung
+   * (merge antar perangkat hanya mengenal id).
+   */
+  getPayrollWeekly = (): PayrollWeekly[] => {
+    const rows = this.get('payroll_weekly', INITIAL_PAYROLL_WEEKLY);
+    const { kept, dupes } = dedupePayrollRows(rows);
+    if (dupes > 0) {
+      console.warn(`[dataStore] ${dupes} slip gaji dobel satu periode dibuang dari tampilan (dua perangkat menerbitkan periode sama sebelum sync).`);
+    }
+    return kept;
+  };
 
   getAttendanceBonusPayouts = (): AttendanceBonusPayout[] => this.get('attendance_bonus_payouts', []);
   setAttendanceBonusPayouts = (data: AttendanceBonusPayout[]) => this.set('attendance_bonus_payouts', data);
@@ -1583,10 +1635,19 @@ class DataStore {
     const exists = payrolls.some(p =>
       p.employee_id === corrected.employee_id &&
       p.period_start === corrected.period_start &&
-      p.period_end === corrected.period_end
+      weeklyPeriodEnd(p.period_end) === corrected.period_end
     );
     if (exists) {
       throw new Error(`Payroll untuk ${corrected.employee_name} pada periode ${corrected.period_start} s/d ${corrected.period_end} sudah pernah dibuat.`);
+    }
+    // Guard irisan: slip dengan tepi periode berbeda tapi menimpa hari kerja yang
+    // sama tetap dobel bayar. Periode mingguan memang Sabtu–Jumat, jadi irisan
+    // apa pun dengan slip yang sudah ada berarti kesalahan pilih periode.
+    const iris = payrolls.find(p =>
+      p.employee_id === corrected.employee_id && payrollPeriodsOverlap(p, corrected)
+    );
+    if (iris) {
+      throw new Error(`Slip gaji ${corrected.employee_name} periode ${iris.period_start} s/d ${weeklyPeriodEnd(iris.period_end)} sudah ada dan beririsan dengan ${corrected.period_start} s/d ${corrected.period_end}. Satu hari kerja hanya boleh dibayar sekali.`);
     }
     payrolls.unshift(corrected);
     this.setPayrollWeekly(payrolls);
