@@ -421,9 +421,13 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
   const employeeById = useMemo(() => new Map(dataStore.getEmployees().map(e => [e.id, e])), [employees]);
 
   // Slip bonus yang sudah diterbitkan, disaring per divisi, dikelompokkan per bulan.
-  const filteredPayouts = useMemo(() =>
-    payouts.filter(p => !riwayatDivFilter || employeeDept.get(p.employee_id) === riwayatDivFilter),
-    [payouts, riwayatDivFilter, employeeDept]);
+  // Pencarian nama di atas berlaku untuk ketiga tabel: posisi, evaluasi, DAN buku slip.
+  const filteredPayouts = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return payouts.filter(p =>
+      (!riwayatDivFilter || employeeDept.get(p.employee_id) === riwayatDivFilter) &&
+      (!q || p.employee_name.toLowerCase().includes(q)));
+  }, [payouts, riwayatDivFilter, search, employeeDept]);
 
   // Ringkasan seluruh slip (bukan cuma yang ditampilkan) — kartu di atas.
   const slipTotals = useMemo(() => {
@@ -540,7 +544,7 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
           <input
             type="text"
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={e => { setSearch(e.target.value); setSlipPage(1); }}
             placeholder="Cari nama karyawan..."
             className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs w-full sm:w-56 focus:outline-none focus:ring-1 focus:ring-evergreen"
           />
@@ -807,14 +811,18 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
               <DivisionFilter value={riwayatDivFilter} onChange={setRiwayatDivFilter} />
               <span className="text-[10px] text-gray-400 sm:ml-auto">
                 {flatSlips.length === 0
-                  ? (slipListView === 'arsip' ? 'Belum ada slip bonus lunas.' : 'Tidak ada slip bonus yang menunggu pembayaran.')
+                  ? (search.trim() || riwayatDivFilter
+                      ? 'Tidak ada slip bonus yang cocok dengan pencarian/filter.'
+                      : slipListView === 'arsip' ? 'Belum ada slip bonus lunas.' : 'Tidak ada slip bonus yang menunggu pembayaran.')
                   : `Menampilkan ${pagedSlips.length} dari ${flatSlips.length} slip${slipTotalPages > 1 ? ` (halaman ${slipPageClamped}/${slipTotalPages})` : ''}`}
               </span>
             </div>
 
             {flatSlips.length === 0 ? (
               <p className="text-xs text-gray-400 italic text-center py-6 bg-gray-50 rounded border border-dashed border-gray-200">
-                {slipListView === 'arsip' ? 'Belum ada slip bonus yang ditandai lunas.' : 'Tidak ada slip bonus yang menunggu pembayaran.'}
+                {(search.trim() || riwayatDivFilter)
+                  ? 'Tidak ada slip bonus yang cocok dengan pencarian/filter.'
+                  : slipListView === 'arsip' ? 'Belum ada slip bonus yang ditandai lunas.' : 'Tidak ada slip bonus yang menunggu pembayaran.'}
               </p>
             ) : (
               <div className="overflow-x-auto rounded-lg border border-emerald-800/10 border-t-0 shadow-inner bg-emerald-50/5">
