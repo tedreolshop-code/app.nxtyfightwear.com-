@@ -483,6 +483,16 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
     if (qtyDone <= 0 && qtyRejected <= 0) {
       return alert('Isi minimal Qty Selesai atau Qty Reject lebih dari 0.');
     }
+    // Anti lebih-buku: selesai + reject pada satu tahap tidak boleh melebihi target order.
+    // Sama seperti aturan serah-terima: hasil baik dan rusak mengambil dari pool yang sama.
+    const loggedStage = taskStage || job.current_stage;
+    const loggedAtStage = dataStore.getProductionTaskLogs()
+      .filter(log => log.production_job_id === job.id && log.stage_name === loggedStage)
+      .reduce((sum, log) => sum + (log.qty_done || 0) + (log.qty_rejected || 0), 0);
+    const remaining = Math.max(0, displayQty(job) - loggedAtStage);
+    if (qtyDone + qtyRejected > remaining) {
+      return alert(`Kuota tahap "${loggedStage}" tinggal ${remaining} pcs (target ${displayQty(job)}, sudah tercatat ${loggedAtStage}). Sesuaikan jumlahnya — bila memang ada penambahan order, minta admin memperbarui order produksinya.`);
+    }
     const label = `${job.order_number || job.id} - ${job.product_name}`;
     dataStore.postProductionTaskLog({
       id: `ptask-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -491,8 +501,8 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
       employee_id: currentEmployee.id,
       employee_name: currentEmployee.name,
       date: wibTodayStr(),
-      stage_name: taskStage || job.current_stage,
-      task_name: taskName.trim() || taskStage || job.current_stage,
+      stage_name: loggedStage,
+      task_name: taskName.trim() || loggedStage,
       qty_done: qtyDone,
       qty_rejected: qtyRejected,
       notes: taskNotes.trim() || undefined,
@@ -1258,14 +1268,27 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                           <div>
-                            <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Qty Selesai</label>
-                            <input type="number" min={0} value={taskQtyDone || ''} onChange={event => setTaskQtyDone(Number(event.target.value))} className="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-xs font-mono font-bold" />
+                            <label htmlFor="task-qty-done" className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Qty Selesai</label>
+                            <input id="task-qty-done" type="number" min={0} max={(() => {
+                              const logged = taskLogs.filter(log => log.production_job_id === selectedTaskJob.id && log.stage_name === (taskStage || selectedTaskJob.current_stage)).reduce((sum, log) => sum + (log.qty_done || 0) + (log.qty_rejected || 0), 0);
+                              return Math.max(0, displayQty(selectedTaskJob) - logged);
+                            })()} value={taskQtyDone || ''} onChange={event => setTaskQtyDone(Number(event.target.value))} className="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-xs font-mono font-bold" />
                           </div>
                           <div>
-                            <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Qty Reject</label>
-                            <input type="number" min={0} value={taskQtyRejected || ''} onChange={event => setTaskQtyRejected(Number(event.target.value))} className="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-xs font-mono font-bold" />
+                            <label htmlFor="task-qty-reject" className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Qty Reject</label>
+                            <input id="task-qty-reject" type="number" min={0} value={taskQtyRejected || ''} onChange={event => setTaskQtyRejected(Number(event.target.value))} className="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-xs font-mono font-bold" />
                           </div>
                         </div>
+                        {(() => {
+                          const loggedStage = taskStage || selectedTaskJob.current_stage;
+                          const loggedAtStage = taskLogs.filter(log => log.production_job_id === selectedTaskJob.id && log.stage_name === loggedStage).reduce((sum, log) => sum + (log.qty_done || 0) + (log.qty_rejected || 0), 0);
+                          const remaining = Math.max(0, displayQty(selectedTaskJob) - loggedAtStage);
+                          return (
+                            <p className={`text-[10px] font-bold ${remaining === 0 ? 'text-rose-600' : 'text-gray-400'}`}>
+                              Target tahap &quot;{loggedStage}&quot;: {displayQty(selectedTaskJob)} pcs &middot; sudah tercatat {loggedAtStage} &middot; sisa {remaining}
+                            </p>
+                          );
+                        })()}
                         <div>
                           <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Catatan</label>
                           <textarea value={taskNotes} onChange={event => setTaskNotes(event.target.value)} rows={3} placeholder="Kendala, alasan reject, atau detail pekerjaan" className="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-xs" />
