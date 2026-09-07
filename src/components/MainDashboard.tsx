@@ -22,6 +22,13 @@ const formatIDRShort = (val: number) => {
   return `${val}`;
 };
 
+// Nama panggilan untuk sapaan: lewati gelar bertitik ("H.", "Dr.") dan ambil kata
+// pertama yang layak — "H. Ari Gunawan" disapa "Ari", bukan "H.".
+const greetingName = (full: string) => {
+  const parts = full.trim().split(/\s+/).filter(p => !/^[A-Za-z]\.$/.test(p));
+  return parts[0] || full.trim().split(/\s+/)[0] || '';
+};
+
 // Tanggal lokal (WIB), bukan UTC — toISOString() bisa mundur 1 hari sebelum jam 07:00.
 const localDateStr = (d: Date) => {
   const y = d.getFullYear();
@@ -137,6 +144,24 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName, em
   const deltaVsKemarin = penjualanKemarin > 0
     ? ((penjualanHariIni - penjualanKemarin) / penjualanKemarin) * 100
     : null;
+  // Rata-rata penjualan 7 hari (termasuk hari ini): pembanding yang lebih stabil dari kemarin
+  const rata7Hari = Math.round(total7Hari / 7);
+  const deltaVsRata = rata7Hari > 0 ? ((penjualanHariIni - rata7Hari) / rata7Hari) * 100 : null;
+
+  // Bulan berjalan (WIB) vs periode sama bulan lalu — konteks tren bulanan untuk owner
+  const awalBulanIni = today.slice(0, 8) + '01';
+  const tanggalSampaiHariIni = Array.from({ length: Number(today.slice(8, 10)) }, (_, i) => awalBulanIni.slice(0, 8) + String(i + 1).padStart(2, '0'));
+  const penjualanBulanIni = tanggalSampaiHariIni.reduce((sum, d) => sum + sumChannels(salesByChannelOnDate(d)), 0);
+  const tanggalBulanLalu = (() => {
+    const bulanLalu = new Date();
+    bulanLalu.setDate(0); // hari terakhir bulan lalu
+    const ym = bulanLalu.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' }).slice(0, 8);
+    return Array.from({ length: Number(today.slice(8, 10)) }, (_, i) => ym + String(i + 1).padStart(2, '0'));
+  })();
+  const penjualanBulanLaluPeriodeSama = tanggalBulanLalu.reduce((sum, d) => sum + sumChannels(salesByChannelOnDate(d)), 0);
+  const deltaBulanIni = penjualanBulanLaluPeriodeSama > 0
+    ? ((penjualanBulanIni - penjualanBulanLaluPeriodeSama) / penjualanBulanLaluPeriodeSama) * 100
+    : null;
 
   // Produk terlaris & potongan admin marketplace, 7 hari terakhir
   const tanggal7Hari = new Set(tren7Hari.map(t => t.date));
@@ -222,6 +247,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName, em
     value: string;
     sub?: string;
     warn?: boolean;
+    span2?: boolean; // kartu dengan sub panjang tampil memanjang 2 kolom di HP
     icon: React.ComponentType<{ className?: string }>;
     tab: string;
     accent: { chip: string; icon: string; bar: string };
@@ -238,19 +264,23 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName, em
   };
 
   const kartuPenjualan: StatCard[] = [
-    { label: 'Penjualan Hari Ini', value: formatIDR(penjualanHariIni), sub: 'Detail item + rekap channel + pesanan', icon: TrendingUp, tab: 'penjualan', accent: accents.emerald },
-    { label: 'Pesanan Aktif', value: formatIDR(nilaiOrderAktif), sub: `${orderAktif.length} pesanan · ${orderBaru.length} menunggu diproses`, warn: orderBaru.length > 0, icon: ShoppingBag, tab: 'penjualan', accent: accents.blue },
+    { label: 'Penjualan Hari Ini', value: formatIDR(penjualanHariIni), sub: `Kemarin ${formatIDR(penjualanKemarin)} · rata-rata 7 hari ${formatIDR(rata7Hari)}`, icon: TrendingUp, tab: 'penjualan', accent: accents.emerald },
+    { label: 'Pesanan Aktif', value: formatIDR(nilaiOrderAktif), sub: `${orderAktif.length} pesanan berjalan · ${orderBaru.length} menunggu diproses`, icon: ShoppingBag, tab: 'penjualan', accent: accents.blue },
     { label: 'Pengeluaran Hari Ini', value: formatIDR(pengeluaranHariIni), sub: 'Pengeluaran harian + PO bahan baku', icon: Wallet, tab: 'pengeluaran', accent: accents.rose },
   ];
 
   const kartuProduksi: StatCard[] = [
-    { label: 'Produksi Berjalan', value: `${jobAktif.length}`, sub: jobTerlambat.length > 0 ? `${jobTerlambat.length} lewat tenggat!` : 'Semua sesuai jadwal', warn: jobTerlambat.length > 0, icon: Hammer, tab: 'produksi', accent: accents.violet },
+    // Angka besar = yang butuh tindakan (telat); sub = konteks total berjalan
+    jobTerlambat.length > 0
+      ? { label: 'Produksi Terlambat', value: `${jobTerlambat.length}`, sub: `dari ${jobAktif.length} pekerjaan berjalan lewat tenggat 7 hari`, warn: true, span2: true, icon: Hammer, tab: 'produksi', accent: accents.violet }
+      : { label: 'Produksi Berjalan', value: `${jobAktif.length}`, sub: 'Semua sesuai jadwal tenggat', icon: Hammer, tab: 'produksi', accent: accents.violet },
     { label: 'Bahan Baku Kritis', value: `${bahanKritis.length}`, sub: bahanKritis.length > 0 ? bahanKritis.map(m => m.name).slice(0, 2).join(', ') : 'Stok bahan aman', warn: bahanKritis.length > 0, icon: AlertTriangle, tab: 'gudang', accent: accents.amber },
     { label: 'Stok Produk Jadi', value: `${totalStokProduk} pcs`, sub: `${products.length} jenis produk`, icon: Archive, tab: 'gudang', accent: accents.teal },
   ];
 
   const kartuSDM: StatCard[] = [
-    { label: 'Hadir Hari Ini', value: `${hadirHariIni} / ${karyawanAktif}`, sub: 'Karyawan sudah absen masuk', icon: Users, tab: 'karyawan', accent: accents.sky },
+    // Total = jumlah rincian yang tampil di sub (belum masuk + belum pulang + telat + dibantu admin + sync)
+    { label: 'Absensi Perlu Cek', value: `${absensiPerluCek}`, sub: `Belum masuk ${belumMasukHariIni} · belum pulang ${belumPulangHariIni} · telat ${terlambatHariIni} · bantu ${dibantuAdminHariIni} · sync ${pendingAttendanceSync}`, warn: absensiPerluCek > 0, span2: true, icon: Users, tab: 'karyawan', accent: accents.sky },
   ];
 
   let cards: StatCard[] = [];
@@ -261,14 +291,13 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName, em
   else if (role === 'admin_hrd') cards = kartuSDM;
   else if (role === 'admin_keuangan_hr') cards = [...kartuSDM, kartuPenjualan[2]];
 
-  // Daftar "perlu perhatian" untuk owner
+  // Daftar "perlu perhatian" untuk owner — hanya hal yang belum tampil sebagai kartu
+  // peringatan di atas (produksi telat & bahan kritis sudah punya kartunya sendiri).
   const perluPerhatian: Array<{ text: string; tab: string; serius: boolean }> = [];
   if (orderBaru.length > 0) perluPerhatian.push({ text: `${orderBaru.length} pesanan menunggu dikirim ke produksi`, tab: 'penjualan', serius: false });
-  if (jobTerlambat.length > 0) perluPerhatian.push({ text: `${jobTerlambat.length} pekerjaan produksi lewat tenggat 7 hari`, tab: 'produksi', serius: true });
-  bahanKritis.slice(0, 3).forEach(m => perluPerhatian.push({ text: `Stok ${m.name} tinggal ${m.current_stock} ${m.unit} (minimum ${m.stock_minimum})`, tab: 'gudang', serius: true }));
+  if (bahanKritis.length > 3) perluPerhatian.push({ text: `+${bahanKritis.length - 3} bahan lain di bawah stok minimum`, tab: 'gudang', serius: true });
   if (karyawanBelumPayroll > 0) perluPerhatian.push({ text: `${karyawanBelumPayroll} karyawan belum punya slip gaji minggu ini`, tab: 'karyawan:payroll', serius: false });
-  if (absensiPerluCek > 0) perluPerhatian.push({ text: `${absensiPerluCek} catatan absensi perlu dicek hari ini`, tab: 'karyawan:absensi', serius: false });
-  if (totalKasbonAktif >= 1_000_000 || kasbonBaruMingguIni > 0) perluPerhatian.push({ text: `Kasbon aktif ${formatIDR(totalKasbonAktif)} dari ${karyawanKasbonAktif} karyawan`, tab: 'karyawan:kasbon', serius: totalKasbonAktif >= 1_000_000 });
+  if (kasbonBaruMingguIni > 0) perluPerhatian.push({ text: `Kasbon baru minggu ini ${formatIDR(kasbonBaruMingguIni)} (aktif ${formatIDR(totalKasbonAktif)})`, tab: 'karyawan:kasbon', serius: totalKasbonAktif >= 1_000_000 });
 
   const goToAttentionTarget = (target: string) => {
     if (target === 'karyawan:payroll') return goToEmployeeSubTab('payroll');
@@ -279,18 +308,18 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName, em
 
   return (
     <div className="space-y-5">
-      {/* Hero header — sapaan + penjualan hari ini (owner) */}
+      {/* Hero header — sapaan + ringkasan angka utama (owner) */}
       <div className="rounded-2xl bg-gradient-to-br from-[var(--color-evergreen)] via-[#256446] to-[#2E7D54] p-5 sm:p-6 text-white shadow-lg shadow-emerald-900/10">
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-          <div>
-            <h1 className="text-lg font-bold">Halo, {userName.split(' ')[0]} 👋</h1>
+          <div className="min-w-0">
+            <h1 className="text-lg font-bold">Halo, {greetingName(userName)} 👋</h1>
             <p className="text-sm text-emerald-100/80">
               {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
             </p>
             {role === 'owner' && (
               <div className="mt-4">
                 <span className="text-xs uppercase tracking-wide text-emerald-200/90 font-semibold">Penjualan Hari Ini</span>
-                <div className="flex items-baseline gap-2.5 flex-wrap mt-0.5">
+                <div className="flex items-baseline gap-2 flex-wrap mt-0.5">
                   <span className="text-3xl font-black">{formatIDR(penjualanHariIni)}</span>
                   {deltaVsKemarin !== null && (
                     <span className={`text-xs font-bold rounded-full px-2 py-0.5 ${
@@ -299,27 +328,32 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName, em
                       {deltaVsKemarin >= 0 ? '▲' : '▼'} {Math.abs(deltaVsKemarin).toLocaleString('id-ID', { maximumFractionDigits: 0 })}% vs kemarin
                     </span>
                   )}
+                  {deltaVsRata !== null && (
+                    <span className={`text-xs font-bold rounded-full px-2 py-0.5 ${
+                      deltaVsRata >= 0 ? 'bg-emerald-300/25 text-emerald-100' : 'bg-amber-400/25 text-amber-100'
+                    }`}>
+                      {deltaVsRata >= 0 ? '▲' : '▼'} {Math.abs(deltaVsRata).toLocaleString('id-ID', { maximumFractionDigits: 0 })}% vs rata-rata 7 hari
+                    </span>
+                  )}
                 </div>
                 <div className="text-xs text-emerald-100/80 mt-1">
-                  Pengeluaran hari ini {formatIDR(pengeluaranHariIni)} · Penjualan 7 hari {formatIDR(total7Hari)}
+                  Kemarin {formatIDR(penjualanKemarin)} · Rata-rata 7 hari {formatIDR(rata7Hari)}
                 </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <span className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold ${
-                    labaHariIni >= 0 ? 'bg-white/15' : 'bg-rose-500/30'
-                  }`}>
-                    Laba kasar hari ini:
-                    <span className={`font-black ${labaHariIni >= 0 ? 'text-emerald-100' : 'text-rose-100'}`}>
-                      {formatIDR(labaHariIni)}
-                    </span>
-                  </span>
-                  <span className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold ${
-                    laba7Hari >= 0 ? 'bg-white/15' : 'bg-rose-500/30'
-                  }`}>
-                    7 hari:
-                    <span className={`font-black ${laba7Hari >= 0 ? 'text-emerald-100' : 'text-rose-100'}`}>
-                      {formatIDR(laba7Hari)}
-                    </span>
-                  </span>
+                <div className="mt-3 grid grid-cols-2 sm:flex sm:flex-wrap gap-2 max-w-xl">
+                  <div className="rounded-lg bg-white/10 px-3 py-2">
+                    <span className="block text-[10px] uppercase tracking-wide text-emerald-200/90 font-semibold">Bulan ini</span>
+                    <span className="text-sm font-black tabular-nums">{formatIDR(penjualanBulanIni)}</span>
+                    {deltaBulanIni !== null && (
+                      <span className={`ml-1.5 text-[10px] font-bold ${deltaBulanIni >= 0 ? 'text-emerald-200' : 'text-amber-200'}`}>
+                        {deltaBulanIni >= 0 ? '▲' : '▼'} {Math.abs(deltaBulanIni).toLocaleString('id-ID', { maximumFractionDigits: 0 })}% vs bln lalu
+                      </span>
+                    )}
+                  </div>
+                  <div className="rounded-lg bg-white/10 px-3 py-2">
+                    <span className="block text-[10px] uppercase tracking-wide text-emerald-200/90 font-semibold">Laba kasar 7 hari</span>
+                    <span className={`text-sm font-black tabular-nums ${laba7Hari >= 0 ? '' : 'text-rose-200'}`}>{formatIDR(laba7Hari)}</span>
+                    <span className="ml-1.5 text-[10px] text-emerald-200/70 whitespace-nowrap">(basis kas)</span>
+                  </div>
                 </div>
               </div>
             )}
@@ -359,7 +393,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName, em
               <ChevronRight className="w-4 h-4 text-gray-300" />
             </div>
             <p className={`mt-1 text-lg font-black ${absensiPerluCek > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>{absensiPerluCek}</p>
-            <p className="text-xs text-gray-400">Belum masuk {belumMasukHariIni} · belum pulang {belumPulangHariIni} · telat {terlambatHariIni} · sync {pendingAttendanceSync}</p>
+            <p className="text-xs text-gray-400">Belum masuk {belumMasukHariIni} · belum pulang {belumPulangHariIni} · telat {terlambatHariIni} · bantu {dibantuAdminHariIni} · sync {pendingAttendanceSync}</p>
           </button>
         </div>
       )}
@@ -553,28 +587,28 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName, em
         </div>
       )}
 
-      {/* Kartu angka */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {/* Kartu angka — 2 kolom di HP, 3 di layar besar */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         {cards.map((c) => {
           const Icon = c.icon;
           return (
             <button
               key={c.label}
               onClick={() => goTo(c.tab)}
-              className={`relative overflow-hidden bg-white p-5 rounded-2xl border text-left transition-all cursor-pointer hover:shadow-md hover:-translate-y-0.5 ${
+              className={`relative overflow-hidden bg-white p-4 sm:p-5 rounded-2xl border text-left transition-all cursor-pointer hover:shadow-md hover:-translate-y-0.5 sm:col-span-1 ${c.span2 ? 'col-span-2 lg:col-span-1' : ''} ${
                 c.warn ? 'border-amber-300' : 'border-gray-200'
               }`}
             >
               <span className={`absolute left-0 top-0 bottom-0 w-1 ${c.warn ? 'bg-amber-400' : c.accent.bar}`} />
               <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-semibold text-gray-500">{c.label}</span>
+                <span className="text-xs sm:text-sm font-semibold text-gray-500">{c.label}</span>
                 <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${c.warn ? 'bg-amber-100' : c.accent.chip}`}>
                   <Icon className={`w-4 h-4 ${c.warn ? 'text-amber-700' : c.accent.icon}`} />
                 </span>
               </div>
-              <span className="text-2xl font-black text-gray-800 block truncate">{c.value}</span>
+              <span className="text-xl sm:text-2xl font-black text-gray-800 block truncate">{c.value}</span>
               {c.sub && (
-                <span className={`text-xs mt-1 block truncate ${c.warn ? 'text-amber-700 font-semibold' : 'text-gray-400'}`}>
+                <span className={`text-[11px] sm:text-xs mt-1 block ${c.span2 ? '' : 'truncate'} ${c.warn ? 'text-amber-700 font-semibold' : 'text-gray-400'}`}>
                   {c.sub}
                 </span>
               )}
