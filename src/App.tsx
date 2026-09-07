@@ -711,26 +711,31 @@ export default function App() {
           </button>
         </header>
 
-        {/* MENU MOBILE — satu baris scroll */}
-        <div className="no-print md:hidden flex overflow-x-auto bg-white border-b border-gray-200 px-3 py-2 gap-2 shrink-0">
-          {permittedMenus.map((menu) => {
-            const Icon = menu.icon;
-            const isSelected = activeTab === menu.id;
-            return (
-              <button
-                key={menu.id}
-                onClick={() => setActiveTab(menu.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 ${
-                  isSelected
-                    ? 'bg-[var(--color-evergreen)] text-white'
-                    : 'bg-gray-100 text-gray-600'
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                <span>{getMenuLabel(menu)}</span>
-              </button>
-            );
-          })}
+        {/* MENU MOBILE — satu baris scroll, dengan gradient kanan sbg isyarat
+            bahwa masih ada menu di luar layar. scrollbar-wheel dimatikan
+            agar tidak menabrak gradient. */}
+        <div className="relative no-print md:hidden bg-white border-b border-gray-200 shrink-0">
+          <div className="flex overflow-x-auto px-3 py-2 gap-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {permittedMenus.map((menu) => {
+              const Icon = menu.icon;
+              const isSelected = activeTab === menu.id;
+              return (
+                <button
+                  key={menu.id}
+                  onClick={() => setActiveTab(menu.id)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 ${
+                    isSelected
+                      ? 'bg-[var(--color-evergreen)] text-white'
+                      : 'bg-gray-100 text-gray-600'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  <span>{getMenuLabel(menu)}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white to-transparent" />
         </div>
 
         {/* KONTEN */}

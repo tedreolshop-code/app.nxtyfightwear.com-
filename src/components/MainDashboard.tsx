@@ -148,6 +148,17 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName, em
   const rata7Hari = Math.round(total7Hari / 7);
   const deltaVsRata = rata7Hari > 0 ? ((penjualanHariIni - rata7Hari) / rata7Hari) * 100 : null;
 
+  // Week-over-week: total 7 hari terakhir vs 7 hari sebelumnya. Untuk owner sibuk, konteks
+  // mingguan lebih informatif daripada harian (menghindari false signal dari hari libur).
+  const total7HariSebelumnya = (() => {
+    let total = 0;
+    for (let i = 7; i < 14; i++) total += sumChannels(salesByChannelOnDate(localDateStr(new Date(Date.now() - i * 86400000))));
+    return total;
+  })();
+  const deltaWeekOverWeek = total7HariSebelumnya > 0
+    ? ((total7Hari - total7HariSebelumnya) / total7HariSebelumnya) * 100
+    : null;
+
   // Omzet per tanggal dihitung SEKALI lalu dipakai ulang untuk agregat bulan & tahun
   const omzetPerTanggal = (() => {
     const map = new Map<string, number>();
@@ -186,18 +197,27 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName, em
     : null;
 
   // Produk terlaris & potongan admin marketplace, 7 hari terakhir
+  // qty7Sebelumnya = penjualan 7 hari sebelumnya untuk konteks ▲/▼ per item
   const tanggal7Hari = new Set(tren7Hari.map(t => t.date));
+  const tanggal7HariSebelumnya = new Set(Array.from({ length: 7 }, (_, i) => localDateStr(new Date(Date.now() - (7 + i) * 86400000))));
   const itemSales7Hari = itemSales.filter(s => tanggal7Hari.has(s.date));
+  const itemSales7HariSebelumnya = itemSales.filter(s => tanggal7HariSebelumnya.has(s.date));
   const adminFee7Hari = itemSales7Hari.reduce((sum, s) => sum + s.admin_fee, 0);
   const produkTerlaris = Object.values(
-    itemSales7Hari.reduce<Record<string, { name: string; qty: number; omset: number }>>((acc, s) => {
+    itemSales7Hari.reduce<Record<string, { name: string; qty: number; omset: number; qty7Sebelumnya: number }>>((acc, s) => {
       const key = s.product_id || s.description.trim().toLowerCase();
-      if (!acc[key]) acc[key] = { name: s.description, qty: 0, omset: 0 };
+      if (!acc[key]) acc[key] = { name: s.description, qty: 0, omset: 0, qty7Sebelumnya: 0 };
       acc[key].qty += s.qty;
       acc[key].omset += s.total;
       return acc;
     }, {})
-  ).sort((a, b) => b.qty - a.qty).slice(0, 5);
+  ).map(p => {
+    // Cari qty 7 hari sebelumnya untuk produk dengan nama/deskripsi yang sama
+    const sebelum = itemSales7HariSebelumnya
+      .filter(s => (s.product_id || s.description.trim().toLowerCase()) === (itemSales7Hari.find(x => x.description === p.name)?.product_id || p.name.trim().toLowerCase()))
+      .reduce((sum, s) => sum + s.qty, 0);
+    return { ...p, qty7Sebelumnya: sebelum };
+  }).sort((a, b) => b.qty - a.qty).slice(0, 5);
 
   // Akun baru: belum ada transaksi sama sekali. Dipakai untuk ubah hero & panel jadi
 
@@ -330,11 +350,23 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName, em
 
   // Daftar "perlu perhatian" untuk owner — hanya hal yang belum tampil sebagai kartu
   // peringatan di atas (produksi telat & bahan kritis sudah punya kartunya sendiri).
-  const perluPerhatian: Array<{ text: string; tab: string; serius: boolean }> = [];
-  if (orderBaru.length > 0) perluPerhatian.push({ text: `${orderBaru.length} pesanan menunggu dikirim ke produksi`, tab: 'penjualan', serius: false });
-  if (bahanKritis.length > 3) perluPerhatian.push({ text: `+${bahanKritis.length - 3} bahan lain di bawah stok minimum`, tab: 'gudang', serius: true });
-  if (karyawanBelumPayroll > 0) perluPerhatian.push({ text: `${karyawanBelumPayroll} karyawan belum punya slip gaji minggu ini`, tab: 'karyawan:payroll', serius: false });
-  if (kasbonBaruMingguIni > 0) perluPerhatian.push({ text: `Kasbon baru minggu ini ${formatIDR(kasbonBaruMingguIni)} (aktif ${formatIDR(totalKasbonAktif)})`, tab: 'karyawan:kasbon', serius: totalKasbonAktif >= 1_000_000 });
+  // Setiap item membawa iconName untuk render ikon yang relevan per kategori.
+  type PerhatianItem = { text: string; tab: string; serius: boolean; iconName: 'shopping-bag' | 'alert-triangle' | 'package' | 'users' | 'cash' | 'clock' };
+  const perluPerhatian: PerhatianItem[] = [];
+  if (orderBaru.length > 0) perluPerhatian.push({ text: `${orderBaru.length} pesanan menunggu dikirim ke produksi`, tab: 'penjualan', serius: false, iconName: 'shopping-bag' });
+  if (bahanKritis.length > 3) perluPerhatian.push({ text: `+${bahanKritis.length - 3} bahan lain di bawah stok minimum`, tab: 'gudang', serius: true, iconName: 'alert-triangle' });
+  if (karyawanBelumPayroll > 0) perluPerhatian.push({ text: `${karyawanBelumPayroll} karyawan belum punya slip gaji minggu ini`, tab: 'karyawan:payroll', serius: false, iconName: 'cash' });
+  if (kasbonBaruMingguIni > 0) perluPerhatian.push({ text: `Kasbon baru minggu ini ${formatIDR(kasbonBaruMingguIni)} (aktif ${formatIDR(totalKasbonAktif)})`, tab: 'karyawan:kasbon', serius: totalKasbonAktif >= 1_000_000, iconName: 'cash' });
+
+  const perhatianIcon = (name: PerhatianItem['iconName']) => {
+    const cls = 'w-3.5 h-3.5';
+    if (name === 'shopping-bag') return <ShoppingBag className={cls} />;
+    if (name === 'alert-triangle') return <AlertTriangle className={cls} />;
+    if (name === 'package') return <Archive className={cls} />;
+    if (name === 'users') return <Users className={cls} />;
+    if (name === 'cash') return <Wallet className={cls} />;
+    return <Clock className={cls} />;
+  };
 
   const goToAttentionTarget = (target: string) => {
     if (target === 'karyawan:payroll') return goToEmployeeSubTab('payroll');
@@ -405,6 +437,11 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName, em
               </div>
               <p className="text-xs text-emerald-100/80 mt-1.5">
                 Kemarin {formatIDR(penjualanKemarin)} · Rata-rata 7 hari {formatIDR(rata7Hari)} · Laba kotor 7 hari <span className={`font-bold ${laba7Hari >= 0 ? 'text-emerald-100' : 'text-rose-200'}`}>{formatIDR(laba7Hari)}</span> <span className="text-emerald-200/70">(basis kas)</span>
+                {deltaWeekOverWeek !== null && (
+                  <span className={`ml-1.5 ${deltaWeekOverWeek >= 0 ? 'text-emerald-200' : 'text-amber-200'}`}>
+                    · {deltaWeekOverWeek >= 0 ? '▲' : '▼'} {Math.abs(deltaWeekOverWeek).toLocaleString('id-ID', { maximumFractionDigits: 0 })}% vs minggu lalu
+                  </span>
+                )}
               </p>
             </div>
             {/* Statistik periode: Bulan ini / Tahun berjalan / Laba kotor 7 hari.
@@ -644,18 +681,31 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName, em
             <p className="text-sm text-gray-400">Belum ada penjualan per item dalam 7 hari terakhir.</p>
           ) : (
             <div className="divide-y divide-gray-50">
-              {produkTerlaris.map((p, idx) => (
-                <div key={p.name} className="flex items-center gap-3 py-2">
-                  <span className={`w-6 h-6 rounded-lg flex items-center justify-center text-[11px] font-black shrink-0 ${
-                    idx === 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'
-                  }`}>
-                    {idx + 1}
-                  </span>
-                  <span className="text-sm text-gray-700 flex-1 truncate">{p.name}</span>
-                  <span className="text-xs text-gray-400 tabular-nums shrink-0">{p.qty} pcs</span>
-                  <span className="text-sm font-bold text-gray-800 tabular-nums shrink-0 w-16 text-right">{formatIDRShort(p.omset)}</span>
-                </div>
-              ))}
+              {produkTerlaris.map((p, idx) => {
+                const deltaQty = p.qty - p.qty7Sebelumnya;
+                const pct = p.qty7Sebelumnya > 0 ? Math.round((deltaQty / p.qty7Sebelumnya) * 100) : null;
+                return (
+                  <div key={p.name} className="flex items-center gap-3 py-2">
+                    <span className={`w-6 h-6 rounded-lg flex items-center justify-center text-[11px] font-black shrink-0 ${
+                      idx === 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'
+                    }`}>
+                      {idx + 1}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm text-gray-700 truncate block">{p.name}</span>
+                      {pct !== null && pct !== 0 ? (
+                        <span className={`text-[10px] font-bold ${pct > 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                          {pct > 0 ? '▲' : '▼'} {Math.abs(pct)}% vs 7 hari lalu
+                        </span>
+                      ) : pct === 0 ? (
+                        <span className="text-[10px] text-gray-400">stabil</span>
+                      ) : null}
+                    </div>
+                    <span className="text-xs text-gray-400 tabular-nums shrink-0">{p.qty} pcs</span>
+                    <span className="text-sm font-bold text-gray-800 tabular-nums shrink-0 w-16 text-right">{formatIDRShort(p.omset)}</span>
+                  </div>
+                );
+              })}
             </div>
           )}
           <div className="mt-3 rounded-lg bg-amber-50 px-3 py-2 flex items-center justify-between gap-2">
@@ -719,7 +769,11 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName, em
                 onClick={() => goToAttentionTarget(item.tab)}
                 className="w-full px-5 py-3 flex items-center gap-3 text-left hover:bg-gray-50 cursor-pointer"
               >
-                <span className={`w-2 h-2 rounded-full shrink-0 ${item.serius ? 'bg-rose-500' : 'bg-amber-400'}`} />
+                <span className={`w-7 h-7 rounded-lg shrink-0 flex items-center justify-center ${
+                  item.serius ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'
+                }`}>
+                  {perhatianIcon(item.iconName)}
+                </span>
                 <span className="text-sm text-gray-700 flex-1">{item.text}</span>
                 <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
               </button>
