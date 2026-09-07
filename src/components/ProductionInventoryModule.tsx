@@ -126,6 +126,12 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
   const [taskQtyDone, setTaskQtyDone] = useState(0);
   const [taskQtyRejected, setTaskQtyRejected] = useState(0);
   const [taskNotes, setTaskNotes] = useState('');
+  // Input hasil rinci per item untuk order multi-output: product_id -> {selesai, reject}
+  const [taskPerItem, setTaskPerItem] = useState<Record<string, { done: number; reject: number }>>({});
+  // Input hasil rinci per item di panel admin (modal detail order)
+  const [adminPerItem, setAdminPerItem] = useState<Record<string, { done: number; reject: number }>>({});
+  const [adminItemStage, setAdminItemStage] = useState('');
+  const [adminItemNotes, setAdminItemNotes] = useState('');
 
   // Stock Adjustment states
   const [showAdjust, setShowAdjust] = useState(false);
@@ -136,6 +142,13 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
   const [adjustRef, setAdjustRef] = useState('Stock Opname manual');
 
   // Resep produksi terpusat di dataStore (dipakai juga oleh OrderModule saat kirim ke produksi)
+
+  // Ganti order di modal detail = kosongkan input hasil rinci & kembalikan pilihan tahap
+  useEffect(() => {
+    setAdminPerItem({});
+    setAdminItemStage('');
+    setAdminItemNotes('');
+  }, [selectedJob?.id]);
 
   useEffect(() => {
     loadData();
@@ -473,11 +486,75 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
     alert('Hasil produksi berhasil difinalisasi. Barang bagus masuk stok produk jadi dan reject dicatat sebagai barang reject.');
   };
 
+  // Simpan satu catatan hasil kerja (per item bila order multi-output, se-order bila tunggal)
+  const saveTaskLog = (
+    job: ProductionJob,
+    stage: string,
+    qtyDone: number,
+    qtyRejected: number,
+    notes?: string,
+    item?: { product_id: string; product_name: string; variant: string }
+  ) => {
+    const actor = currentEmployee || { id: dataStore.getCurrentActor().id || '', name: dataStore.getCurrentActor().name };
+    const label = `${job.order_number || job.id} - ${job.product_name}`;
+    dataStore.postProductionTaskLog({
+      id: `ptask-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      production_job_id: job.id,
+      production_label: label,
+      employee_id: actor.id,
+      employee_name: actor.name,
+      date: wibTodayStr(),
+      stage_name: stage,
+      task_name: item ? `${item.product_name}${item.variant ? ` (${item.variant})` : ''}` : stage,
+      qty_done: qtyDone,
+      qty_rejected: qtyRejected,
+      ...(item ? { product_id: item.product_id, product_name: item.product_name, variant: item.variant } : {}),
+      notes,
+      created_at: wibNowISO()
+    });
+  };
+
   const handleSubmitEmployeeTaskLog = (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentEmployee) return alert('Identitas karyawan tidak tersedia.');
     const job = productionJobs.find(item => item.id === taskJobId);
     if (!job) return alert('Pilih order produksi terlebih dahulu.');
+    const loggedStage = taskStage || job.current_stage;
+    const notes = taskNotes.trim() || undefined;
+
+    // Order multi-output: baca input rinci per item. Satu catatan disimpan per item yang isinya > 0.
+    if (isMultiOutput(job)) {
+      const rows = (job.outputs || [])
+        .map(output => {
+          const input = taskPerItem[output.product_id] || { done: 0, reject: 0 };
+          return { output, done: Math.max(0, Number(input.done) || 0), reject: Math.max(0, Number(input.reject) || 0) };
+        })
+        .filter(row => row.done > 0 || row.reject > 0);
+      if (rows.length === 0) return alert('Isi minimal Qty Selesai atau Qty Reject pada salah satu item.');
+      const loggedAll = taskLogs.filter(log => log.production_job_id === job.id && log.stage_name === loggedStage);
+      for (const row of rows) {
+        const logged = loggedAll
+          .filter(log => log.product_id === row.output.product_id)
+          .reduce((sum, log) => sum + (log.qty_done || 0) + (log.qty_rejected || 0), 0);
+        const remaining = Math.max(0, row.output.target_qty - logged);
+        if (row.done + row.reject > remaining) {
+          return alert(`${outputLabel(row.output.product_name, row.output.variant)}: kuota tahap "${loggedStage}" tinggal ${remaining} pcs (target ${row.output.target_qty}, sudah tercatat ${logged}). Sesuaikan jumlahnya.`);
+        }
+      }
+      for (const row of rows) {
+        saveTaskLog(job, loggedStage, row.done, row.reject, notes, {
+          product_id: row.output.product_id,
+          product_name: row.output.product_name,
+          variant: row.output.variant
+        });
+      }
+      setTaskPerItem({});
+      setTaskNotes('');
+      loadData();
+      return alert(`Hasil kerja ${rows.length} item berhasil dicatat.`);
+    }
+
+    // Order tunggal: alur lama satu angka.
     const qtyDone = Math.max(0, Number(taskQtyDone) || 0);
     const qtyRejected = Math.max(0, Number(taskQtyRejected) || 0);
     if (qtyDone <= 0 && qtyRejected <= 0) {
@@ -485,7 +562,6 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
     }
     // Anti lebih-buku: selesai + reject pada satu tahap tidak boleh melebihi target order.
     // Sama seperti aturan serah-terima: hasil baik dan rusak mengambil dari pool yang sama.
-    const loggedStage = taskStage || job.current_stage;
     const loggedAtStage = dataStore.getProductionTaskLogs()
       .filter(log => log.production_job_id === job.id && log.stage_name === loggedStage)
       .reduce((sum, log) => sum + (log.qty_done || 0) + (log.qty_rejected || 0), 0);
@@ -493,27 +569,46 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
     if (qtyDone + qtyRejected > remaining) {
       return alert(`Kuota tahap "${loggedStage}" tinggal ${remaining} pcs (target ${displayQty(job)}, sudah tercatat ${loggedAtStage}). Sesuaikan jumlahnya — bila memang ada penambahan order, minta admin memperbarui order produksinya.`);
     }
-    const label = `${job.order_number || job.id} - ${job.product_name}`;
-    dataStore.postProductionTaskLog({
-      id: `ptask-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      production_job_id: job.id,
-      production_label: label,
-      employee_id: currentEmployee.id,
-      employee_name: currentEmployee.name,
-      date: wibTodayStr(),
-      stage_name: loggedStage,
-      task_name: taskName.trim() || loggedStage,
-      qty_done: qtyDone,
-      qty_rejected: qtyRejected,
-      notes: taskNotes.trim() || undefined,
-      created_at: wibNowISO()
-    });
+    saveTaskLog(job, loggedStage, qtyDone, qtyRejected, notes);
     setTaskName('');
     setTaskQtyDone(0);
     setTaskQtyRejected(0);
     setTaskNotes('');
     loadData();
     alert('Hasil kerja berhasil dicatat.');
+  };
+
+  // Panel admin (modal detail): simpan input hasil rinci per item untuk tahap yang dipilih.
+  const handleSubmitAdminItemProgress = (job: ProductionJob) => {
+    const stage = adminItemStage || job.current_stage;
+    const rows = (job.outputs || []).map(output => {
+      const input = adminPerItem[output.product_id] || { done: 0, reject: 0 };
+      return { output, done: Math.max(0, Number(input.done) || 0), reject: Math.max(0, Number(input.reject) || 0) };
+    }).filter(row => row.done > 0 || row.reject > 0);
+    if (rows.length === 0) return alert('Isi hasil atau reject minimal pada satu item.');
+
+    const loggedAll = taskLogs.filter(log => log.production_job_id === job.id && log.stage_name === stage);
+    for (const row of rows) {
+      const logged = loggedAll
+        .filter(log => log.product_id === row.output.product_id)
+        .reduce((sum, log) => sum + (log.qty_done || 0) + (log.qty_rejected || 0), 0);
+      const remaining = Math.max(0, row.output.target_qty - logged);
+      if (row.done + row.reject > remaining) {
+        return alert(`${outputLabel(row.output.product_name, row.output.variant)}: kuota tahap "${stage}" tinggal ${remaining} pcs (target ${row.output.target_qty}, sudah tercatat ${logged}).`);
+      }
+    }
+    const notes = adminItemNotes.trim() || undefined;
+    for (const row of rows) {
+      saveTaskLog(job, stage, row.done, row.reject, notes, {
+        product_id: row.output.product_id,
+        product_name: row.output.product_name,
+        variant: row.output.variant
+      });
+    }
+    setAdminPerItem({});
+    setAdminItemNotes('');
+    loadData();
+    alert(`Hasil ${rows.length} item pada tahap ${stage} berhasil dicatat.`);
   };
 
   const handleDeleteEmployeeTaskLog = (logId: string) => {
@@ -1127,6 +1222,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                                 setTaskQtyDone(0);
                                 setTaskQtyRejected(0);
                                 setTaskNotes('');
+                                setTaskPerItem({});
                               }}
                               className={`w-full text-left p-3 rounded-lg border cursor-pointer transition-colors ${openedEmployeeJobId === job.id ? 'bg-emerald-50 border-emerald-200' : 'bg-gray-50 border-gray-100 hover:bg-emerald-50/50'}`}
                             >
@@ -1257,7 +1353,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                         <div className="grid grid-cols-2 gap-2">
                           <div>
                             <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Tahap</label>
-                            <select value={taskStage} onChange={event => setTaskStage(event.target.value)} className="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-xs">
+                            <select value={taskStage} onChange={event => { setTaskStage(event.target.value); setTaskPerItem({}); }} className="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-xs">
                               {(selectedTaskJob.stages || []).map(stage => <option key={stage.stage} value={stage.stage}>{stage.stage}</option>)}
                             </select>
                           </div>
@@ -1266,29 +1362,79 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                             <input value={taskName} onChange={event => setTaskName(event.target.value)} placeholder="Contoh: jahit" className="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-xs" />
                           </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label htmlFor="task-qty-done" className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Qty Selesai</label>
-                            <input id="task-qty-done" type="number" min={0} max={(() => {
-                              const logged = taskLogs.filter(log => log.production_job_id === selectedTaskJob.id && log.stage_name === (taskStage || selectedTaskJob.current_stage)).reduce((sum, log) => sum + (log.qty_done || 0) + (log.qty_rejected || 0), 0);
-                              return Math.max(0, displayQty(selectedTaskJob) - logged);
-                            })()} value={taskQtyDone || ''} onChange={event => setTaskQtyDone(Number(event.target.value))} className="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-xs font-mono font-bold" />
+                        {isMultiOutput(selectedTaskJob) ? (
+                          <div className="space-y-1">
+                            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Hasil per Item</p>
+                            <div className="border border-gray-200 rounded-lg overflow-hidden">
+                              <table className="w-full text-xs">
+                                <thead className="bg-gray-100 text-[9px] uppercase text-gray-500">
+                                  <tr>
+                                    <th className="p-2 text-left font-bold">Item</th>
+                                    <th className="p-1.5 text-right font-bold">Sisa</th>
+                                    <th className="p-1.5 text-right font-bold w-16">Selesai</th>
+                                    <th className="p-1.5 text-right font-bold w-16">Reject</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {(selectedTaskJob.outputs || []).map(output => {
+                                    const logged = taskLogs.filter(log => log.production_job_id === selectedTaskJob.id && log.stage_name === (taskStage || selectedTaskJob.current_stage) && log.product_id === output.product_id).reduce((sum, log) => sum + (log.qty_done || 0) + (log.qty_rejected || 0), 0);
+                                    const remaining = Math.max(0, output.target_qty - logged);
+                                    const input = taskPerItem[output.product_id] || { done: 0, reject: 0 };
+                                    return (
+                                      <tr key={output.product_id} className="border-t border-gray-100 bg-white">
+                                        <td className="p-2 font-bold text-gray-800">
+                                          {outputLabel(output.product_name, output.variant)}
+                                          <p className="text-[9px] text-gray-400 font-normal">target {output.target_qty} · tercatat {logged}</p>
+                                        </td>
+                                        <td className={`p-1.5 text-right font-mono font-bold ${remaining === 0 ? 'text-rose-600' : 'text-gray-500'}`}>{remaining}</td>
+                                        <td className="p-1.5">
+                                          <input type="number" min={0} max={remaining} value={input.done || ''} onChange={event => setTaskPerItem(prev => ({ ...prev, [output.product_id]: { ...input, done: Number(event.target.value) } }))} className="w-full bg-gray-50 border border-gray-200 rounded p-1.5 text-right font-mono font-bold" aria-label={`Selesai ${outputLabel(output.product_name, output.variant)}`} />
+                                        </td>
+                                        <td className="p-1.5">
+                                          <input type="number" min={0} value={input.reject || ''} onChange={event => setTaskPerItem(prev => ({ ...prev, [output.product_id]: { ...input, reject: Number(event.target.value) } }))} className="w-full bg-gray-50 border border-gray-200 rounded p-1.5 text-right font-mono" aria-label={`Reject ${outputLabel(output.product_name, output.variant)}`} />
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                                <tfoot>
+                                  <tr className="border-t-2 border-gray-200 bg-gray-50 font-black">
+                                    <td className="p-2 text-[10px] uppercase text-gray-600">Jumlah</td>
+                                    <td className="p-1.5 text-right font-mono">{(selectedTaskJob.outputs || []).reduce((sum, o) => sum + Math.max(0, o.target_qty - taskLogs.filter(l => l.production_job_id === selectedTaskJob.id && l.stage_name === (taskStage || selectedTaskJob.current_stage) && l.product_id === o.product_id).reduce((s, l) => s + (l.qty_done || 0) + (l.qty_rejected || 0), 0)), 0)}</td>
+                                    <td className="p-1.5 text-right font-mono">{(selectedTaskJob.outputs || []).reduce((sum, o) => sum + (taskPerItem[o.product_id]?.done || 0), 0)}</td>
+                                    <td className="p-1.5 text-right font-mono">{(selectedTaskJob.outputs || []).reduce((sum, o) => sum + (taskPerItem[o.product_id]?.reject || 0), 0)}</td>
+                                  </tr>
+                                </tfoot>
+                              </table>
+                            </div>
                           </div>
-                          <div>
-                            <label htmlFor="task-qty-reject" className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Qty Reject</label>
-                            <input id="task-qty-reject" type="number" min={0} value={taskQtyRejected || ''} onChange={event => setTaskQtyRejected(Number(event.target.value))} className="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-xs font-mono font-bold" />
-                          </div>
-                        </div>
-                        {(() => {
-                          const loggedStage = taskStage || selectedTaskJob.current_stage;
-                          const loggedAtStage = taskLogs.filter(log => log.production_job_id === selectedTaskJob.id && log.stage_name === loggedStage).reduce((sum, log) => sum + (log.qty_done || 0) + (log.qty_rejected || 0), 0);
-                          const remaining = Math.max(0, displayQty(selectedTaskJob) - loggedAtStage);
-                          return (
-                            <p className={`text-[10px] font-bold ${remaining === 0 ? 'text-rose-600' : 'text-gray-400'}`}>
-                              Target tahap &quot;{loggedStage}&quot;: {displayQty(selectedTaskJob)} pcs &middot; sudah tercatat {loggedAtStage} &middot; sisa {remaining}
-                            </p>
-                          );
-                        })()}
+                        ) : (
+                          <>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label htmlFor="task-qty-done" className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Qty Selesai</label>
+                                <input id="task-qty-done" type="number" min={0} max={(() => {
+                                  const logged = taskLogs.filter(log => log.production_job_id === selectedTaskJob.id && log.stage_name === (taskStage || selectedTaskJob.current_stage)).reduce((sum, log) => sum + (log.qty_done || 0) + (log.qty_rejected || 0), 0);
+                                  return Math.max(0, displayQty(selectedTaskJob) - logged);
+                                })()} value={taskQtyDone || ''} onChange={event => setTaskQtyDone(Number(event.target.value))} className="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-xs font-mono font-bold" />
+                              </div>
+                              <div>
+                                <label htmlFor="task-qty-reject" className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Qty Reject</label>
+                                <input id="task-qty-reject" type="number" min={0} value={taskQtyRejected || ''} onChange={event => setTaskQtyRejected(Number(event.target.value))} className="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-xs font-mono font-bold" />
+                              </div>
+                            </div>
+                            {(() => {
+                              const loggedStage = taskStage || selectedTaskJob.current_stage;
+                              const loggedAtStage = taskLogs.filter(log => log.production_job_id === selectedTaskJob.id && log.stage_name === loggedStage).reduce((sum, log) => sum + (log.qty_done || 0) + (log.qty_rejected || 0), 0);
+                              const remaining = Math.max(0, displayQty(selectedTaskJob) - loggedAtStage);
+                              return (
+                                <p className={`text-[10px] font-bold ${remaining === 0 ? 'text-rose-600' : 'text-gray-400'}`}>
+                                  Target tahap &quot;{loggedStage}&quot;: {displayQty(selectedTaskJob)} pcs &middot; sudah tercatat {loggedAtStage} &middot; sisa {remaining}
+                                </p>
+                              );
+                            })()}
+                          </>
+                        )}
                         <div>
                           <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Catatan</label>
                           <textarea value={taskNotes} onChange={event => setTaskNotes(event.target.value)} rows={3} placeholder="Kendala, alasan reject, atau detail pekerjaan" className="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-xs" />
@@ -1858,6 +2004,69 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                     })}
                   </div>
                 </div>
+
+                {/* RINCIAN ITEM — rincian per varian + input hasil selesai per item (untuk order multi-output) */}
+                {isMultiOutput(selectedJob) && selectedJob.status !== 'completed' && (
+                  <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <h4 className="text-xs font-black text-gray-500 uppercase tracking-wider">Rincian Item &amp; Input Hasil</h4>
+                      <select value={adminItemStage || selectedJob.current_stage} onChange={event => { setAdminItemStage(event.target.value); setAdminPerItem({}); }} className="bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-[10px] font-bold text-gray-700">
+                        {selectedJob.stages.filter(stg => stg.status !== 'completed').map(stg => <option key={stg.stage} value={stg.stage}>{stg.stage}</option>)}
+                      </select>
+                    </div>
+                    <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+                      <table className="w-full text-xs">
+                        <thead className="bg-gray-100 text-[9px] uppercase text-gray-500">
+                          <tr>
+                            <th className="p-2 text-left font-bold">Item</th>
+                            <th className="p-1.5 text-right font-bold">Target</th>
+                            <th className="p-1.5 text-right font-bold">Selesai</th>
+                            <th className="p-1.5 text-right font-bold">Sisa</th>
+                            <th className="p-1.5 text-right font-bold w-14">Hasil</th>
+                            <th className="p-1.5 text-right font-bold w-14">Reject</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(selectedJob.outputs || []).map(output => {
+                            const logged = taskLogs.filter(log => log.production_job_id === selectedJob.id && log.stage_name === (adminItemStage || selectedJob.current_stage) && log.product_id === output.product_id).reduce((sum, log) => sum + (log.qty_done || 0) + (log.qty_rejected || 0), 0);
+                            const doneGood = taskLogs.filter(log => log.production_job_id === selectedJob.id && log.stage_name === (adminItemStage || selectedJob.current_stage) && log.product_id === output.product_id).reduce((sum, log) => sum + (log.qty_done || 0), 0);
+                            const remaining = Math.max(0, output.target_qty - logged);
+                            const input = adminPerItem[output.product_id] || { done: 0, reject: 0 };
+                            return (
+                              <tr key={output.product_id} className="border-t border-gray-100">
+                                <td className="p-2 font-bold text-gray-800">{outputLabel(output.product_name, output.variant)}</td>
+                                <td className="p-1.5 text-right font-mono text-gray-500">{output.target_qty}</td>
+                                <td className="p-1.5 text-right font-mono font-bold text-emerald-700">{doneGood}</td>
+                                <td className={`p-1.5 text-right font-mono font-bold ${remaining === 0 ? 'text-rose-600' : 'text-gray-500'}`}>{remaining}</td>
+                                <td className="p-1.5">
+                                  <input type="number" min={0} max={remaining} value={input.done || ''} onChange={event => setAdminPerItem(prev => ({ ...prev, [output.product_id]: { ...input, done: Number(event.target.value) } }))} className="w-full bg-gray-50 border border-gray-200 rounded p-1.5 text-right font-mono font-bold" aria-label={`Hasil ${outputLabel(output.product_name, output.variant)}`} />
+                                </td>
+                                <td className="p-1.5">
+                                  <input type="number" min={0} value={input.reject || ''} onChange={event => setAdminPerItem(prev => ({ ...prev, [output.product_id]: { ...input, reject: Number(event.target.value) } }))} className="w-full bg-gray-50 border border-gray-200 rounded p-1.5 text-right font-mono" aria-label={`Reject ${outputLabel(output.product_name, output.variant)}`} />
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                        <tfoot>
+                          <tr className="border-t-2 border-gray-200 bg-gray-50 font-black">
+                            <td className="p-2 text-[10px] uppercase text-gray-600">Jumlah</td>
+                            <td className="p-1.5 text-right font-mono">{displayQty(selectedJob)}</td>
+                            <td className="p-1.5 text-right font-mono text-emerald-700">{(selectedJob.outputs || []).reduce((sum, o) => sum + taskLogs.filter(l => l.production_job_id === selectedJob.id && l.stage_name === (adminItemStage || selectedJob.current_stage) && l.product_id === o.product_id).reduce((s, l) => s + (l.qty_done || 0), 0), 0)}</td>
+                            <td className="p-1.5 text-right font-mono">{(selectedJob.outputs || []).reduce((sum, o) => sum + Math.max(0, o.target_qty - taskLogs.filter(l => l.production_job_id === selectedJob.id && l.stage_name === (adminItemStage || selectedJob.current_stage) && l.product_id === o.product_id).reduce((s, l) => s + (l.qty_done || 0) + (l.qty_rejected || 0), 0)), 0)}</td>
+                            <td className="p-1.5 text-right font-mono">{(selectedJob.outputs || []).reduce((sum, o) => sum + (adminPerItem[o.product_id]?.done || 0), 0)}</td>
+                            <td className="p-1.5 text-right font-mono">{(selectedJob.outputs || []).reduce((sum, o) => sum + (adminPerItem[o.product_id]?.reject || 0), 0)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                    <textarea value={adminItemNotes} onChange={event => setAdminItemNotes(event.target.value)} rows={2} placeholder="Catatan hasil (opsional): pelaksana, kendala, dll." className="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-xs" />
+                    <button type="button" onClick={() => handleSubmitAdminItemProgress(selectedJob)} className="w-full bg-[var(--color-evergreen)] hover:bg-[#122d20] text-white font-bold text-xs px-3 py-2.5 rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-all">
+                      <CheckCircle2 className="w-4 h-4" />
+                      Simpan Hasil per Item
+                    </button>
+                  </div>
+                )}
 
                 {/* Estimate Raw Materials Used */}
                 <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-3">

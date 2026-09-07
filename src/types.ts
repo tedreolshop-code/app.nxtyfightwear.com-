@@ -677,6 +677,10 @@ export interface ProductionTaskLog {
   task_name: string;
   qty_done: number;
   qty_rejected: number;
+  // Rincian per item untuk order multi-output; tanpa product_id = catatan se-order
+  product_id?: string;
+  product_name?: string;
+  variant?: string;
   notes?: string;
   created_at: string;
 }
