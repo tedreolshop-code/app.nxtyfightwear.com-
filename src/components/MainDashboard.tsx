@@ -136,7 +136,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName, em
     (sum, t) => sum + expensesOnDate(t.date) + purchasesOnDate(t.date).reduce((s, p) => s + p.total_price, 0), 0
   );
 
-  // Laba kasar & pembanding vs kemarin
+  // Laba kotor & pembanding vs kemarin
   const labaHariIni = penjualanHariIni - pengeluaranHariIni;
   const laba7Hari = total7Hari - pengeluaran7Hari;
   const kemarin = localDateStr(new Date(Date.now() - 86400000));
@@ -371,10 +371,10 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName, em
                 )}
               </div>
               <p className="text-xs text-emerald-100/80 mt-1.5">
-                Kemarin {formatIDR(penjualanKemarin)} · Rata-rata 7 hari {formatIDR(rata7Hari)} · Laba kasar 7 hari <span className={`font-bold ${laba7Hari >= 0 ? 'text-emerald-100' : 'text-rose-200'}`}>{formatIDR(laba7Hari)}</span> <span className="text-emerald-200/70">(basis kas)</span>
+                Kemarin {formatIDR(penjualanKemarin)} · Rata-rata 7 hari {formatIDR(rata7Hari)} · Laba kotor 7 hari <span className={`font-bold ${laba7Hari >= 0 ? 'text-emerald-100' : 'text-rose-200'}`}>{formatIDR(laba7Hari)}</span> <span className="text-emerald-200/70">(basis kas)</span>
               </p>
             </div>
-            {/* Statistik periode: Bulan ini / Tahun berjalan / Laba kasar 7 hari.
+            {/* Statistik periode: Bulan ini / Tahun berjalan / Laba kotor 7 hari.
                 Nilai pakai format singkat agar muat di kolom; nilai penuh di title. */}
             <div className="mt-5 grid grid-cols-3 gap-3 sm:gap-4">
               <div className="rounded-xl bg-white/10 px-3 py-3 sm:px-4 sm:py-3.5" title={formatIDR(penjualanBulanIni)}>
@@ -400,7 +400,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName, em
                 )}
               </div>
               <div className="rounded-xl bg-white/10 px-3 py-3 sm:px-4 sm:py-3.5" title={formatIDR(laba7Hari)}>
-                <span className="block text-[10px] sm:text-[11px] uppercase tracking-wide text-emerald-200/90 font-semibold">Laba Kasar 7 Hari</span>
+                <span className="block text-[10px] sm:text-[11px] uppercase tracking-wide text-emerald-200/90 font-semibold">Laba Kotor 7 Hari</span>
                 <span className={`block mt-0.5 text-base sm:text-lg font-black tabular-nums ${laba7Hari >= 0 ? '' : 'text-rose-200'}`}>{formatIDRShort(laba7Hari)}</span>
                 <span className="mt-0.5 block text-[10px] text-emerald-200/70">basis kas</span>
               </div>
