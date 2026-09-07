@@ -148,19 +148,41 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName, em
   const rata7Hari = Math.round(total7Hari / 7);
   const deltaVsRata = rata7Hari > 0 ? ((penjualanHariIni - rata7Hari) / rata7Hari) * 100 : null;
 
-  // Bulan berjalan (WIB) vs periode sama bulan lalu — konteks tren bulanan untuk owner
-  const awalBulanIni = today.slice(0, 8) + '01';
-  const tanggalSampaiHariIni = Array.from({ length: Number(today.slice(8, 10)) }, (_, i) => awalBulanIni.slice(0, 8) + String(i + 1).padStart(2, '0'));
-  const penjualanBulanIni = tanggalSampaiHariIni.reduce((sum, d) => sum + sumChannels(salesByChannelOnDate(d)), 0);
-  const tanggalBulanLalu = (() => {
-    const bulanLalu = new Date();
-    bulanLalu.setDate(0); // hari terakhir bulan lalu
-    const ym = bulanLalu.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' }).slice(0, 8);
-    return Array.from({ length: Number(today.slice(8, 10)) }, (_, i) => ym + String(i + 1).padStart(2, '0'));
+  // Omzet per tanggal dihitung SEKALI lalu dipakai ulang untuk agregat bulan & tahun
+  const omzetPerTanggal = (() => {
+    const map = new Map<string, number>();
+    const push = (s: { date: string }, v: number) => map.set(s.date, (map.get(s.date) || 0) + v);
+    itemSales.filter(s => (s.status ?? 'terkirim') !== 'cancel' && (s.status ?? 'terkirim') !== 'retur')
+      .forEach(s => push(s, s.total));
+    dailyRekap.forEach(s => push(s, s.revenue));
+    orders.filter(o => o.status !== 'cancelled').forEach(o => push(o, orderRevenue(o)));
+    return map;
   })();
-  const penjualanBulanLaluPeriodeSama = tanggalBulanLalu.reduce((sum, d) => sum + sumChannels(salesByChannelOnDate(d)), 0);
+  const omzetSampai = (dari: string, sampai: string) => {
+    let total = 0;
+    for (const [date, v] of omzetPerTanggal) if (date >= dari && date <= sampai) total += v;
+    return total;
+  };
+
+  // Bulan berjalan (WIB) vs periode sama bulan lalu + tahun berjalan vs tahun lalu
+  const awalBulanIni = today.slice(0, 8) + '01';
+  const penjualanBulanIni = omzetSampai(awalBulanIni, today);
+  const angkaBulanIni = Number(today.slice(5, 7));
+  const angkaTanggal = Number(today.slice(8, 10));
+  const tahunIni = today.slice(0, 4);
+  const tahunLalu = String(Number(tahunIni) - 1);
+  const awalBulanLaluPeriode = `${tahunLalu}-${String(angkaBulanIni).padStart(2, '0')}-01`;
+  const akhirBulanLaluPeriode = `${tahunLalu}-${String(angkaBulanIni).padStart(2, '0')}-${String(angkaTanggal).padStart(2, '0')}`;
+  const penjualanBulanLaluPeriodeSama = omzetSampai(awalBulanLaluPeriode, akhirBulanLaluPeriode);
   const deltaBulanIni = penjualanBulanLaluPeriodeSama > 0
     ? ((penjualanBulanIni - penjualanBulanLaluPeriodeSama) / penjualanBulanLaluPeriodeSama) * 100
+    : null;
+  // Tahun berjalan (1 Jan s.d. hari ini) vs periode sama tahun lalu
+  const awalTahunIni = `${tahunIni}-01-01`;
+  const penjualanTahunIni = omzetSampai(awalTahunIni, today);
+  const penjualanTahunLaluPeriodeSama = omzetSampai(`${tahunLalu}-01-01`, `${tahunLalu}-${today.slice(5)}`);
+  const deltaTahunIni = penjualanTahunLaluPeriodeSama > 0
+    ? ((penjualanTahunIni - penjualanTahunLaluPeriodeSama) / penjualanTahunLaluPeriodeSama) * 100
     : null;
 
   // Produk terlaris & potongan admin marketplace, 7 hari terakhir
@@ -308,55 +330,15 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName, em
 
   return (
     <div className="space-y-5">
-      {/* Hero header — sapaan + ringkasan angka utama (owner) */}
-      <div className="rounded-2xl bg-gradient-to-br from-[var(--color-evergreen)] via-[#256446] to-[#2E7D54] p-5 sm:p-6 text-white shadow-lg shadow-emerald-900/10">
+      {/* Hero header — sapaan + ringkasan angka utama (owner). Besar & visual: angka
+          utama dominan, pembanding periode tampil sebagai kolom statistik. */}
+      <div className="rounded-2xl bg-gradient-to-br from-[var(--color-evergreen)] via-[#256446] to-[#2E7D54] p-5 sm:p-7 text-white shadow-lg shadow-emerald-900/10">
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
           <div className="min-w-0">
-            <h1 className="text-lg font-bold">Halo, {greetingName(userName)} 👋</h1>
+            <h1 className="text-xl sm:text-2xl font-bold">Halo, {greetingName(userName)} 👋</h1>
             <p className="text-sm text-emerald-100/80">
               {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
             </p>
-            {role === 'owner' && (
-              <div className="mt-4">
-                <span className="text-xs uppercase tracking-wide text-emerald-200/90 font-semibold">Penjualan Hari Ini</span>
-                <div className="flex items-baseline gap-2 flex-wrap mt-0.5">
-                  <span className="text-3xl font-black">{formatIDR(penjualanHariIni)}</span>
-                  {deltaVsKemarin !== null && (
-                    <span className={`text-xs font-bold rounded-full px-2 py-0.5 ${
-                      deltaVsKemarin >= 0 ? 'bg-emerald-300/25 text-emerald-100' : 'bg-rose-400/30 text-rose-100'
-                    }`}>
-                      {deltaVsKemarin >= 0 ? '▲' : '▼'} {Math.abs(deltaVsKemarin).toLocaleString('id-ID', { maximumFractionDigits: 0 })}% vs kemarin
-                    </span>
-                  )}
-                  {deltaVsRata !== null && (
-                    <span className={`text-xs font-bold rounded-full px-2 py-0.5 ${
-                      deltaVsRata >= 0 ? 'bg-emerald-300/25 text-emerald-100' : 'bg-amber-400/25 text-amber-100'
-                    }`}>
-                      {deltaVsRata >= 0 ? '▲' : '▼'} {Math.abs(deltaVsRata).toLocaleString('id-ID', { maximumFractionDigits: 0 })}% vs rata-rata 7 hari
-                    </span>
-                  )}
-                </div>
-                <div className="text-xs text-emerald-100/80 mt-1">
-                  Kemarin {formatIDR(penjualanKemarin)} · Rata-rata 7 hari {formatIDR(rata7Hari)}
-                </div>
-                <div className="mt-3 grid grid-cols-2 sm:flex sm:flex-wrap gap-2 max-w-xl">
-                  <div className="rounded-lg bg-white/10 px-3 py-2">
-                    <span className="block text-[10px] uppercase tracking-wide text-emerald-200/90 font-semibold">Bulan ini</span>
-                    <span className="text-sm font-black tabular-nums">{formatIDR(penjualanBulanIni)}</span>
-                    {deltaBulanIni !== null && (
-                      <span className={`ml-1.5 text-[10px] font-bold ${deltaBulanIni >= 0 ? 'text-emerald-200' : 'text-amber-200'}`}>
-                        {deltaBulanIni >= 0 ? '▲' : '▼'} {Math.abs(deltaBulanIni).toLocaleString('id-ID', { maximumFractionDigits: 0 })}% vs bln lalu
-                      </span>
-                    )}
-                  </div>
-                  <div className="rounded-lg bg-white/10 px-3 py-2">
-                    <span className="block text-[10px] uppercase tracking-wide text-emerald-200/90 font-semibold">Laba kasar 7 hari</span>
-                    <span className={`text-sm font-black tabular-nums ${laba7Hari >= 0 ? '' : 'text-rose-200'}`}>{formatIDR(laba7Hari)}</span>
-                    <span className="ml-1.5 text-[10px] text-emerald-200/70 whitespace-nowrap">(basis kas)</span>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
           {role === 'owner' && (
             <button
@@ -367,6 +349,64 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName, em
             </button>
           )}
         </div>
+        {role === 'owner' && (
+          <>
+            <div className="mt-5">
+              <span className="text-[11px] sm:text-xs uppercase tracking-wider text-emerald-200/90 font-semibold">Penjualan Hari Ini</span>
+              <div className="flex items-baseline gap-3 flex-wrap mt-1">
+                <span className="text-4xl sm:text-5xl font-black tracking-tight tabular-nums">{formatIDR(penjualanHariIni)}</span>
+                {deltaVsKemarin !== null && (
+                  <span className={`text-[11px] sm:text-xs font-bold rounded-full px-2.5 py-1 ${
+                    deltaVsKemarin >= 0 ? 'bg-emerald-300/25 text-emerald-100' : 'bg-rose-400/30 text-rose-100'
+                  }`}>
+                    {deltaVsKemarin >= 0 ? '▲' : '▼'} {Math.abs(deltaVsKemarin).toLocaleString('id-ID', { maximumFractionDigits: 0 })}% vs kemarin
+                  </span>
+                )}
+                {deltaVsRata !== null && (
+                  <span className={`text-[11px] sm:text-xs font-bold rounded-full px-2.5 py-1 ${
+                    deltaVsRata >= 0 ? 'bg-emerald-300/25 text-emerald-100' : 'bg-amber-400/25 text-amber-100'
+                  }`}>
+                    {deltaVsRata >= 0 ? '▲' : '▼'} {Math.abs(deltaVsRata).toLocaleString('id-ID', { maximumFractionDigits: 0 })}% vs rata-rata 7 hari
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-emerald-100/80 mt-1.5">
+                Kemarin {formatIDR(penjualanKemarin)} · Rata-rata 7 hari {formatIDR(rata7Hari)} · Laba kasar 7 hari <span className={`font-bold ${laba7Hari >= 0 ? 'text-emerald-100' : 'text-rose-200'}`}>{formatIDR(laba7Hari)}</span> <span className="text-emerald-200/70">(basis kas)</span>
+              </p>
+            </div>
+            {/* Statistik periode: Bulan ini / Tahun berjalan / Laba kasar 7 hari.
+                Nilai pakai format singkat agar muat di kolom; nilai penuh di title. */}
+            <div className="mt-5 grid grid-cols-3 gap-3 sm:gap-4">
+              <div className="rounded-xl bg-white/10 px-3 py-3 sm:px-4 sm:py-3.5" title={formatIDR(penjualanBulanIni)}>
+                <span className="block text-[10px] sm:text-[11px] uppercase tracking-wide text-emerald-200/90 font-semibold">Bulan Ini</span>
+                <span className="block mt-0.5 text-base sm:text-lg font-black tabular-nums">{formatIDRShort(penjualanBulanIni)}</span>
+                {deltaBulanIni !== null ? (
+                  <span className={`mt-0.5 block text-[10px] font-bold ${deltaBulanIni >= 0 ? 'text-emerald-200' : 'text-amber-200'}`}>
+                    {deltaBulanIni >= 0 ? '▲' : '▼'} {Math.abs(deltaBulanIni).toLocaleString('id-ID', { maximumFractionDigits: 0 })}% vs bln lalu
+                  </span>
+                ) : (
+                  <span className="mt-0.5 block text-[10px] text-emerald-200/70">sejak 1 {new Date().toLocaleDateString('id-ID', { month: 'long' })}</span>
+                )}
+              </div>
+              <div className="rounded-xl bg-white/10 px-3 py-3 sm:px-4 sm:py-3.5" title={formatIDR(penjualanTahunIni)}>
+                <span className="block text-[10px] sm:text-[11px] uppercase tracking-wide text-emerald-200/90 font-semibold">{tahunIni}</span>
+                <span className="block mt-0.5 text-base sm:text-lg font-black tabular-nums">{formatIDRShort(penjualanTahunIni)}</span>
+                {deltaTahunIni !== null ? (
+                  <span className={`mt-0.5 block text-[10px] font-bold ${deltaTahunIni >= 0 ? 'text-emerald-200' : 'text-amber-200'}`}>
+                    {deltaTahunIni >= 0 ? '▲' : '▼'} {Math.abs(deltaTahunIni).toLocaleString('id-ID', { maximumFractionDigits: 0 })}% vs {tahunLalu}
+                  </span>
+                ) : (
+                  <span className="mt-0.5 block text-[10px] text-emerald-200/70">tahun berjalan</span>
+                )}
+              </div>
+              <div className="rounded-xl bg-white/10 px-3 py-3 sm:px-4 sm:py-3.5" title={formatIDR(laba7Hari)}>
+                <span className="block text-[10px] sm:text-[11px] uppercase tracking-wide text-emerald-200/90 font-semibold">Laba Kasar 7 Hari</span>
+                <span className={`block mt-0.5 text-base sm:text-lg font-black tabular-nums ${laba7Hari >= 0 ? '' : 'text-rose-200'}`}>{formatIDRShort(laba7Hari)}</span>
+                <span className="mt-0.5 block text-[10px] text-emerald-200/70">basis kas</span>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {role === 'owner' && (
