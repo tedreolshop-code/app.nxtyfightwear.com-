@@ -657,8 +657,9 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName, em
         })}
       </div>
 
-      {/* Kalender kehadiran pribadi — admin/owner juga karyawan yang absen */}
-      {employee && (
+      {/* Kalender kehadiran pribadi — untuk admin/karyawan. Owner murni tidak perlu:
+          mereka tidak absen harian, dan grid merah di kalender menyesatkan. */}
+      {employee && role !== 'owner' && (
         <AttendanceCalendar logs={myAttendance} joinDate={employee.join_date} />
       )}
 
