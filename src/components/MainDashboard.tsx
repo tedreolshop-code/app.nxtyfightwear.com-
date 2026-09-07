@@ -199,6 +199,8 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName, em
     }, {})
   ).sort((a, b) => b.qty - a.qty).slice(0, 5);
 
+  // Akun baru: belum ada transaksi sama sekali. Dipakai untuk ubah hero & panel jadi
+
   // Nilai rupiah pesanan yang masih mengantre (pending + produksi)
   const nilaiOrderAktif = orderAktif.reduce((sum, o) => sum + o.total, 0);
 
@@ -214,6 +216,19 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName, em
 
   const products = dataStore.getProducts();
   const totalStokProduk = products.reduce((sum, p) => sum + p.stock, 0);
+
+  // Akun baru: belum ada transaksi sama sekali. Dipakai untuk ubah hero & panel jadi
+  // ramah onboarding, bukan menampilkan deretan Rp 0 yang menyesatkan.
+  const belumAdaAktivitas = orders.length === 0
+    && itemSales.length === 0
+    && dailyRekap.length === 0
+    && expenses.length === 0
+    && purchases.length === 0
+    && jobs.length === 0
+    && products.length === 0
+    && materials.length === 0;
+  const punyaPenjualan = penjualanHariIni > 0 || total7Hari > 0 || penjualanBulanIni > 0;
+  const punyaAktivitasApapun = !belumAdaAktivitas;
 
   const attendance = dataStore.getAttendance();
   const myAttendance = employee ? attendance.filter(a => a.employee_id === employee.id) : [];
@@ -349,7 +364,25 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName, em
             </button>
           )}
         </div>
-        {role === 'owner' && (
+        {role === 'owner' && belumAdaAktivitas && (
+          // ONBOARDING: akun baru, belum ada transaksi. Tampilkan CTA jelas, bukan deretan Rp 0.
+          <div className="mt-5 rounded-xl bg-white/10 border border-white/20 p-4 sm:p-5">
+            <p className="text-sm sm:text-base font-semibold text-white">Belum ada transaksi — ayo mulai</p>
+            <p className="text-xs text-emerald-100/80 mt-1">Catat penjualan pertama, lalu jalankan produksi dan kelola karyawan dari satu tempat.</p>
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <button onClick={() => goTo('penjualan')} className="rounded-lg bg-white text-[var(--color-evergreen)] hover:bg-emerald-50 transition-colors px-3 py-2.5 text-xs font-bold cursor-pointer flex items-center justify-center gap-1.5">
+                <ShoppingBag className="w-3.5 h-3.5" /> 1 · Catat Penjualan
+              </button>
+              <button onClick={() => goTo('karyawan')} className="rounded-lg bg-white/15 hover:bg-white/25 transition-colors px-3 py-2.5 text-xs font-semibold cursor-pointer flex items-center justify-center gap-1.5">
+                <Users className="w-3.5 h-3.5" /> 2 · Tambah Karyawan
+              </button>
+              <button onClick={() => goTo('gudang')} className="rounded-lg bg-white/15 hover:bg-white/25 transition-colors px-3 py-2.5 text-xs font-semibold cursor-pointer flex items-center justify-center gap-1.5">
+                <Archive className="w-3.5 h-3.5" /> 3 · Isi Stok
+              </button>
+            </div>
+          </div>
+        )}
+        {role === 'owner' && punyaAktivitasApapun && (
           <>
             <div className="mt-5">
               <span className="text-[11px] sm:text-xs uppercase tracking-wider text-emerald-200/90 font-semibold">Penjualan Hari Ini</span>
@@ -376,8 +409,8 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName, em
             </div>
             {/* Statistik periode: Bulan ini / Tahun berjalan / Laba kotor 7 hari.
                 Nilai pakai format singkat agar muat di kolom; nilai penuh di title. */}
-            <div className="mt-5 grid grid-cols-3 gap-3 sm:gap-4">
-              <div className="rounded-xl bg-white/10 px-3 py-3 sm:px-4 sm:py-3.5" title={formatIDR(penjualanBulanIni)}>
+            <div className="mt-5 grid grid-cols-3 gap-2 sm:gap-4">
+              <div className="rounded-xl bg-white/10 px-2.5 py-3 sm:px-4 sm:py-3.5 min-w-0" title={formatIDR(penjualanBulanIni)}>
                 <span className="block text-[10px] sm:text-[11px] uppercase tracking-wide text-emerald-200/90 font-semibold">Bulan Ini</span>
                 <span className="block mt-0.5 text-base sm:text-lg font-black tabular-nums">{formatIDRShort(penjualanBulanIni)}</span>
                 {deltaBulanIni !== null ? (
@@ -388,7 +421,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName, em
                   <span className="mt-0.5 block text-[10px] text-emerald-200/70">sejak 1 {new Date().toLocaleDateString('id-ID', { month: 'long' })}</span>
                 )}
               </div>
-              <div className="rounded-xl bg-white/10 px-3 py-3 sm:px-4 sm:py-3.5" title={formatIDR(penjualanTahunIni)}>
+              <div className="rounded-xl bg-white/10 px-2.5 py-3 sm:px-4 sm:py-3.5 min-w-0" title={formatIDR(penjualanTahunIni)}>
                 <span className="block text-[10px] sm:text-[11px] uppercase tracking-wide text-emerald-200/90 font-semibold">{tahunIni}</span>
                 <span className="block mt-0.5 text-base sm:text-lg font-black tabular-nums">{formatIDRShort(penjualanTahunIni)}</span>
                 {deltaTahunIni !== null ? (
@@ -399,10 +432,16 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName, em
                   <span className="mt-0.5 block text-[10px] text-emerald-200/70">tahun berjalan</span>
                 )}
               </div>
-              <div className="rounded-xl bg-white/10 px-3 py-3 sm:px-4 sm:py-3.5" title={formatIDR(laba7Hari)}>
+              <div className="rounded-xl bg-white/10 px-2.5 py-3 sm:px-4 sm:py-3.5 min-w-0" title={formatIDR(laba7Hari)}>
                 <span className="block text-[10px] sm:text-[11px] uppercase tracking-wide text-emerald-200/90 font-semibold">Laba Kotor 7 Hari</span>
                 <span className={`block mt-0.5 text-base sm:text-lg font-black tabular-nums ${laba7Hari >= 0 ? '' : 'text-rose-200'}`}>{formatIDRShort(laba7Hari)}</span>
-                <span className="mt-0.5 block text-[10px] text-emerald-200/70">basis kas</span>
+                {total7Hari > 0 ? (
+                  <span className={`mt-0.5 block text-[10px] font-bold ${laba7Hari >= 0 ? 'text-emerald-200' : 'text-amber-200'}`}>
+                    {((laba7Hari / total7Hari) * 100).toFixed(0)}% margin
+                  </span>
+                ) : (
+                  <span className="mt-0.5 block text-[10px] text-emerald-200/70">basis kas</span>
+                )}
               </div>
             </div>
           </>
@@ -438,7 +477,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName, em
         </div>
       )}
 
-      {role === 'owner' && (
+      {role === 'owner' && punyaPenjualan && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Rincian penjualan per channel */}
           <button
@@ -520,8 +559,8 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName, em
         </div>
       )}
 
-      {/* Grafik tren 7 hari + produk terlaris (owner) */}
-      {role === 'owner' && (
+      {/* Grafik tren 7 hari + produk terlaris (owner) — sembunyi saat belum ada penjualan */}
+      {role === 'owner' && punyaPenjualan && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="bg-white rounded-2xl border border-gray-200 p-5">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-4">
