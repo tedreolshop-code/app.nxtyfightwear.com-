@@ -1332,7 +1332,13 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                     <label className="flex flex-col gap-1">
                       <span className="font-bold text-gray-600">Lembur disetujui (menit)</span>
                       <input type="number" min="0" step="30" value={d.overtime} onChange={e => setDraft(log, { overtime: Number(e.target.value) })} className="border border-gray-200 rounded px-2 py-1 bg-white" />
-                      {(log.overtime_minutes || 0) > 0 && <span className="text-[10px] text-gray-400">perkiraan sistem {log.overtime_minutes} mnt</span>}
+                      {log.overtime_request?.requested_hours && (
+                        <span className="text-[10px] font-bold text-sky-700">
+                          diajukan {log.overtime_request.requested_hours} jam
+                          {(log.overtime_minutes || 0) !== log.overtime_request.requested_hours * 60 && ` · perkiraan sistem ${log.overtime_minutes} mnt`}
+                        </span>
+                      )}
+                      {!log.overtime_request?.requested_hours && (log.overtime_minutes || 0) > 0 && <span className="text-[10px] text-gray-400">perkiraan sistem {log.overtime_minutes} mnt</span>}
                     </label>
                     <label className="flex flex-col gap-1">
                       <span className="font-bold text-gray-600">Bonus Live TikTok (Rp){!log.live_tiktok_request && ' — opsional'}</span>

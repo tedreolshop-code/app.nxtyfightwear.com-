@@ -290,7 +290,9 @@ export interface Attendance {
   // Pengajuan opsional yang dikirim karyawan saat scan PULANG. Hanya berupa
   // permintaan + alasan — nilai final (menit / nominal) ditetapkan admin saat ACC
   // di menu "Perlu Review". Tidak memengaruhi gaji sampai disetujui.
-  overtime_request?: { reason: string; requested_at: string };
+  // requested_hours: angka bulat jam lembur yang diminta (1, 2, 3...) — jadi dasar
+  // usulan sistem di halaman review (aktual divalidasi dengan toleransi 10 menit).
+  overtime_request?: { reason: string; requested_at: string; requested_hours?: number };
   live_tiktok_request?: { reason: string; requested_at: string };
 }
 
@@ -842,33 +844,51 @@ export const clockMinutes = (value: string): number => {
  * Metrik satu scan pulang (durasi kerja, porsi hari, pengganti telat, lembur).
  * Dipakai scan normal DAN koreksi admin — supaya keduanya tidak pernah beda rumus.
  *
- * Lembur hanya dihitung bila karyawan mengajukan (centang pengajuan di scan pulang):
- * mulai dari end_time (jam pulang normal) sampai jam scan, telat pagi ditutup dulu,
- * dibulatkan ke atas per jam. Tanpa pengajuan tidak ada lembur otomatis.
- * Toleransi (overtime_tolerance_minutes): lembur baru dihitung bila jam pulang
- * minimal end_time + toleransi — di bawah itu pengajuan tidak menghasilkan lembur.
+ * Lembur hanya dihitung bila karyawan mengajukan. Dasarnya adalah JAM PENGAJUAN
+ * (angka bulat, mis. 1 = 60 menit), bukan pembulatan otomatis:
+ * - Batas pengajuan = end_time + requestedMinutes.
+ * - Toleransi kelebihan 10 menit: pulang sampai 10 menit lewat batas tetap
+ *   dihitung sesuai pengajuan (17:00 pengajuan 1 jam, pulang 17:05/17:10 → 1 jam).
+ * - Lebih dari 10 menit → sistem mengusulkan pengajuan + 1 jam (kandidat jam
+ *   berikutnya); admin yang memutuskan lewat review.
+ * - Tidak pernah melebihi pengajuan + 1 jam secara otomatis; korektor admin bebas
+ *   mengubah angka sebelum menyimpan keputusan.
+ * - Keterlambatan pagi tetap ditutup dulu dari menit lembur.
  */
+export const OVERTIME_OVERRUN_TOLERANCE_MINUTES = 10;
+
 export const checkoutMetrics = (
   checkIn: Attendance,
   checkoutTimestamp: string,
   settings: WorkSettings,
-  overtimeRequested = false
+  overtimeRequested = false,
+  requestedMinutes = 0
 ): Partial<Attendance> => {
   const clock = checkoutTimestamp.slice(11, 16);
   const workedMinutes = Math.max(0, Math.round((new Date(checkoutTimestamp).getTime() - new Date(checkIn.timestamp).getTime()) / 60000));
   const lateMinutes = checkIn.late_minutes ?? Math.max(0, clockMinutes(checkIn.timestamp.slice(11, 16)) - clockMinutes(settings.start_time));
-  const pastEndMinutes = Math.max(0, clockMinutes(clock) - clockMinutes(settings.end_time) - Math.max(0, settings.overtime_tolerance_minutes ?? 0));
-  const lateCompensationMinutes = overtimeRequested ? Math.min(lateMinutes, pastEndMinutes) : 0;
-  const overtimeMinutesAfterLate = overtimeRequested ? Math.max(0, pastEndMinutes - lateCompensationMinutes) : 0;
-  // Lembur dibulatkan ke atas per 30 menit (lebih adil dibulatkan ke jam penuh).
-  // Contoh: 1-30 menit → 30 menit, 31-60 menit → 60 menit, 61-90 menit → 90 menit.
-  const overtimeMinutes = overtimeMinutesAfterLate > 0 
-    ? Math.ceil(overtimeMinutesAfterLate / 30) * 30 
+
+  // Lembur berbasis pengajuan: batas = end_time + jam pengajuan (+ toleransi 10 menit).
+  // Pengajuan 0 jam (pemanggilan lama / tidak valid) = tidak ada usulan otomatis.
+  const requestedClamped = Math.max(0, Math.round(requestedMinutes));
+  const cutoffMinutes = clockMinutes(settings.end_time)
+    + requestedClamped
+    + OVERTIME_OVERRUN_TOLERANCE_MINUTES;
+  const pastCutoffMinutes = Math.max(0, clockMinutes(clock) - cutoffMinutes);
+
+  // Kandidat usulan: jam pengajuan, +1 jam bila pulang melewati batas+toleransi.
+  const proposedMinutes = overtimeRequested && requestedClamped > 0
+    ? Math.min(requestedClamped + (pastCutoffMinutes > 0 ? 60 : 0), 480)
     : 0;
+
+  // Keterlambatan pagi ditutup dulu dari menit lembur (seperti aturan lama).
+  const overtimePool = Math.max(0, clockMinutes(clock) - clockMinutes(settings.end_time));
+  const lateCompensationMinutes = overtimeRequested ? Math.min(lateMinutes, overtimePool) : 0;
+  const overtimeMinutesAfterLate = overtimeRequested ? Math.max(0, proposedMinutes - lateCompensationMinutes) : 0;
   return {
     worked_minutes: workedMinutes,
     work_fraction: clock < settings.full_day_from ? 0.5 : 1,
     late_compensation_minutes: lateCompensationMinutes,
-    overtime_minutes: overtimeMinutes,
+    overtime_minutes: overtimeMinutesAfterLate,
   };
 };

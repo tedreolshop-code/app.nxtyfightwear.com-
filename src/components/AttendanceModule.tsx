@@ -230,6 +230,8 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
   // Pengajuan opsional saat scan pulang (portal karyawan) — lembur & bonus Live TikTok
   const [otRequest, setOtRequest] = useState(false);
   const [otReason, setOtReason] = useState('');
+  // Jam lembur yang diminta (angka bulat: 1-4). Jadi dasar usulan sistem saat review admin.
+  const [otHours, setOtHours] = useState(1);
   const [liveRequest, setLiveRequest] = useState(false);
   const [liveReason, setLiveReason] = useState('');
   const [rejectOverlay, setRejectOverlay] = useState<{ judul: string; pesan: string } | null>(null);
@@ -476,7 +478,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
             verification_method: 'gps_self',
             early_leave_reason: finalEarlyLeaveReason || undefined,
             overtime_request: effectiveScanType === 'pulang' && otRequest && otReason.trim()
-              ? { reason: otReason.trim(), requested_at: wibNowISO() } : undefined,
+              ? { reason: otReason.trim(), requested_at: wibNowISO(), requested_hours: Math.max(1, Math.round(otHours)) } : undefined,
             live_tiktok_request: effectiveScanType === 'pulang' && canRequestLiveBonus && liveRequest && liveReason.trim()
               ? { reason: liveReason.trim(), requested_at: wibNowISO() } : undefined,
           });
@@ -496,7 +498,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
           setPin('');
           setEarlyLeaveReason('');
           setEarlyLeaveChoice('');
-          setOtRequest(false); setOtReason('');
+          setOtRequest(false); setOtReason(''); setOtHours(1);
           setLiveRequest(false); setLiveReason('');
           setLocationVerified(false);
           setSelectedEmpId(lockedEmployee ? lockedEmployee.id : '');
@@ -1274,13 +1276,40 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                       <span className="text-[11px] text-emerald-100 font-bold">Ajukan lembur hari ini</span>
                     </label>
                     {otRequest && (
-                      <textarea
-                        value={otReason}
-                        onChange={e => setOtReason(e.target.value)}
-                        rows={2}
-                        placeholder="Alasan / pekerjaan lembur (wajib). Menit disetujui ditetapkan admin."
-                        className="w-full bg-[#0e2419]/80 border border-[#1a422f] rounded-lg p-2 text-[11px] text-emerald-50 placeholder:text-emerald-200/30 focus:outline-none"
-                      />
+                      <>
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-bold text-emerald-200/80 uppercase tracking-wider">Berapa jam lemburnya?</p>
+                          <div className="flex gap-1.5">
+                            {[1, 2, 3, 4].map(jam => (
+                              <button
+                                key={jam}
+                                type="button"
+                                onClick={() => setOtHours(jam)}
+                                className={`flex-1 py-1.5 rounded-lg text-xs font-black cursor-pointer transition-colors ${
+                                  otHours === jam
+                                    ? 'bg-emerald-400 text-[#0e2419]'
+                                    : 'bg-[#0e2419]/80 border border-[#1a422f] text-emerald-200 hover:border-emerald-400/50'
+                                }`}
+                              >
+                                {jam} jam
+                              </button>
+                            ))}
+                          </div>
+                          <p className="text-[10px] text-emerald-200/50">
+                            Batas pulang: {(() => {
+                              const m = (() => { const [h, min] = workSettings.end_time.split(':').map(Number); return h * 60 + min; })() + otHours * 60 + 10;
+                              return `${String(Math.floor(m / 60) % 24).padStart(2, '0')}.${String(m % 60).padStart(2, '0')}`;
+                            })()} (lebih 10 menit masih dihitung)
+                          </p>
+                        </div>
+                        <textarea
+                          value={otReason}
+                          onChange={e => setOtReason(e.target.value)}
+                          rows={2}
+                          placeholder="Alasan / pekerjaan lembur (wajib). Menit disetujui ditetapkan admin."
+                          className="w-full bg-[#0e2419]/80 border border-[#1a422f] rounded-lg p-2 text-[11px] text-emerald-50 placeholder:text-emerald-200/30 focus:outline-none"
+                        />
+                      </>
                     )}
 
                     {canRequestLiveBonus && (

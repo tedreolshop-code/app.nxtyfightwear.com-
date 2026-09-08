@@ -4,34 +4,43 @@ import assert from 'node:assert/strict';
 import { checkoutMetrics } from './types';
 import type { Attendance, WorkSettings } from './types';
 
-const settings = { start_time: '08:00', end_time: '16:00', full_day_from: '14:00', half_day_start: '12:00', overtime_tolerance_minutes: 0 } as WorkSettings;
+const settings = { start_time: '08:00', end_time: '16:00', full_day_from: '14:00', half_day_start: '12:00' } as WorkSettings;
 const masuk = (jam: string, late = 0): Attendance =>
   ({ timestamp: `2026-08-22T${jam}:00+07:00`, late_minutes: late } as Attendance);
 
-// Pulang 17:00 tanpa pengajuan lembur: hari penuh, tidak ada lembur otomatis.
-const sore = checkoutMetrics(masuk('07:51'), '2026-08-22T17:00:00+07:00', settings);
-assert.equal(sore.work_fraction, 1);
-assert.equal(sore.overtime_minutes, 0);
-assert.equal(sore.worked_minutes, 549);
+// === Aturan baru: lembur berbasis JAM PENGAJUAN, toleransi lewat batas 10 menit ===
+// Pengajuan 1 jam (60 menit): batas pulang = 16:00 + 60 m + 10 m = 17:10.
 
-// Ajukan lembur, pulang 17:00 → 60 menit lewat 16:00 → dibulatkan ke 60 menit (1 jam).
-assert.equal(checkoutMetrics(masuk('07:51'), '2026-08-22T17:00:00+07:00', settings, true).overtime_minutes, 60);
+// Pengajuan 1 jam, pulang tepat 17:00 → 1 jam penuh.
+assert.equal(checkoutMetrics(masuk('07:51'), '2026-08-22T17:00:00+07:00', settings, true, 60).overtime_minutes, 60);
+// Pengajuan 1 jam, pulang 17:05 → tetap 1 jam (toleransi 10 menit).
+assert.equal(checkoutMetrics(masuk('07:51'), '2026-08-22T17:05:00+07:00', settings, true, 60).overtime_minutes, 60);
+// Pengajuan 1 jam, pulang 17:10 → tetap 1 jam (tepat di batas toleransi).
+assert.equal(checkoutMetrics(masuk('07:51'), '2026-08-22T17:10:00+07:00', settings, true, 60).overtime_minutes, 60);
+// Pengajuan 1 jam, pulang 17:15 → lewat 5 menit dari batas → usulan pengajuan + 1 jam
+// (kandidat 2 jam); admin memutuskan lewat review.
+assert.equal(checkoutMetrics(masuk('07:51'), '2026-08-22T17:15:00+07:00', settings, true, 60).overtime_minutes, 120);
 
-// Pengajuan + pulang 16:05 (dalam toleransi 0 menit) → 5 menit → dibulatkan ke 30 menit.
-assert.equal(checkoutMetrics(masuk('07:51'), '2026-08-22T16:05:00+07:00', settings, true).overtime_minutes, 30);
+// Pengajuan 2 jam (batas 18:10): pulang 18:00 → 2 jam; pulang 18:10 → tetap 2 jam;
+// pulang 18:15 → usulan 3 jam (kandidat jam berikutnya).
+assert.equal(checkoutMetrics(masuk('07:51'), '2026-08-22T18:00:00+07:00', settings, true, 120).overtime_minutes, 120);
+assert.equal(checkoutMetrics(masuk('07:51'), '2026-08-22T18:10:00+07:00', settings, true, 120).overtime_minutes, 120);
+assert.equal(checkoutMetrics(masuk('07:51'), '2026-08-22T18:15:00+07:00', settings, true, 120).overtime_minutes, 180);
 
-// Pengajuan + pulang 16:35 → 35 menit → dibulatkan ke 60 menit.
-assert.equal(checkoutMetrics(masuk('07:51'), '2026-08-22T16:35:00+07:00', settings, true).overtime_minutes, 60);
+// Tidak ada pengajuan → tidak ada lembur otomatis, walau pulang larut.
+assert.equal(checkoutMetrics(masuk('07:51'), '2026-08-22T18:00:00+07:00', settings).overtime_minutes, 0);
+assert.equal(checkoutMetrics(masuk('07:51'), '2026-08-22T18:00:00+07:00', settings, true, 0).overtime_minutes, 0);
 
-// Pengajuan + pulang 17:30 → 90 menit → dibulatkan ke 90 menit (1.5 jam).
-assert.equal(checkoutMetrics(masuk('07:51'), '2026-08-22T17:30:00+07:00', settings, true).overtime_minutes, 90);
+// Keterlambatan pagi ditutup dulu: telat 30 menit, pengajuan 2 jam, pulang 18:00
+// (pas batas 2 jam) → 30 menit jadi pengganti telat, sisanya 90 menit lembur.
+const lembur = checkoutMetrics(masuk('08:30', 30), '2026-08-22T18:00:00+07:00', settings, true, 120);
+assert.equal(lembur.late_compensation_minutes, 30);
+assert.equal(lembur.overtime_minutes, 90);
 
-// Pulang sebelum 14:00 = setengah hari.
+// Pulang cepat tetap terdeteksi: sebelum 14:00 = setengah hari.
 assert.equal(checkoutMetrics(masuk('07:51'), '2026-08-22T12:20:00+07:00', settings).work_fraction, 0.5);
 
-// Telat 30 menit ditutup dulu: pulang 18:30 → dari 16:00 ada 150 menit, sisa 120 menit → dibulatkan ke 120 menit (2 jam).
-const lembur = checkoutMetrics(masuk('08:30', 30), '2026-08-22T18:30:00+07:00', settings, true);
-assert.equal(lembur.late_compensation_minutes, 30);
-assert.equal(lembur.overtime_minutes, 120);
+// Kompatibilitas: pemanggilan lama tanpa jam pengajuan tetap aman (tanpa pengajuan = 0).
+assert.equal(checkoutMetrics(masuk('07:51'), '2026-08-22T17:00:00+07:00', settings).overtime_minutes, 0);
 
-console.log('OK: metrik scan pulang');
+console.log('OK: metrik scan pulang (aturan berbasis jam pengajuan, toleransi 10 menit)');

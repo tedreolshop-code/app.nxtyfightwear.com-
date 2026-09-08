@@ -1819,7 +1819,10 @@ class DataStore {
       attendanceMetrics.late_minutes = Math.max(0, clockMinutes(timestampClock) - clockMinutes(workSettings.start_time));
     } else {
       const checkIn = sameDayLogs.find(log => log.type_scan === 'masuk');
-      if (checkIn) attendanceMetrics = checkoutMetrics(checkIn, att.timestamp, workSettings, Boolean(att.overtime_request));
+      if (checkIn) {
+        const requestedHours = att.overtime_request?.requested_hours ?? 0;
+        attendanceMetrics = checkoutMetrics(checkIn, att.timestamp, workSettings, Boolean(att.overtime_request), requestedHours * 60);
+      }
     }
 
     const newAttendance: Attendance = {
