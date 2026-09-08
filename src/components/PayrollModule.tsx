@@ -508,6 +508,37 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
 
   const saveReview = (log: Attendance) => saveReviewValues(log, draftFor(log));
 
+  // ACC massal: putuskan SEMUA pengajuan menunggu memakai usulan sistem
+  // (overtime = log.overtime_minutes; live TikTok = bonus default karyawan).
+  // Ringkasan + konfirmasi dulu; tiap keputusan tetap lewat approveAttendanceAdjustment
+  // sehingga tercatat sama seperti ACC satuan.
+  const approveAllWithSystemProposal = () => {
+    if (allPendingReviewLogs.length === 0) return;
+    const ringkas = allPendingReviewLogs.map(log => {
+      const liveDefault = log.live_tiktok_request ? (employees.find(e => e.id === log.employee_id)?.default_live_tiktok_bonus ?? 20000) : 0;
+      const parts = [
+        (log.late_compensation_minutes || 0) > 0 && `telat ${log.late_compensation_minutes}m`,
+        (log.overtime_minutes || 0) > 0 && `lembur ${log.overtime_minutes}m`,
+        liveDefault > 0 && `live ${formatIDR(liveDefault)}`,
+      ].filter(Boolean);
+      return `${log.employee_name} (${log.timestamp.slice(0, 10)}): ${parts.join(' + ') || 'tanpa tambahan'}`;
+    });
+    const ok = window.confirm(
+      `Terima usulan sistem untuk SEMUA ${allPendingReviewLogs.length} pengajuan yang menunggu?\n\n` +
+      ringkas.join('\n') +
+      `\n\nKeputusan tersimpan permanen dan otomatis masuk slip gaji saat Generate. Lanjutkan?`
+    );
+    if (!ok) return;
+    for (const log of allPendingReviewLogs) {
+      const liveDefault = log.live_tiktok_request ? (employees.find(e => e.id === log.employee_id)?.default_live_tiktok_bonus ?? 20000) : 0;
+      saveReviewValues(log, {
+        lateComp: log.late_compensation_minutes || 0,
+        overtime: log.overtime_minutes || 0,
+        live: log.live_tiktok_request ? liveDefault : 0,
+      });
+    }
+  };
+
   const rejectReview = (log: Attendance, presetReason?: string) => {
     const reason = presetReason ?? window.prompt(`Alasan menolak pengajuan ${log.employee_name} (${log.timestamp.slice(0, 10)}):`);
     if (reason === null) return;
@@ -1300,9 +1331,20 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
           </div>
 
           <div className="bg-white border border-amber-200 rounded-xl p-4 space-y-3">
-            <div>
-              <h3 className="font-black text-sm text-gray-800">Perlu Diputuskan</h3>
-              <p className="text-xs text-gray-500">Jam tambahan menutup telat dulu, sisanya baru masuk lembur. Nilai bisa dikoreksi sebelum disimpan. Pengajuan dari karyawan ditandai biru. <b>Keputusan tersimpan permanen dan otomatis terisi di slip gaji periode terkait saat Generate.</b></p>
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h3 className="font-black text-sm text-gray-800">Perlu Diputuskan</h3>
+                <p className="text-xs text-gray-500">Jam tambahan menutup telat dulu, sisanya baru masuk lembur. Nilai bisa dikoreksi sebelum disimpan. Pengajuan dari karyawan ditandai biru. <b>Keputusan tersimpan permanen dan otomatis terisi di slip gaji periode terkait saat Generate.</b></p>
+              </div>
+              {allPendingReviewLogs.length > 1 && (
+                <button
+                  type="button"
+                  onClick={approveAllWithSystemProposal}
+                  className="shrink-0 bg-[var(--color-evergreen)] hover:bg-[#122d20] text-white rounded-lg px-3 py-2 text-[11px] font-bold cursor-pointer flex items-center gap-1.5 transition-colors"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Terima Usulan Semua ({allPendingReviewLogs.length})
+                </button>
+              )}
             </div>
             {pendingAdjustmentLogs.length === 0 ? (
               <p className="text-center text-gray-400 italic text-xs py-6">Tidak ada pengajuan / lembur yang menunggu keputusan.</p>
