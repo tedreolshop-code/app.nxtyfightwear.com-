@@ -860,11 +860,15 @@ export const checkoutMetrics = (
   const pastEndMinutes = Math.max(0, clockMinutes(clock) - clockMinutes(settings.end_time) - Math.max(0, settings.overtime_tolerance_minutes ?? 0));
   const lateCompensationMinutes = overtimeRequested ? Math.min(lateMinutes, pastEndMinutes) : 0;
   const overtimeMinutesAfterLate = overtimeRequested ? Math.max(0, pastEndMinutes - lateCompensationMinutes) : 0;
-  const overtimeHours = overtimeMinutesAfterLate > 0 ? Math.ceil(overtimeMinutesAfterLate / 60) : 0; // dibulatkan ke atas per jam
+  // Lembur dibulatkan ke atas per 30 menit (lebih adil dibulatkan ke jam penuh).
+  // Contoh: 1-30 menit → 30 menit, 31-60 menit → 60 menit, 61-90 menit → 90 menit.
+  const overtimeMinutes = overtimeMinutesAfterLate > 0 
+    ? Math.ceil(overtimeMinutesAfterLate / 30) * 30 
+    : 0;
   return {
     worked_minutes: workedMinutes,
     work_fraction: clock < settings.full_day_from ? 0.5 : 1,
     late_compensation_minutes: lateCompensationMinutes,
-    overtime_minutes: overtimeHours * 60,
+    overtime_minutes: overtimeMinutes,
   };
 };
