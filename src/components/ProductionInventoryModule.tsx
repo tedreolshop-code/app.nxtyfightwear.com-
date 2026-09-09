@@ -942,8 +942,14 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
     if (isEmployee && subTab !== 'tracker') setSubTab('tracker');
   }, [isEmployee, subTab]);
 
+  // Sama seperti deteksi popup kerjaan baru di App.tsx: job yang di-assign eksplisit
+  // tetap tampil meski department_id job berbeda dari departemen pegawai saat ini
+  // (mis. pegawai pindah divisi setelah job dibuat) — tanpa ini job muncul di popup
+  // tapi hilang dari Daftar Kerjaan Saya.
   const scopedProductionJobs = isEmployee && currentEmployee
-    ? productionJobs.filter(job => job.department_id === currentEmployee.department_id)
+    ? productionJobs.filter(job =>
+        job.department_id === currentEmployee.department_id ||
+        job.assigned_employees?.some(item => item.employee_id === currentEmployee.id))
     : productionJobs;
 
   // Kanban Query Filters
