@@ -392,13 +392,32 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
   };
 
   // Submit scan handler
-  const handleAttendanceSubmit = (e?: React.FormEvent) => {
+  const handleAttendanceSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setStatusMessage(null);
 
     if (!selectedEmpId) {
       tolakScan('pilih_karyawan', 'Pilih nama karyawan terlebih dahulu.');
       return;
+    }
+
+    const empBefore = employees.find(x => x.id === selectedEmpId);
+    if (!empBefore) return;
+
+    // Jaring pengaman perangkat data-stale: tipe scan (masuk/pulang) ditentukan
+    // dari log HARI INI. Perangkat yang kehilangan sinkron (tab tidur, sinyal
+    // putus, cloud error saat start) tidak melihat log masuk yang tercatat di
+    // kiosk lain — scan pulang lalu salah tipe atau ditolak "harus masuk dulu".
+    // Tarik dulu log ~2 hari dari cloud (ringan); bila offline, lanjut data lokal.
+    if (isCloudEnabled) {
+      setIsScanning(true);
+      try {
+        const at = await resyncAttendanceFromCloud();
+        if (at) setLastSync(at);
+      } finally {
+        setIsScanning(false);
+      }
+      loadData();
     }
 
     const emp = employees.find(x => x.id === selectedEmpId);

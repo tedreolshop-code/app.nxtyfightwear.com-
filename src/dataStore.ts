@@ -1759,7 +1759,7 @@ class DataStore {
     } else if (att.type_scan === 'pulang') {
       const hasCheckedIn = sameDayLogs.some(l => l.type_scan === 'masuk');
       if (!hasCheckedIn) {
-        throw new Error(`Absen PULANG ditolak: Anda harus melakukan absen MASUK terlebih dahulu hari ini.`);
+        throw new Error(`Absen PULANG ditolak: Anda harus melakukan absen MASUK terlebih dahulu hari ini. Bila Anda sudah absen masuk di perangkat lain, segarkan halaman (data belum tersinkron) atau minta admin mencatatkan lewat "Scan QR Karyawan".`);
       }
       const alreadyCheckedOut = sameDayLogs.some(l => l.type_scan === 'pulang');
       if (alreadyCheckedOut) {
