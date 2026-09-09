@@ -23,8 +23,8 @@ export const applyBrandTheme = (brand: BrandSettings): void => {
   root.style.setProperty('--color-evergreen', brand.primary_color);
   root.style.setProperty('--color-evergreen-dark', shiftColor(brand.primary_color, -0.3));
   root.style.setProperty('--color-evergreen-tint', shiftColor(brand.primary_color, 0.88));
-  // Judul tab browser ikut nama brand
-  document.title = `${brand.company_name} — ${brand.tagline || 'Sistem Produksi'}`;
+  // Judul tab browser ikut nama brand (nama file PDF cetakan juga dari sini)
+  document.title = brand.company_name;
 };
 
 // Inisial brand untuk chip kecil (mis. "ARI" dari "ARI SPORTINDO")

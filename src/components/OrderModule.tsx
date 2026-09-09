@@ -478,7 +478,6 @@ export const OrderModule: React.FC = () => {
         {/* Header */}
         <div className="text-center space-y-0.5 border-b-2 pb-2" style={{ borderColor: 'currentColor', borderStyle: 'double' }}>
           <h1 className="text-base font-black tracking-widest uppercase">{brand.company_name}</h1>
-          {brand.tagline && <p className="text-[10px]">{brand.tagline}</p>}
           <p className="text-xs font-bold tracking-wider uppercase">Nota Penjualan</p>
         </div>
 
@@ -497,23 +496,29 @@ export const OrderModule: React.FC = () => {
           </div>
         </div>
 
-        {/* Tabel barang */}
-        <table className="w-full border-collapse text-[10px] my-2">
+        {/* Tabel barang — berbingkai penuh agar rapi saat dicetak */}
+        <table className="w-full border-collapse text-[10px] my-2" style={{ border: '1.5px solid' }}>
+          <colgroup>
+            <col style={{ width: '50%' }} />
+            <col style={{ width: '12%' }} />
+            <col style={{ width: '19%' }} />
+            <col style={{ width: '19%' }} />
+          </colgroup>
           <thead>
-            <tr className="border-t border-b" style={{ borderColor: 'currentColor' }}>
-              <th className="py-1 text-left font-bold">Barang</th>
-              <th className="py-1 text-center font-bold">Qty</th>
-              <th className="py-1 text-right font-bold">Harga</th>
-              <th className="py-1 text-right font-bold">Subtotal</th>
+            <tr>
+              <th className="py-1 px-1.5 text-left font-bold" style={{ border: '1px solid' }}>Barang</th>
+              <th className="py-1 px-1.5 text-center font-bold" style={{ border: '1px solid' }}>Qty</th>
+              <th className="py-1 px-1.5 text-right font-bold" style={{ border: '1px solid' }}>Harga</th>
+              <th className="py-1 px-1.5 text-right font-bold" style={{ border: '1px solid' }}>Subtotal</th>
             </tr>
           </thead>
           <tbody>
             {order.items.map(item => (
               <tr key={item.id}>
-                <td className="py-0.5">{item.product_name} ({item.variant})</td>
-                <td className="py-0.5 text-center">{item.qty}</td>
-                <td className="py-0.5 text-right">{formatIDRCompact(item.price)}</td>
-                <td className="py-0.5 text-right font-bold">{formatIDRCompact(item.subtotal)}</td>
+                <td className="py-0.5 px-1.5 break-words" style={{ border: '1px solid' }}>{item.product_name} ({item.variant})</td>
+                <td className="py-0.5 px-1.5 text-center" style={{ border: '1px solid' }}>{item.qty}</td>
+                <td className="py-0.5 px-1.5 text-right" style={{ border: '1px solid' }}>{formatIDRCompact(item.price)}</td>
+                <td className="py-0.5 px-1.5 text-right font-bold" style={{ border: '1px solid' }}>{formatIDRCompact(item.subtotal)}</td>
               </tr>
             ))}
           </tbody>
