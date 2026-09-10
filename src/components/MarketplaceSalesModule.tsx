@@ -90,12 +90,32 @@ export const MarketplaceSalesModule: React.FC = () => {
     adminFee: 0,
     departmentId: '', // hanya dipakai baris tanpa produk (deskripsi bebas)
   });
-  const [saleItemRows, setSaleItemRows] = useState<Array<{ key: string; selectedProductId: string; customDescription: string; departmentId?: string; qty: number; price: number; adminFee: number }>>([newEmptyItemRow()]);
+  // Baris input tunggal (di atas) + daftar barang yang SUDAH dimasukkan ke review (di bawah).
+  // Barang baru tersimpan hanya saat tombol simpan ditekan — sebelum itu semua masih draft.
+  const [itemRow, setItemRow] = useState(newEmptyItemRow());
+  const [draftRows, setDraftRows] = useState<Array<{ key: string; selectedProductId: string; customDescription: string; departmentId?: string; qty: number; price: number; adminFee: number }>>([]);
   const updateItemRow = (index: number, patch: Partial<{ selectedProductId: string; customDescription: string; departmentId: string; qty: number; price: number; adminFee: number }>) => {
-    setSaleItemRows(prev => prev.map((row, i) => i === index ? { ...row, ...patch } : row));
+    setDraftRows(prev => prev.map((row, i) => i === index ? { ...row, ...patch } : row));
   };
-  const addItemRow = () => setSaleItemRows(prev => [...prev, newEmptyItemRow()]);
-  const removeItemRow = (index: number) => setSaleItemRows(prev => prev.filter((_, i) => i !== index));
+  const removeDraftRow = (index: number) => setDraftRows(prev => prev.filter((_, i) => i !== index));
+  const resetItemInput = () => setItemRow(newEmptyItemRow());
+
+  // Masukkan baris input ke tabel review. Validasi ringan di sini; validasi penuh tetap saat simpan.
+  const handleAddDraftRow = () => {
+    const desc = itemRow.selectedProductId === 'custom' || !itemRow.selectedProductId
+      ? itemRow.customDescription.trim()
+      : (products.find(p => p.id === itemRow.selectedProductId)?.name || itemRow.customDescription.trim());
+    if (!desc) {
+      alert('Isi deskripsi produk (atau pilih produk dari daftar) terlebih dahulu.');
+      return;
+    }
+    if (itemRow.qty <= 0 || itemRow.price <= 0) {
+      alert('Qty dan harga satuan harus lebih dari 0.');
+      return;
+    }
+    setDraftRows(prev => [...prev, { ...itemRow, qty: Math.max(1, Math.round(itemRow.qty)), price: itemRow.price }]);
+    resetItemInput();
+  };
   // Nama penginput diambil dari akun yang sedang login (bukan hardcode)
   const [staffName, setStaffName] = useState<string>(() => {
     try { return JSON.parse(localStorage.getItem('nxty_session') || 'null')?.name || 'Admin'; } catch { return 'Admin'; }
@@ -167,12 +187,12 @@ export const MarketplaceSalesModule: React.FC = () => {
         ? row.customDescription.trim()
         : (products.find(p => p.id === row.selectedProductId)?.name || row.customDescription.trim());
 
-    if (saleItemRows.length === 0) {
-      alert('Pesanan harus berisi minimal 1 barang. Hapus pesanan lewat tombol Hapus bila ingin membatalkannya.');
+    if (draftRows.length === 0) {
+      alert('Tabel review masih kosong. Isi produk + qty + harga di atas lalu klik "Tambahkan ke Daftar".');
       return;
     }
 
-    for (const row of saleItemRows) {
+    for (const row of draftRows) {
       if (!resolveDescription(row)) {
         alert('Mohon masukkan deskripsi produk/barang di setiap item!');
         return;
@@ -203,8 +223,8 @@ export const MarketplaceSalesModule: React.FC = () => {
 
       const finalOrderNumber = orderNumber.trim() || editingOrderNumber;
       savedOrderNumber = finalOrderNumber;
-      const rowFees = distributeFee(saleItemRows, computeOrderFee(saleItemRows));
-      const rebuilt: MarketplaceItemSale[] = saleItemRows.map((row, rowIdx) => {
+      const rowFees = distributeFee(draftRows, computeOrderFee(draftRows));
+      const rebuilt: MarketplaceItemSale[] = draftRows.map((row, rowIdx) => {
         const old = oldItems.find(item => item.id === row.key); // key baris = id barang lama
         const linkedProductId = row.selectedProductId && row.selectedProductId !== 'custom' ? row.selectedProductId : undefined;
         const calculatedSubtotal = row.qty * row.price;
@@ -248,8 +268,8 @@ export const MarketplaceSalesModule: React.FC = () => {
       const sharedOrderNumber = orderNumber.trim() || 'NP-' + Math.floor(100000 + Math.random() * 900000);
       savedOrderNumber = sharedOrderNumber;
       // Biaya admin diinput sekali per pesanan, lalu disebar proporsional ke tiap barang
-      const rowFees = distributeFee(saleItemRows, computeOrderFee(saleItemRows));
-      saleItemRows.forEach((row, rowIdx) => {
+      const rowFees = distributeFee(draftRows, computeOrderFee(draftRows));
+      draftRows.forEach((row, rowIdx) => {
         const finalDescription = resolveDescription(row);
         const linkedProductId = row.selectedProductId && row.selectedProductId !== 'custom' ? row.selectedProductId : undefined;
         const calculatedSubtotal = row.qty * row.price;
@@ -281,7 +301,7 @@ export const MarketplaceSalesModule: React.FC = () => {
       });
       dataStore.setMarketplaceItemSales(updatedItemSales);
       setItemSales(updatedItemSales);
-      alert(saleItemRows.length > 1 ? `${saleItemRows.length} item dalam order berhasil dicatatkan!` : 'Detail penjualan produk berhasil dicatatkan!');
+      alert(draftRows.length > 1 ? `${draftRows.length} item dalam order berhasil dicatatkan!` : 'Detail penjualan produk berhasil dicatatkan!');
     }
 
     // Foto resi diunggah setelah pesanan tersimpan, supaya nomor pesanannya sudah pasti
@@ -292,7 +312,8 @@ export const MarketplaceSalesModule: React.FC = () => {
 
     // Reset inputs but preserve date & admin name for speed typing!
     setOrderNumber('');
-    setSaleItemRows([newEmptyItemRow()]);
+    setDraftRows([]);
+    resetItemInput();
     setOrderAdminFee(0);
   };
 
@@ -340,7 +361,7 @@ export const MarketplaceSalesModule: React.FC = () => {
 
     // Biaya admin adalah milik pesanan: jumlahkan kembali sebaran per barang
     setOrderAdminFee(items.reduce((sum, item) => sum + item.admin_fee, 0));
-    setSaleItemRows(items.map(item => {
+    setDraftRows(items.map(item => {
       // Utamakan tautan product_id yang tersimpan, baru cocokkan berdasarkan nama
       const matchingProduct = (item.product_id && products.find(p => p.id === item.product_id))
         || products.find(p => p.name === item.description || (p.name + (p.variant ? ` - ${p.variant}` : '')) === item.description);
@@ -359,7 +380,8 @@ export const MarketplaceSalesModule: React.FC = () => {
   const handleCancelEditItem = () => {
     setEditingOrderNumber(null);
     setOrderNumber('');
-    setSaleItemRows([newEmptyItemRow()]);
+    setDraftRows([]);
+    resetItemInput();
     setOrderAdminFee(0);
   };
 
@@ -907,111 +929,179 @@ export const MarketplaceSalesModule: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Item rows — 1 order bisa punya lebih dari 1 produk */}
-                    <div className="space-y-3">
-                      {saleItemRows.map((row, idx) => (
-                        <div key={row.key} className="bg-gray-50 rounded-lg p-3 border border-gray-100 space-y-2">
-                          {saleItemRows.length > 1 && (
-                            <div className="flex items-center justify-between">
-                              <span className="text-[10px] text-gray-400 font-bold uppercase">Item #{idx + 1}</span>
-                              <button
-                                type="button"
-                                onClick={() => removeItemRow(idx)}
-                                className="text-rose-400 hover:text-rose-600 p-0.5"
-                                title="Hapus barang ini dari pesanan"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          )}
+                    {/* Baris input item tunggal — masuk ke tabel review bila ditambahkan */}
+                    <div className="bg-gray-50 rounded-lg p-3 border border-gray-100 space-y-2">
+                      <span className="font-bold text-gray-700 block">Pilih Produk & Kuantitas</span>
 
-                          {/* Product Selector with Autocomplete */}
-                          <div>
-                            <label className="block text-gray-500 font-semibold mb-1">Pilih Produk (Autofill)</label>
+                      {/* Product Selector with Autofill */}
+                      <div>
+                        <label className="block text-gray-500 font-semibold mb-1">Pilih Produk (Autofill)</label>
+                        <select
+                          value={itemRow.selectedProductId}
+                          onChange={(e) => {
+                            const pid = e.target.value;
+                            const prod = products.find(p => p.id === pid);
+                            setItemRow(prev => ({
+                              ...prev,
+                              selectedProductId: pid,
+                              ...(prod ? { price: prod.harga_jual, customDescription: prod.name + (prod.variant ? ` - ${prod.variant}` : '') } : { customDescription: '' }),
+                            }));
+                          }}
+                          className="w-full bg-white border border-gray-200 rounded px-3 py-2 text-xs text-gray-700 font-semibold focus:outline-none focus:ring-1 focus:ring-evergreen"
+                        >
+                          <option value="">-- Ketik Deskripsi Custom / Pilih Produk --</option>
+                          {[...products].sort((a, b) => a.name.localeCompare(b.name)).map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} {p.variant ? `(${p.variant})` : ''} - {formatIDR(p.harga_jual)}
+                            </option>
+                          ))}
+                          <option value="custom">Tulis Custom / Tidak di List</option>
+                        </select>
+
+                        {/* Deskripsi custom input */}
+                        {(!itemRow.selectedProductId || itemRow.selectedProductId === 'custom') && (
+                          <div className="space-y-1 mt-1.5">
+                            <label className="block text-[10px] text-gray-400 font-bold uppercase">Deskripsi Item</label>
+                            <input
+                              type="text"
+                              value={itemRow.customDescription}
+                              onChange={(e) => setItemRow(prev => ({ ...prev, customDescription: e.target.value }))}
+                              placeholder="Ketik deskripsi produk di sini..."
+                              className="w-full bg-white border border-gray-200 rounded px-3 py-2 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-evergreen"
+                            />
+                            <label className="block text-[10px] text-gray-400 font-bold uppercase pt-1">Divisi</label>
                             <select
-                              value={row.selectedProductId}
-                              onChange={(e) => {
-                                const pid = e.target.value;
-                                const prod = products.find(p => p.id === pid);
-                                updateItemRow(idx, {
-                                  selectedProductId: pid,
-                                  ...(prod ? { price: prod.harga_jual, customDescription: prod.name + (prod.variant ? ` - ${prod.variant}` : '') } : {}),
-                                });
-                              }}
-                              className="w-full bg-white border border-gray-200 rounded px-3 py-2 text-xs text-gray-700 font-semibold mb-1.5 focus:outline-none focus:ring-1 focus:ring-evergreen"
+                              value={itemRow.departmentId || ''}
+                              onChange={(e) => setItemRow(prev => ({ ...prev, departmentId: e.target.value }))}
+                              className="w-full bg-white border border-gray-200 rounded px-3 py-2 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-evergreen"
                             >
-                              <option value="">-- Ketik Deskripsi Custom / Pilih Produk --</option>
-                              {[...products].sort((a, b) => a.name.localeCompare(b.name)).map(p => (
-                                <option key={p.id} value={p.id}>
-                                  {p.name} {p.variant ? `(${p.variant})` : ''} - {formatIDR(p.harga_jual)}
-                                </option>
-                              ))}
-                              <option value="custom">Tulis Custom / Tidak di List</option>
+                              <option value="">Belum ditentukan</option>
+                              {DIVISIONS.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
                             </select>
-
-                            {/* Deskripsi custom input */}
-                            {(!row.selectedProductId || row.selectedProductId === 'custom') && (
-                              <div className="space-y-1">
-                                <label className="block text-[10px] text-gray-400 font-bold uppercase">Deskripsi Item</label>
-                                <input
-                                  type="text"
-                                  value={row.customDescription}
-                                  onChange={(e) => updateItemRow(idx, { customDescription: e.target.value })}
-                                  placeholder="Ketik deskripsi produk di sini..."
-                                  className="w-full bg-white border border-gray-200 rounded px-3 py-2 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-evergreen"
-                                  required
-                                />
-                                <label className="block text-[10px] text-gray-400 font-bold uppercase pt-1">Divisi</label>
-                                <select
-                                  value={row.departmentId || ''}
-                                  onChange={(e) => updateItemRow(idx, { departmentId: e.target.value })}
-                                  className="w-full bg-white border border-gray-200 rounded px-3 py-2 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-evergreen"
-                                >
-                                  <option value="">Belum ditentukan</option>
-                                  {DIVISIONS.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
-                                </select>
-                                <p className="text-[10px] text-gray-400">Barang dari daftar produk divisinya ikut produk; baris custom perlu dipilih di sini.</p>
-                              </div>
-                            )}
+                            <p className="text-[10px] text-gray-400">Barang dari daftar produk divisinya ikut produk; baris custom perlu dipilih di sini.</p>
                           </div>
+                        )}
+                      </div>
 
-                          {/* QTY & Price per Item */}
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className="block text-gray-500 font-semibold mb-1">QTY Terjual</label>
-                              <input
-                                type="number"
-                                min={1}
-                                value={row.qty || ''}
-                                onChange={(e) => updateItemRow(idx, { qty: Number(e.target.value) })}
-                                className="w-full bg-white border border-gray-200 rounded px-3 py-2 text-xs font-bold font-mono focus:outline-none focus:ring-1 focus:ring-evergreen"
-                                required
-                              />
-                            </div>
-
-                            <div>
-                              <label className="block text-gray-500 font-semibold mb-1">Harga Satuan (IDR)</label>
-                              <input
-                                type="number"
-                                min={0}
-                                value={row.price || ''}
-                                onChange={(e) => updateItemRow(idx, { price: Number(e.target.value) })}
-                                className="w-full bg-white border border-gray-200 rounded px-3 py-2 text-xs font-bold font-mono focus:outline-none focus:ring-1 focus:ring-evergreen"
-                                required
-                              />
-                            </div>
-                          </div>
+                      {/* QTY & Price */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-gray-500 font-semibold mb-1">QTY Terjual</label>
+                          <input
+                            type="number"
+                            min={1}
+                            value={itemRow.qty || ''}
+                            onChange={(e) => setItemRow(prev => ({ ...prev, qty: Number(e.target.value) }))}
+                            className="w-full bg-white border border-gray-200 rounded px-3 py-2 text-xs font-bold font-mono focus:outline-none focus:ring-1 focus:ring-evergreen"
+                          />
                         </div>
-                      ))}
+
+                        <div>
+                          <label className="block text-gray-500 font-semibold mb-1">Harga Satuan (IDR)</label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={itemRow.price || ''}
+                            onChange={(e) => setItemRow(prev => ({ ...prev, price: Number(e.target.value) }))}
+                            className="w-full bg-white border border-gray-200 rounded px-3 py-2 text-xs font-bold font-mono focus:outline-none focus:ring-1 focus:ring-evergreen"
+                          />
+                        </div>
+                      </div>
 
                       <button
                         type="button"
-                        onClick={addItemRow}
-                        className="w-full flex items-center justify-center gap-1.5 text-xs font-bold text-evergreen border border-dashed border-evergreen/40 rounded-lg py-2 hover:bg-evergreen/5"
+                        onClick={handleAddDraftRow}
+                        className="w-full bg-evergreen hover:bg-emerald-950 text-white rounded-md py-2 font-bold text-[11px] flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
                       >
-                        <Plus className="w-3.5 h-3.5" /> Tambah Item Lain (1 Pesanan)
+                        <Plus className="w-3.5 h-3.5" /> Tambahkan ke Daftar
                       </button>
                     </div>
+
+                    {/* TABEL REVIEW: barang yang sudah masuk pesanan — qty/harga masih bisa dikoreksi di sini */}
+                    <div className="border border-gray-200 rounded-lg overflow-hidden">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="bg-evergreen text-white font-bold uppercase tracking-wider text-[10px]">
+                            <th className="p-2">Nama Barang</th>
+                            <th className="p-2 text-center">Qty <span className="normal-case font-normal opacity-75">(edit)</span></th>
+                            <th className="p-2 text-right">Harga Satuan <span className="normal-case font-normal opacity-75">(edit)</span></th>
+                            <th className="p-2 text-right">Subtotal</th>
+                            <th className="p-2 text-center">Aksi</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {draftRows.length === 0 ? (
+                            <tr>
+                              <td colSpan={5} className="p-4 text-center text-gray-400 italic">Belum ada barang dipilih — isi form di atas lalu klik "Tambahkan ke Daftar"</td>
+                            </tr>
+                          ) : (
+                            draftRows.map((row, idx) => {
+                              const desc = row.selectedProductId && row.selectedProductId !== 'custom'
+                                ? (products.find(p => p.id === row.selectedProductId)?.name || row.customDescription)
+                                : row.customDescription;
+                              const prod = products.find(p => p.id === row.selectedProductId);
+                              const variant = prod?.variant || '';
+                              return (
+                                <tr key={row.key} className="border-b border-emerald-200 hover:bg-gray-50">
+                                  <td className="p-2 font-medium">
+                                    {desc || <span className="text-gray-400 italic">(tanpa deskripsi)</span>}
+                                    {row.selectedProductId === 'custom' && row.departmentId && (
+                                      <span className={`ml-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${divisionBadgeClass(row.departmentId)}`}>
+                                        {DIVISIONS.find(d => d.id === row.departmentId)?.label || row.departmentId}
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="p-2 text-center">
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      value={row.qty}
+                                      onChange={(e) => updateItemRow(idx, { qty: Number(e.target.value) })}
+                                      className="w-16 bg-amber-50 border border-amber-300 rounded px-1.5 py-1 text-xs font-mono font-bold text-center focus:outline-none focus:border-amber-500"
+                                    />
+                                  </td>
+                                  <td className="p-2 text-right">
+                                    <div className="relative w-32 ml-auto">
+                                      <span className="absolute inset-y-0 left-0 pl-2 flex items-center text-gray-400 text-xs font-mono">Rp</span>
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        value={row.price}
+                                        onChange={(e) => updateItemRow(idx, { price: Number(e.target.value) })}
+                                        title="Ubah harga satuan (harga nego / khusus)"
+                                        className="w-full bg-amber-50 border border-amber-300 rounded pl-7 pr-2 py-1 text-xs font-mono font-bold text-right focus:outline-none focus:border-amber-500"
+                                      />
+                                    </div>
+                                  </td>
+                                  <td className="p-2 text-right font-mono text-[var(--color-evergreen)] font-bold">{formatIDR(row.qty * row.price)}</td>
+                                  <td className="p-2 text-center">
+                                    <button
+                                      type="button"
+                                      onClick={() => removeDraftRow(idx)}
+                                      className="text-rose-600 hover:text-rose-800"
+                                      title="Hapus baris ini"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Ringkasan pesanan: subtotal - admin = diterima */}
+                    {draftRows.length > 0 && (
+                      <div className="bg-emerald-50/50 border border-emerald-800/10 rounded-lg p-3 text-right text-xs font-bold text-gray-800 space-y-1">
+                        <div className="text-gray-500 font-semibold">Subtotal Barang: <span className="font-mono ml-1">{formatIDR(draftRows.reduce((sum, r) => sum + r.qty * r.price, 0))}</span></div>
+                        {orderAdminFee > 0 && (
+                          <div className="text-rose-600 font-semibold">Biaya Potongan Admin: <span className="font-mono ml-1">-{formatIDR(orderAdminFee)}</span></div>
+                        )}
+                        <div>Total Diterima: <span className="text-lg font-black text-[var(--color-evergreen)] font-mono ml-1">{formatIDR(draftRows.reduce((sum, r) => sum + r.qty * r.price, 0) - orderAdminFee)}</span></div>
+                      </div>
+                    )}
 
                     {/* Biaya Potongan Admin — diinput manual sekali per PESANAN (angka asli marketplace) */}
                     <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
@@ -1026,8 +1116,8 @@ export const MarketplaceSalesModule: React.FC = () => {
                         className="w-full bg-white border border-gray-200 rounded px-3 py-1.5 text-xs font-bold font-mono text-amber-600 focus:outline-none focus:ring-1 focus:ring-evergreen"
                         placeholder="Contoh: 25000"
                       />
-                      {saleItemRows.length > 1 && (
-                        <p className="text-[10px] text-gray-400 mt-1">Biaya ini dibebankan untuk seluruh {saleItemRows.length} barang dalam pesanan, disebar otomatis.</p>
+                      {draftRows.length > 1 && (
+                        <p className="text-[10px] text-gray-400 mt-1">Biaya ini dibebankan untuk seluruh {draftRows.length} barang dalam pesanan, disebar otomatis.</p>
                       )}
                     </div>
 
