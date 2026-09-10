@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Order, OrderItem, Product, Employee, orderRemaining, orderPaymentStatus, divisionLabel, paidAmountOf } from '../types';
 import { DivisionFilter } from './DivisionFilter';
 import { PaymentLedger, LedgerRow } from './PaymentLedger';
+import { ContactAutocompleteInput } from './ContactAutocompleteInput';
 import { dataStore, wibTodayStr } from '../dataStore';
 import { withA4PageSize } from '../printA4';
 import { uploadPackingPhoto } from '../packingPhoto';
@@ -659,17 +660,21 @@ export const OrderModule: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-gray-500 font-semibold mb-1">Nama Pelanggan</label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-2.5 h-3.5 w-3.5 text-gray-400" />
-                    <input
-                      type="text"
-                      value={customerName}
-                      onChange={(e) => setCustomerName(e.target.value)}
-                      className="pl-9 w-full bg-gray-50 border border-gray-200 rounded px-3 py-2 text-xs"
-                      placeholder="Nama lengkap..."
-                      required
-                    />
-                  </div>
+                  <ContactAutocompleteInput
+                    value={customerName}
+                    onChange={setCustomerName}
+                    onPickContact={setCustomerPhone}
+                    histori={orders.map(o => o.customer_name)}
+                    daftar={[
+                      ...dataStore.getCustomers().map(c => ({ name: c.name, contact: c.contact })),
+                      ...Array.from(new Set(orders.map(o => `${o.customer_name}|${o.customer_phone || ''}`)))
+                        .map(s => { const [name, contact] = (s as string).split('|'); return { name, contact }; }),
+                    ]}
+                    placeholder="Nama lengkap..."
+                    icon={User}
+                    required
+                    ariaLabel="Nama pelanggan"
+                  />
                 </div>
                 <div>
                   <label className="block text-gray-500 font-semibold mb-1">No. WhatsApp / Telepon</label>

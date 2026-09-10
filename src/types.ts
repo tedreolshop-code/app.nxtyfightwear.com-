@@ -545,6 +545,7 @@ export interface PurchaseOrderItem {
   price: number;
   subtotal: number;
   material_id?: string; // Link opsional ke inventory bahan baku
+  unit?: string; // Satuan tampil (Pcs/Meter/Kg/...); kosong = Pcs (data lama)
 }
 
 export interface Purchase {

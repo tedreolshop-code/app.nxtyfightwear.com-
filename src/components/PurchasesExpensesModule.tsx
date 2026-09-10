@@ -30,8 +30,11 @@ import {
   Info,
   Layers,
   ChevronRight,
-  Sparkles
+  Sparkles,
+  Building2
 } from 'lucide-react';
+
+import { ContactAutocompleteInput } from './ContactAutocompleteInput';
 
 // mode: bila diisi, modul hanya menampilkan satu bagian saja (dipakai untuk
 // memisah menu "Pembelian" dan "Pengeluaran" menjadi dua menu tersendiri).
@@ -60,6 +63,9 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
   const [itemDescription, setItemDescription] = useState('');
   const [itemQty, setItemQty] = useState<number>(1);
   const [itemPrice, setItemPrice] = useState<number>(0);
+  // Satuan item PO: mengikuti master bahan baku saat tertaut, bebas bila bukan bahan baku
+  const [itemUnit, setItemUnit] = useState('Pcs');
+  const itemUnitLocked = itemMaterialId !== '' && itemMaterialId !== 'custom';
 
   // Selected PO for Master-Detail Invoice View
   const [selectedPoId, setSelectedPoId] = useState<string>('');
@@ -157,11 +163,21 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
     setItemMaterialId(id);
     if (id === 'custom') {
       setItemDescription('');
+      setItemUnit('Pcs');
       return;
     }
     const selectedMat = rawMaterials.find(m => m.id === id);
-    if (selectedMat) setItemDescription(selectedMat.name);
+    if (selectedMat) {
+      setItemDescription(selectedMat.name);
+      // Satuan ikut master gudang supaya stok & PO memakai bahasa yang sama
+      setItemUnit(selectedMat.unit || 'Unit');
+    }
   };
+
+  // Qty boleh desimal (2 angka) untuk satuan berat/panjang; pcs/lembar/lusin tetap utuh.
+  const qtyStep = ['Meter', 'Kg'].includes(itemUnit) ? 0.01 : 1;
+  const formatQty = (qty: number, unit: string) =>
+    `${qty.toLocaleString('id-ID', { maximumFractionDigits: 2 })} ${unit || 'Pcs'}`;
 
   /**
    * Divisi PO diturunkan dari bahan yang ditautkan: kalau semua barisnya milik satu
@@ -193,7 +209,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
     const materialId = itemMaterialId !== 'custom' ? itemMaterialId : undefined;
     const nextItems = [
       ...draftItems,
-      { description: itemDescription.trim(), qty: itemQty, price: itemPrice, material_id: materialId },
+      { description: itemDescription.trim(), qty: itemQty, price: itemPrice, material_id: materialId, unit: itemUnit },
     ];
     setDraftItems(nextItems);
     // Ikuti divisi bahan yang ditautkan bila seluruh baris satu divisi
@@ -205,6 +221,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
     setItemDescription('');
     setItemQty(1);
     setItemPrice(0);
+    setItemUnit('Pcs');
   };
 
   // Remove draft item
@@ -377,7 +394,8 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
       description: item.description,
       qty: item.qty,
       price: item.price,
-      material_id: item.material_id
+      material_id: item.material_id,
+      unit: item.unit || 'Pcs'
     })));
   };
 
@@ -597,6 +615,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
     itemId: string;
     itemDescription: string;
     itemQty: number;
+    itemUnit?: string;
     itemPrice: number;
     itemSubtotal: number;
   }
@@ -617,6 +636,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
         itemId: item.id,
         itemDescription: item.description,
         itemQty: item.qty,
+        itemUnit: item.unit,
         itemPrice: item.price,
         itemSubtotal: item.subtotal
       });
@@ -682,7 +702,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
   // Share / Copy PO Summary Text
   const handleCopyPoSummary = (po: Purchase) => {
     if (!po) return;
-    const itemsText = po.items.map((item, idx) => `${idx + 1}. ${item.description} - Qty: ${item.qty} Pcs @ ${formatIDR(item.price)} = ${formatIDR(item.subtotal)}`).join('\n');
+    const itemsText = po.items.map((item, idx) => `${idx + 1}. ${item.description} - Qty: ${formatQty(item.qty, item.unit || 'Pcs')} @ ${formatIDR(item.price)} = ${formatIDR(item.subtotal)}`).join('\n');
     const text = `PURCHASE ORDER ${brandName()}\n---------------------------------\nNo PO: ${po.po_number}\nTanggal: ${formatDateExcel(po.date)}\nSupplier: ${po.supplier}\nStaf: ${po.admin_staff || 'Admin'}\nStatus: ${po.status.toUpperCase()}\n\nDetail Barang:\n${itemsText}\n---------------------------------\nTOTAL: ${formatIDR(po.total_price)}`;
     navigator.clipboard.writeText(text);
     alert('Detail Purchase Order disalin ke papan klip!');
@@ -718,6 +738,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
           Supplier: po.supplier,
           'Deskripsi Barang': item.description,
           QTY: item.qty,
+          Satuan: item.unit || 'Pcs',
           'Harga Satuan': item.price,
           Subtotal: item.subtotal,
           'Grand Total PO': idx === 0 ? po.total_price : '',
@@ -907,13 +928,15 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                   <div className="space-y-4">
                   <div>
                     <label className="block text-[10px] font-bold text-emerald-800 uppercase tracking-wider mb-1">Nama Supplier / Vendor *</label>
-                    <input
-                      type="text"
+                    <ContactAutocompleteInput
                       value={poSupplier}
-                      onChange={(e) => setPoSupplier(e.target.value)}
+                      onChange={setPoSupplier}
+                      histori={purchases.map(p => p.supplier)}
+                      daftar={Array.from(new Set(purchases.map(p => p.supplier.trim()).filter(Boolean)))
+                        .map(name => ({ name }))}
                       placeholder="Contoh: Toko anyar, PT Sumber Busaindo"
-                      className="w-full bg-emerald-50/15 border border-emerald-800/25 rounded-lg px-3 py-2 focus:bg-white focus:border-emerald-700 focus:outline-none font-semibold text-emerald-950 transition-colors"
-                      required
+                      icon={Building2}
+                      ariaLabel="Nama supplier"
                     />
                   </div>
 
@@ -1038,9 +1061,13 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                         <label className="block text-[9px] font-bold text-emerald-800/60 uppercase mb-1">Qty (Jumlah)</label>
                         <input
                           type="number"
-                          min={1}
+                          min={qtyStep}
+                          step={qtyStep}
                           value={itemQty || ''}
-                          onChange={(e) => setItemQty(Math.max(1, parseInt(e.target.value, 10) || 0))}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            setItemQty(isNaN(val) || val <= 0 ? 0 : Math.round(val * 100) / 100);
+                          }}
                           className="w-full bg-white border border-emerald-800/25 rounded-md px-2 py-1.5 focus:outline-none focus:border-emerald-700 text-right font-mono font-bold text-emerald-950"
                         />
                       </div>
@@ -1054,6 +1081,25 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                           className="w-full bg-white border border-emerald-800/25 rounded-md px-2 py-1.5 focus:outline-none focus:border-emerald-700 text-right font-mono font-bold text-emerald-800"
                         />
                       </div>
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-emerald-800/60 uppercase mb-1">
+                        Satuan {itemUnitLocked && <span className="normal-case font-normal">(mengikuti master bahan di Gudang)</span>}
+                      </label>
+                      <select
+                        value={itemUnit}
+                        disabled={itemUnitLocked}
+                        onChange={(e) => setItemUnit(e.target.value)}
+                        className={`w-full rounded-md px-2 py-1.5 focus:outline-none focus:border-emerald-700 font-semibold text-emerald-950 ${
+                          itemUnitLocked
+                            ? 'bg-emerald-50/30 border border-emerald-800/15 cursor-not-allowed text-emerald-800/70'
+                            : 'bg-white border border-emerald-800/25 cursor-pointer'
+                        }`}
+                      >
+                        {itemUnitLocked
+                          ? <option value={itemUnit}>{itemUnit}</option>
+                          : <>{['Pcs', 'Meter', 'Kg', 'Lembar', 'Roll', 'Lusin', 'Set', 'Unit'].map(u => <option key={u} value={u}>{u}</option>)}</>}
+                      </select>
                     </div>
                     <button
                       type="button"
@@ -1081,7 +1127,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                             <div className="flex-1 min-w-0 pr-2">
                               <span className="font-bold text-emerald-950 block truncate">{item.description}</span>
                               <span className="text-emerald-800/60 font-mono">
-                                {item.qty} Pcs x {formatIDR(item.price)}
+                                {formatQty(item.qty, item.unit || 'Pcs')} x {formatIDR(item.price)}
                               </span>
                               {/* Terlihat sebelum disimpan: baris mana yang menambah stok gudang */}
                               {item.material_id ? (
@@ -1375,7 +1421,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                           <th className="p-3 border-r border-white/30 text-left">SUPPLIER</th>
                           <th className="p-3 border-r border-white/30 w-28 text-center">DIVISI</th>
                           <th className="p-3 border-r border-white/30 text-left">DESCRIPTION / BARANG</th>
-                          <th className="p-3 border-r border-white/30 w-16 text-center">QTY</th>
+                          <th className="p-3 border-r border-white/30 w-24 text-center">QTY</th>
                           <th className="p-3 border-r border-white/30 w-32 text-right">HARGA (SATUAN)</th>
                           <th className="p-3 border-r border-white/30 w-32 text-right">SUBTOTAL</th>
                           <th className="p-3 border-r border-white/30 w-36 text-right">TOTAL PO</th>
@@ -1455,8 +1501,8 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                                 </td>
 
                                 {/* QTY */}
-                                <td className="p-2.5 text-center border-r border-emerald-100/70 font-mono font-bold text-gray-800 bg-white/20">
-                                  {row.itemQty}
+                                <td className="p-2.5 text-center border-r border-emerald-100/70 font-mono font-bold text-gray-800 bg-white/20 whitespace-nowrap">
+                                  {formatQty(row.itemQty, row.itemUnit || 'Pcs')}
                                 </td>
 
                                 {/* HARGA */}
@@ -1637,7 +1683,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                               <tr className="bg-emerald-50 text-emerald-800 border-b border-emerald-800/15 font-bold uppercase text-[9px] tracking-wider">
                                 <th className="p-3 text-center w-10">NO</th>
                                 <th className="p-3">DESKRIPSI BARANG</th>
-                                <th className="p-3 text-center w-12">QTY</th>
+                                <th className="p-3 text-center w-24">QTY</th>
                                 <th className="p-3 text-right w-28">HARGA</th>
                                 <th className="p-3 text-right w-28">SUBTOTAL</th>
                               </tr>
@@ -1647,7 +1693,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
                                 <tr key={item.id} className="hover:bg-emerald-50/10 transition-colors">
                                   <td className="p-3 text-center font-mono text-emerald-700/60">{idx + 1}</td>
                                   <td className="p-3 font-bold text-emerald-950">{item.description}</td>
-                                  <td className="p-3 text-center font-mono font-bold text-emerald-800">{item.qty}</td>
+                                  <td className="p-3 text-center font-mono font-bold text-emerald-800 whitespace-nowrap">{formatQty(item.qty, item.unit || 'Pcs')}</td>
                                   <td className="p-3 text-right font-mono text-emerald-800/70">{formatIDR(item.price)}</td>
                                   <td className="p-3 text-right font-mono font-black text-emerald-900">{formatIDR(item.subtotal)}</td>
                                 </tr>
