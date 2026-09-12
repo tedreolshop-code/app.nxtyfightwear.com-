@@ -307,13 +307,13 @@ export const BrandSettingsModule: React.FC = () => {
                 <Info className="w-3.5 h-3.5 text-evergreen" /> Aturan Lembur
               </h3>
               <p className="text-[10px] text-gray-400 mt-0.5">
-                Karyawan mengajukan jam lembur (angka bulat) saat scan pulang. Sistem memakai jam pengajuan
-                sebagai dasar, dengan toleransi kelebihan 10 menit dari batas pengajuan.
+                Karyawan mengajukan jam lembur (angka bulat) saat scan pulang. Usulan sistem
+                mengikuti pengajuan; menit akhir ditetapkan admin di menu Perlu Review.
               </p>
             </div>
             <div className="space-y-2 text-[11px] text-gray-600 leading-relaxed">
-              <p>• Pengajuan 1 jam (pulang normal 16:00 → batas 17:00): pulang 17:00–17:10 tetap dihitung <b>1 jam</b>.</p>
-              <p>• Lewat 17:10 → sistem mengusulkan <b>2 jam</b> (kandidat jam berikutnya); admin memutuskan di menu Perlu Review.</p>
+              <p>• Pengajuan 1 jam (pulang normal 16:00) → usulan <b>1 jam</b>, apa pun jam pulangnya.</p>
+              <p>• Pulang lebih lama/cepat dari pengajuan → admin menetapkan menit akhir saat review (bisa koreksi sebelum ACC).</p>
               <p>• Keterlambatan pagi ditutup dulu dari menit lembur hari yang sama.</p>
               <p>• Tanpa pengajuan lembur, pulang larut tidak dihitung lembur.</p>
             </div>

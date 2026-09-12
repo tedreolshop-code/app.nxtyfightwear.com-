@@ -1315,10 +1315,10 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                             ))}
                           </div>
                           <p className="text-[10px] text-emerald-200/50">
-                            Batas pulang: {(() => {
-                              const m = (() => { const [h, min] = workSettings.end_time.split(':').map(Number); return h * 60 + min; })() + otHours * 60 + 10;
+                            Rencana pulang: {(() => {
+                              const m = (() => { const [h, min] = workSettings.end_time.split(':').map(Number); return h * 60 + min; })() + otHours * 60;
                               return `${String(Math.floor(m / 60) % 24).padStart(2, '0')}.${String(m % 60).padStart(2, '0')}`;
-                            })()} (lebih 10 menit masih dihitung)
+                            })()} — usulan mengikuti pengajuan; menit akhir ditetapkan admin.
                           </p>
                         </div>
                         <textarea

@@ -846,18 +846,12 @@ export const clockMinutes = (value: string): number => {
  * Dipakai scan normal DAN koreksi admin — supaya keduanya tidak pernah beda rumus.
  *
  * Lembur hanya dihitung bila karyawan mengajukan. Dasarnya adalah JAM PENGAJUAN
- * (angka bulat, mis. 1 = 60 menit), bukan pembulatan otomatis:
- * - Batas pengajuan = end_time + requestedMinutes.
- * - Toleransi kelebihan 10 menit: pulang sampai 10 menit lewat batas tetap
- *   dihitung sesuai pengajuan (17:00 pengajuan 1 jam, pulang 17:05/17:10 → 1 jam).
- * - Lebih dari 10 menit → sistem mengusulkan pengajuan + 1 jam (kandidat jam
- *   berikutnya); admin yang memutuskan lewat review.
- * - Tidak pernah melebihi pengajuan + 1 jam secara otomatis; korektor admin bebas
- *   mengubah angka sebelum menyimpan keputusan.
+ * (angka bulat, mis. 1 = 60 menit):
+ * - Usulan sistem = PERSIS jam yang diajukan, apa pun jam pulangnya. Tidak ada
+ *   eskalasi otomatis +1 jam; pulang lebih lama/cepat dari pengajuan diputuskan
+ *   admin di menu Perlu Review sebelum angkanya masuk slip gaji.
  * - Keterlambatan pagi tetap ditutup dulu dari menit lembur.
  */
-export const OVERTIME_OVERRUN_TOLERANCE_MINUTES = 10;
-
 export const checkoutMetrics = (
   checkIn: Attendance,
   checkoutTimestamp: string,
@@ -869,18 +863,9 @@ export const checkoutMetrics = (
   const workedMinutes = Math.max(0, Math.round((new Date(checkoutTimestamp).getTime() - new Date(checkIn.timestamp).getTime()) / 60000));
   const lateMinutes = checkIn.late_minutes ?? Math.max(0, clockMinutes(checkIn.timestamp.slice(11, 16)) - clockMinutes(settings.start_time));
 
-  // Lembur berbasis pengajuan: batas = end_time + jam pengajuan (+ toleransi 10 menit).
-  // Pengajuan 0 jam (pemanggilan lama / tidak valid) = tidak ada usulan otomatis.
-  const requestedClamped = Math.max(0, Math.round(requestedMinutes));
-  const cutoffMinutes = clockMinutes(settings.end_time)
-    + requestedClamped
-    + OVERTIME_OVERRUN_TOLERANCE_MINUTES;
-  const pastCutoffMinutes = Math.max(0, clockMinutes(clock) - cutoffMinutes);
-
-  // Kandidat usulan: jam pengajuan, +1 jam bila pulang melewati batas+toleransi.
-  const proposedMinutes = overtimeRequested && requestedClamped > 0
-    ? Math.min(requestedClamped + (pastCutoffMinutes > 0 ? 60 : 0), 480)
-    : 0;
+  // Usulan = jam pengajuan (0 = tidak valid / tanpa pengajuan → tanpa usulan otomatis).
+  const requestedClamped = Math.min(480, Math.max(0, Math.round(requestedMinutes)));
+  const proposedMinutes = overtimeRequested && requestedClamped > 0 ? requestedClamped : 0;
 
   // Keterlambatan pagi ditutup dulu dari menit lembur (seperti aturan lama).
   const overtimePool = Math.max(0, clockMinutes(clock) - clockMinutes(settings.end_time));
