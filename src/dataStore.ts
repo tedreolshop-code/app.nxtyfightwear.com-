@@ -470,6 +470,34 @@ class DataStore {
     localStorage.setItem(`nxty_${entry.entity_type}`, JSON.stringify(restored));
     pushKeyToCloud(entry.entity_type, restored);
     if (entry.entity_type === 'attendance') pushAttendanceToCloud(entry.data as unknown as Attendance);
+    // Slip yang dipulihkan pernah mengembalikan potongan kasbonnya saat dihapus
+    // (lihat deletePayroll). Kembalikan kewajiban itu saat slip aktif lagi —
+    // sebesar potongan yang tercatat di slip, terpotong di sisa saldo kasbon.
+    if (entry.entity_type === 'payroll_weekly') {
+      const slip = entry.data as unknown as PayrollWeekly;
+      const deduction = Math.round(Number(slip.cash_advance_deduction) || 0);
+      if (deduction > 0) {
+        try {
+          const outstanding = this.getCashAdvances()
+            .filter(a => a.employee_id === slip.employee_id)
+            .reduce((sum, a) => sum + (Number(a.remaining_balance) || 0), 0);
+          // Best-effort: potong sebesar sisa saldo — kalau kasbon sudah tidak
+          // cukup, slip tetap dipulihkan (mungkin memang sudah diganti slip lain).
+          if (outstanding > 0) {
+            this.applyCashAdvancePayment({
+              employee_id: slip.employee_id,
+              amount: Math.min(deduction, outstanding),
+              type: 'deduction',
+              date: slip.period_end,
+              payroll_id: slip.id,
+              note: `Potongan kasbon dipulihkan: slip gaji ${slip.period_start} s/d ${weeklyPeriodEnd(slip.period_end)} di-restore dari recycle bin`
+            });
+          }
+        } catch (e) {
+          console.error('[dataStore] Gagal memotong ulang kasbon saat restore slip:', e);
+        }
+      }
+    }
     const nextRecycle = recycle.filter(item => item.id !== recycleId);
     localStorage.setItem(`nxty_${this.recycleKey}`, JSON.stringify(nextRecycle));
     pushKeyToCloud(this.recycleKey, nextRecycle);
@@ -1659,6 +1687,154 @@ class DataStore {
       p.id === payrollId ? { ...p, payment_status: status, paid_at: status === 'paid' ? wibNowISO() : undefined } : p
     );
     this.setPayrollWeekly(payrolls);
+  };
+
+  /**
+   * Kembalikan saldo kasbon dari transaksi deduction yang ter-link ke sebuah slip.
+   * Basisnya TRANSAKSI (bukan angka cash_advance_deduction di slip) supaya refund
+   * selalu pas dengan potongan yang benar-benar pernah tercatat, apa pun riwayat
+   * hapus/buat-ulang slip-nya. Neto: deduction dikurangi refund yang pernah
+   * dilakukan untuk slip yang sama (transaksi 'adjustment' ter-link), lalu dibatasi
+   * `maxRefund` (dipakai saat slip diedit: hanya selisihnya yang kembali).
+   * Pengembalian tidak pernah melampaui nominal kasbon (amount) supaya saldo
+   * hutang tidak bisa melebihi total kasbon yang pernah diberikan.
+   */
+  private refundCashAdvanceDeductions = (payrollId: string, note: string, actorId?: string, actorName?: string, maxRefund?: number): number => {
+    const linked = this.getCashAdvanceTransactions().filter(t => t.payroll_id === payrollId);
+    const deductions = linked.filter(t => t.type === 'deduction');
+    if (deductions.length === 0) return 0;
+    const refundedBefore = linked
+      .filter(t => t.type === 'adjustment')
+      .reduce((sum, t) => sum + (t.amount || 0), 0);
+    const netDeducted = Math.max(0, deductions.reduce((sum, t) => sum + (t.amount || 0), 0) - refundedBefore);
+    const target = Math.min(netDeducted, Math.max(0, Math.round(maxRefund ?? netDeducted)));
+    if (target <= 0) return 0;
+
+    const advances = this.getCashAdvances();
+    const byId = new Map(advances.map(adv => [adv.id, adv]));
+    let remaining = target;
+    // Kembalikan mengikuti urutan transaksi potongan aslinya, ke kasbon yang
+    // sama sumbernya. Tiap pengembalian dibatasi (a) nominal transaksi asalnya,
+    // (b) sisa target, dan (c) ruang kasbon itu (nominal − saldo − sudah
+    // dialokasikan) supaya saldo tidak pernah melampaui nominal kasbon.
+    // Kasbon yang sudah hilang tidak bisa menerima pengembalian.
+    const perAdvance = new Map<string, { employee_id: string; employee_name: string; amount: number }>();
+    const allocated = new Map<string, number>();
+    for (const tx of deductions) {
+      if (remaining <= 0) break;
+      const adv = byId.get(tx.cash_advance_id);
+      if (!adv) continue;
+      const room = Math.max(0,
+        (Number(adv.amount) || 0)
+        - (Number(adv.remaining_balance) || 0)
+        - (allocated.get(adv.id) || 0));
+      const back = Math.min(tx.amount || 0, remaining, room);
+      if (back <= 0) continue;
+      remaining -= back;
+      allocated.set(adv.id, (allocated.get(adv.id) || 0) + back);
+      const cur = perAdvance.get(adv.id);
+      perAdvance.set(adv.id, {
+        employee_id: tx.employee_id,
+        employee_name: tx.employee_name,
+        amount: (cur?.amount || 0) + back
+      });
+    }
+    if (perAdvance.size === 0) return 0;
+
+    this.setCashAdvances(advances.map(adv => {
+      const info = perAdvance.get(adv.id);
+      return info ? { ...adv, remaining_balance: adv.remaining_balance + info.amount } : adv;
+    }));
+    const date = wibTodayStr();
+    const refunds: CashAdvanceTransaction[] = Array.from(perAdvance.entries()).map(([advanceId, info]) => ({
+      id: uuid(),
+      cash_advance_id: advanceId,
+      employee_id: info.employee_id,
+      employee_name: info.employee_name,
+      type: 'adjustment' as const,
+      amount: info.amount,
+      date,
+      note,
+      payroll_id: payrollId,
+      created_at: wibNowISO(),
+      created_by_id: actorId,
+      created_by_name: actorName
+    }));
+    this.setCashAdvanceTransactions([...refunds, ...this.getCashAdvanceTransactions()]);
+    const applied = target - remaining;
+    this.logAudit('update', 'cash_advance', `Mengembalikan potongan kasbon Rp ${applied.toLocaleString('id-ID')} ke ${refunds[0].employee_name}`, refunds[0].cash_advance_id, { payroll_id: payrollId, note });
+    return applied;
+  };
+
+  /** Hapus slip gaji + kembalikan potongan kasbon yang pernah dicatat dari slip itu. */
+  deletePayroll = (payrollId: string, actorId?: string, actorName?: string): { refunded: number } => {
+    const payroll = this.getPayrollWeekly().find(p => p.id === payrollId);
+    if (!payroll) throw new Error('Slip gaji tidak ditemukan.');
+    const refunded = this.refundCashAdvanceDeductions(
+      payrollId,
+      `Pengembalian potongan kasbon: slip gaji ${payroll.period_start} s/d ${weeklyPeriodEnd(payroll.period_end)} dihapus`,
+      actorId, actorName
+    );
+    // Hapus slip lewat setter biasa: recycle bin + audit 'delete' tercatat otomatis
+    // lewat captureChanges, dan cloud sync ikut mem-propagasi penghapusannya.
+    this.setPayrollWeekly(this.getPayrollWeekly().filter(p => p.id !== payrollId));
+    return { refunded };
+  };
+
+  /**
+   * Ubah slip gaji yang sudah tersimpan + jaga konsistensi kasbon: selisih antara
+   * potongan lama vs baru otomatis dikembalikan ke / dipotong dari saldo kasbon.
+   */
+  updatePayroll = (
+    payrollId: string,
+    patch: Partial<Omit<PayrollWeekly, 'id' | 'employee_id' | 'employee_name' | 'period_start' | 'period_end'>>,
+    actorId?: string,
+    actorName?: string
+  ): PayrollWeekly => {
+    const payrolls = this.getPayrollWeekly();
+    const idx = payrolls.findIndex(p => p.id === payrollId);
+    if (idx === -1) throw new Error('Slip gaji tidak ditemukan.');
+    const previous = payrolls[idx];
+    const updated: PayrollWeekly = { ...previous, ...patch };
+    const oldDeduction = Math.round(Number(previous.cash_advance_deduction) || 0);
+    const newDeduction = Math.round(Number(updated.cash_advance_deduction) || 0);
+    if (newDeduction < 0) throw new Error('Potongan kasbon tidak boleh negatif.');
+
+    if (newDeduction > oldDeduction) {
+      // Potongan ditambah → cek sisa saldo DULU. applyCashAdvancePayment hanya
+      // melempar error bila TIDAK ADA kasbon aktif; kalau saldo kurang ia diam-diam
+      // memotong sebagian — slip dan kasbon jadi tidak sinkron. Guard ini yang
+      // mencegahnya, sama seperti guard saat slip digenerate.
+      const outstanding = this.getCashAdvances()
+        .filter(a => a.employee_id === updated.employee_id)
+        .reduce((sum, a) => sum + (Number(a.remaining_balance) || 0), 0);
+      const diff = newDeduction - oldDeduction;
+      if (diff > outstanding) {
+        throw new Error(`Potongan kasbon melebihi sisa kasbon. Sisa kasbon: Rp ${outstanding.toLocaleString('id-ID')}.`);
+      }
+      this.applyCashAdvancePayment({
+        employee_id: updated.employee_id,
+        amount: diff,
+        type: 'deduction',
+        date: updated.period_end,
+        note: `Tambahan potongan kasbon: edit slip gaji ${updated.period_start} s/d ${weeklyPeriodEnd(updated.period_end)}`,
+        payroll_id: payrollId,
+        created_by_id: actorId,
+        created_by_name: actorName
+      });
+    } else if (newDeduction < oldDeduction) {
+      // Potongan dikurangi → kembalikan selisihnya ke saldo kasbon.
+      this.refundCashAdvanceDeductions(
+        payrollId,
+        `Pengembalian selisih potongan kasbon: edit slip gaji ${updated.period_start} s/d ${weeklyPeriodEnd(updated.period_end)}`,
+        actorId, actorName,
+        oldDeduction - newDeduction
+      );
+    }
+
+    this.setPayrollWeekly(payrolls.map(p => p.id === payrollId ? updated : p));
+    // Audit 'update' slip tercatat otomatis lewat captureChanges (before/after).
+    return updated;
   };
 
   getAttendanceFailures = (): AttendanceFailure[] => this.get('attendance_failures', []);

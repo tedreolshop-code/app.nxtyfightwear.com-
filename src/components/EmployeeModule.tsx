@@ -350,26 +350,21 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
     e.preventDefault();
     if (!editingPayroll || !profileModalEmp) return;
 
-    const allPayrolls = dataStore.getPayrollWeekly();
-    const updatedPayrolls = allPayrolls.map(p => {
-      if (p.id === editingPayroll.id) {
-        return {
-          ...p,
-          days_worked: editDaysWorked,
-          overtime_hours: editOvertimeHours,
-          base_pay: editBasePay,
-          bonus: editBonus,
-          cash_advance_deduction: editKasbonDeduction,
-          total_pay: editTotalPay
-        };
-      }
-      return p;
-    });
-
-    dataStore.setPayrollWeekly(updatedPayrolls);
-    setEditingPayroll(null);
-    showNotification("Data slip gaji berhasil diperbarui!", "success");
-    refreshModalData(profileModalEmp);
+    try {
+      dataStore.updatePayroll(editingPayroll.id, {
+        days_worked: editDaysWorked,
+        overtime_hours: editOvertimeHours,
+        base_pay: editBasePay,
+        bonus: editBonus,
+        cash_advance_deduction: editKasbonDeduction,
+        total_pay: editTotalPay
+      }, currentLoggedEmployee?.id, currentLoggedEmployee?.name);
+      setEditingPayroll(null);
+      showNotification("Data slip gaji berhasil diperbarui!", "success");
+      refreshModalData(profileModalEmp);
+    } catch (err: any) {
+      showNotification(err.message || 'Gagal memperbarui slip gaji.', 'error');
+    }
   };
 
   const handleToggleModalPaymentStatus = (pay: PayrollWeekly) => {
@@ -378,13 +373,15 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
   };
 
   const handleDeleteModalPayroll = (payId: string) => {
-    if (window.confirm("Apakah Anda yakin ingin menghapus slip gaji ini?")) {
-      const allPayrolls = dataStore.getPayrollWeekly();
-      const updated = allPayrolls.filter(p => p.id !== payId);
-      dataStore.setPayrollWeekly(updated);
-      showNotification("Slip gaji berhasil dihapus!", "success");
-      if (profileModalEmp) {
-        refreshModalData(profileModalEmp);
+    if (window.confirm("Apakah Anda yakin ingin menghapus slip gaji ini? Potongan kasbon yang pernah dicatat dari slip ini otomatis dikembalikan ke saldo kasbon karyawan.")) {
+      try {
+        const { refunded } = dataStore.deletePayroll(payId, currentLoggedEmployee?.id, currentLoggedEmployee?.name);
+        showNotification(`Slip gaji berhasil dihapus${refunded > 0 ? ` — potongan kasbon Rp ${refunded.toLocaleString('id-ID')} dikembalikan.` : '.'}`, 'success');
+        if (profileModalEmp) {
+          refreshModalData(profileModalEmp);
+        }
+      } catch (err: any) {
+        showNotification(err.message || 'Gagal menghapus slip gaji.', 'error');
       }
     }
   };

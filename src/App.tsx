@@ -445,8 +445,13 @@ export default function App() {
     reportCashAdvanceTransactions.filter(item => item.type === 'create' || item.type === 'topup'),
     item => item.amount
   );
+  // 'adjustment' = pengembalian potongan (slip dihapus/diedit) → di-net-kan,
+  // bukan dijumlahkan, supaya total pembayaran tidak membengkak ganda.
   const cashAdvancePaid = sumBy(
     reportCashAdvanceTransactions.filter(item => item.type === 'deduction' || item.type === 'payment'),
+    item => item.amount
+  ) - sumBy(
+    reportCashAdvanceTransactions.filter(item => item.type === 'adjustment'),
     item => item.amount
   );
   const cashAdvanceActiveBalance = sumBy(reportCashAdvances, item => item.remaining_balance);

@@ -75,9 +75,14 @@ export const CashAdvanceModule: React.FC<CashAdvanceModuleProps> = ({ actor }) =
 
   const totalOutstanding = advances.reduce((sum, advance) => sum + advance.remaining_balance, 0);
   const employeesWithOutstanding = employees.filter(employee => outstandingFor(employee.id) > 0).length;
+  // 'adjustment' = pengembalian potongan (slip dihapus/diedit) → di-net-kan,
+  // bukan dijumlahkan, supaya "Pembayaran Tercatat" tidak membengkak ganda.
   const paymentTotal = transactions
     .filter(transaction => transaction.type === 'payment' || transaction.type === 'deduction')
-    .reduce((sum, transaction) => sum + transaction.amount, 0);
+    .reduce((sum, transaction) => sum + transaction.amount, 0)
+    - transactions
+      .filter(transaction => transaction.type === 'adjustment')
+      .reduce((sum, transaction) => sum + transaction.amount, 0);
 
   const employeesWithBalance = useMemo(() => employees.map(employee => {
     const activeList = advances.filter(advance => advance.employee_id === employee.id && advance.remaining_balance > 0);

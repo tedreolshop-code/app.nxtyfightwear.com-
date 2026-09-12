@@ -293,9 +293,14 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ role, userName, em
   const kasbonBaruMingguIni = cashAdvanceTransactions
     .filter(transaction => (transaction.type === 'create' || transaction.type === 'topup') && transaction.date >= currentWeekRange.start && transaction.date <= currentWeekRange.end)
     .reduce((sum, transaction) => sum + transaction.amount, 0);
+  // 'adjustment' = pengembalian potongan (slip dihapus/diedit) → di-net-kan,
+  // bukan dijumlahkan, supaya potongan minggu ini tidak membengkak ganda.
   const potonganKasbonMingguIni = cashAdvanceTransactions
     .filter(transaction => transaction.type === 'deduction' && transaction.date >= currentWeekRange.start && transaction.date <= currentWeekRange.end)
-    .reduce((sum, transaction) => sum + transaction.amount, 0);
+    .reduce((sum, transaction) => sum + transaction.amount, 0)
+    - cashAdvanceTransactions
+      .filter(transaction => transaction.type === 'adjustment' && transaction.date >= currentWeekRange.start && transaction.date <= currentWeekRange.end)
+      .reduce((sum, transaction) => sum + transaction.amount, 0);
   const absensiPerluCek = belumMasukHariIni + belumPulangHariIni + terlambatHariIni + dibantuAdminHariIni + pendingAttendanceSync;
 
   // === Kartu ringkasan per peran ===

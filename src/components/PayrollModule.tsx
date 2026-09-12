@@ -368,25 +368,22 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     e.preventDefault();
     if (!editingPayroll) return;
 
-    const updatedPayrolls = dataStore.getPayrollWeekly().map(p => {
-      if (p.id === editingPayroll.id) {
-        return {
-          ...p,
-          days_worked: editDaysWorked,
-          overtime_hours: editOvertimeHours,
-          base_pay: editBasePay,
-          bonus: editBonus,
-          cash_advance_deduction: editKasbonDeduction,
-          total_pay: editTotalPay
-        };
-      }
-      return p;
-    });
-
-    dataStore.setPayrollWeekly(updatedPayrolls);
-    setEditingPayroll(null);
-    alert("Data slip gaji berhasil diperbarui!");
-    loadData();
+    try {
+      const actor = JSON.parse(localStorage.getItem('nxty_session') || 'null');
+      dataStore.updatePayroll(editingPayroll.id, {
+        days_worked: editDaysWorked,
+        overtime_hours: editOvertimeHours,
+        base_pay: editBasePay,
+        bonus: editBonus,
+        cash_advance_deduction: editKasbonDeduction,
+        total_pay: editTotalPay
+      }, actor?.employeeId, actor?.name);
+      setEditingPayroll(null);
+      alert("Data slip gaji berhasil diperbarui!");
+      loadData();
+    } catch (err: any) {
+      alert(err.message || 'Gagal memperbarui slip gaji.');
+    }
   };
 
   const handleExportPayrollExcel = () => {
@@ -427,11 +424,17 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
 
   const confirmDeletePayroll = () => {
     if (deletePayrollId) {
-      const current = dataStore.getPayrollWeekly();
-      const updated = current.filter(p => p.id !== deletePayrollId);
-      dataStore.setPayrollWeekly(updated);
-      setDeletePayrollId(null);
-      loadData();
+      try {
+        const actor = JSON.parse(localStorage.getItem('nxty_session') || 'null');
+        const slip = dataStore.getPayrollWeekly().find(p => p.id === deletePayrollId);
+        const { refunded } = dataStore.deletePayroll(deletePayrollId, actor?.employeeId, actor?.name);
+        setDeletePayrollId(null);
+        loadData();
+        alert(`Slip gaji ${slip ? `${slip.employee_name} periode ${slip.period_start} s/d ${weeklyPeriodEnd(slip.period_end)}` : ''} berhasil dihapus.`
+          + (refunded > 0 ? `\n\nPotongan kasbon Rp ${refunded.toLocaleString('id-ID')} dikembalikan ke saldo kasbon karyawan.` : ''));
+      } catch (err: any) {
+        alert(err.message || 'Gagal menghapus slip gaji.');
+      }
     }
   };
 
@@ -1846,7 +1849,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
             </div>
             <h3 className="text-base font-bold text-gray-900 mb-2">Hapus Slip Gaji Ini?</h3>
             <p className="text-xs text-gray-500 mb-6 leading-relaxed">
-              Apakah Anda yakin ingin menghapus slip gaji karyawan ini? Tindakan ini tidak dapat dibatalkan.
+              Apakah Anda yakin ingin menghapus slip gaji karyawan ini? Potongan kasbon yang pernah dicatat dari slip ini otomatis dikembalikan ke saldo kasbon karyawan. Tindakan ini tidak dapat dibatalkan.
             </p>
             <div className="flex gap-3">
               <button
