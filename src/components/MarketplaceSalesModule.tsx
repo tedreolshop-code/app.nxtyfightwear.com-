@@ -1039,6 +1039,7 @@ export const MarketplaceSalesModule: React.FC = () => {
                         <thead>
                           <tr className="bg-evergreen text-white font-bold uppercase tracking-wider text-[10px]">
                             <th className="p-2">Nama Barang</th>
+                            <th className="p-2">Variant</th>
                             <th className="p-2 text-center">Qty <span className="normal-case font-normal opacity-75">(edit)</span></th>
                             <th className="p-2 text-right">Harga Satuan <span className="normal-case font-normal opacity-75">(edit)</span></th>
                             <th className="p-2 text-right">Subtotal</th>
@@ -1048,7 +1049,7 @@ export const MarketplaceSalesModule: React.FC = () => {
                         <tbody>
                           {draftRows.length === 0 ? (
                             <tr>
-                              <td colSpan={5} className="p-4 text-center text-gray-400 italic">Belum ada barang dipilih — isi form di atas lalu klik "Tambahkan ke Daftar"</td>
+                              <td colSpan={6} className="p-4 text-center text-gray-400 italic">Belum ada barang dipilih — isi form di atas lalu klik "Tambahkan ke Daftar"</td>
                             </tr>
                           ) : (
                             draftRows.map((row, idx) => {
@@ -1061,13 +1062,13 @@ export const MarketplaceSalesModule: React.FC = () => {
                                 <tr key={row.key} className="border-b border-emerald-200 hover:bg-gray-50">
                                   <td className="p-2 font-medium">
                                     {desc || <span className="text-gray-400 italic">(tanpa deskripsi)</span>}
-                                    {variant && <span className="block text-[10px] font-normal text-gray-500">{variant}</span>}
                                     {row.selectedProductId === 'custom' && row.departmentId && (
                                       <span className={`ml-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${divisionBadgeClass(row.departmentId)}`}>
                                         {DIVISIONS.find(d => d.id === row.departmentId)?.label || row.departmentId}
                                       </span>
                                     )}
                                   </td>
+                                  <td className="p-2">{variant}</td>
                                   <td className="p-2 text-center">
                                     <input
                                       type="number"
