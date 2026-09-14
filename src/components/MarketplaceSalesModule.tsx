@@ -236,6 +236,9 @@ export const MarketplaceSalesModule: React.FC = () => {
           // Barang baru yang ditambahkan saat edit ikut status pesanannya
           status: old?.status || oldItems[0]?.status || inputStatus,
           product_id: linkedProductId,
+          // Snapshot varian: produk baru → varian terkini; produk tetap tapi terhapus dari
+          // gudang → pertahankan varian lama; baris custom → kosong
+          variant: variantOfRow(row) ?? (linkedProductId ? old?.variant : undefined),
           department_id: divisionOfRow(row),
           date: inputDate,
           order_number: finalOrderNumber,
@@ -283,6 +286,7 @@ export const MarketplaceSalesModule: React.FC = () => {
         const newDetailedSale: MarketplaceItemSale = {
           id: Math.random().toString(36).substring(2, 11),
           product_id: linkedProductId,
+          variant: variantOfRow(row),
           department_id: divisionOfRow(row),
           status: inputStatus,
           date: inputDate,
@@ -535,6 +539,16 @@ export const MarketplaceSalesModule: React.FC = () => {
       ? products.find(p => p.id === row.selectedProductId)?.department_id
       : row.departmentId) || undefined;
 
+  // Varian adalah milik produk gudang, bukan baris custom (sama polanya dengan OrderItem.variant)
+  const variantOfRow = (row: { selectedProductId: string }): string | undefined =>
+    row.selectedProductId && row.selectedProductId !== 'custom'
+      ? products.find(p => p.id === row.selectedProductId)?.variant || undefined
+      : undefined;
+
+  // Varian untuk tampilan/laporan: snapshot resmi di record; data lama fallback ke produk tautan
+  const variantOfSale = (item: MarketplaceItemSale): string =>
+    item.variant || (item.product_id ? products.find(p => p.id === item.product_id)?.variant || '' : '');
+
   const divisionBadgeClass = (departmentId?: string) =>
     departmentId === 'dept-eva-foam' ? 'bg-emerald-100 text-emerald-800'
       : departmentId === 'dept-konveksi' ? 'bg-sky-100 text-sky-800'
@@ -556,6 +570,7 @@ export const MarketplaceSalesModule: React.FC = () => {
     const matchesSearch = !searchQuery ? true : (
       item.order_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      variantOfSale(item).toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.admin_staff.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
@@ -639,6 +654,7 @@ export const MarketplaceSalesModule: React.FC = () => {
           Ref: isFirst ? item.marketplace_ref : '',
           Status: STATUS_META[saleStatus(item)].label.toUpperCase(),
           Deskripsi: item.description,
+          Varian: variantOfSale(item),
           QTY: item.qty,
           Harga: item.price,
           Subtotal: item.subtotal,
@@ -650,7 +666,7 @@ export const MarketplaceSalesModule: React.FC = () => {
     });
 
     const kosong = (isi: Partial<Baris>): Baris => ({
-      TGL: '', No: '', 'No Pesanan': '', Ref: '', Status: '', Deskripsi: '',
+      TGL: '', No: '', 'No Pesanan': '', Ref: '', Status: '', Deskripsi: '', Varian: '',
       QTY: '', Harga: '', Subtotal: '', Biaya: '', Total: '', 'Input Oleh': '', ...isi,
     });
     // Baris ringkasan (cancel & retur tidak ikut dijumlah)
@@ -1045,6 +1061,7 @@ export const MarketplaceSalesModule: React.FC = () => {
                                 <tr key={row.key} className="border-b border-emerald-200 hover:bg-gray-50">
                                   <td className="p-2 font-medium">
                                     {desc || <span className="text-gray-400 italic">(tanpa deskripsi)</span>}
+                                    {variant && <span className="block text-[10px] font-normal text-gray-500">{variant}</span>}
                                     {row.selectedProductId === 'custom' && row.departmentId && (
                                       <span className={`ml-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${divisionBadgeClass(row.departmentId)}`}>
                                         {DIVISIONS.find(d => d.id === row.departmentId)?.label || row.departmentId}
@@ -1358,6 +1375,9 @@ export const MarketplaceSalesModule: React.FC = () => {
                               </td>
                               <td className="text-gray-900 font-bold font-sans border-r border-emerald-300" title={item.description}>
                                 {item.description}
+                                {variantOfSale(item) && (
+                                  <span className="block text-[9px] font-semibold text-gray-500">{variantOfSale(item)}</span>
+                                )}
                               </td>
                               <td className="text-center border-r border-emerald-300">
                                 <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase font-sans ${divisionBadgeClass(item.department_id)}`}>

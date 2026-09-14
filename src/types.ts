@@ -521,6 +521,7 @@ export interface MarketplaceItemSale {
   id: string;
   department_id?: string; // Divisi pemilik omzet; diambil dari produk saat diposting
   product_id?: string; // Link opsional ke produk gudang; jika terisi, stok produk jadi dipotong otomatis
+  variant?: string; // Snapshot varian produk tautan saat simpan (sama seperti OrderItem); kosong utk baris custom / data lama
   status?: MarketplaceSaleStatus;
   retur_to_stock?: boolean; // khusus status retur: barang layak jual dikembalikan ke stok?
   date: string;
