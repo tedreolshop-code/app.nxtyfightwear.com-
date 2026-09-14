@@ -188,7 +188,7 @@ export const MarketplaceSalesModule: React.FC = () => {
         : (products.find(p => p.id === row.selectedProductId)?.name || row.customDescription.trim());
 
     if (draftRows.length === 0) {
-      alert('Tabel review masih kosong. Isi produk + qty + harga di atas lalu klik "Tambahkan ke Daftar".');
+      alert('Tabel review masih kosong. Isi produk + qty + harga di atas lalu klik "Tambah".');
       return;
     }
 
@@ -862,44 +862,46 @@ export const MarketplaceSalesModule: React.FC = () => {
 
                   <form onSubmit={(e) => { handleAddDetailedSale(e); setIsModalOpen(false); }} className="space-y-4 text-xs">
                     {/* ... (Form Fields) */}
-                    {/* Date Input */}
-                    <div>
-                      <label className="block text-gray-500 font-semibold mb-1">Tanggal Transaksi (TGL)</label>
-                      <div className="relative">
-                        <Calendar className="absolute left-3 top-2.5 w-3.5 h-3.5 text-gray-400" />
-                        <input
-                          type="date"
-                          value={inputDate}
-                          onChange={(e) => setInputDate(e.target.value)}
-                          className="w-full bg-gray-50 border border-gray-200 rounded pl-9 pr-3 py-2 text-xs font-semibold text-gray-700 focus:outline-none focus:ring-1 focus:ring-evergreen"
-                          required
-                        />
-                      </div>
-                    </div>
-
-                    {/* Status awal order (khusus entri baru; ubah selanjutnya lewat badge di tabel) */}
-                    {!editingOrderNumber && (
+                    {/* Tanggal & status berdampingan — mengikuti kerapatan layout form order */}
+                    <div className={`grid gap-3 ${editingOrderNumber ? 'grid-cols-1' : 'sm:grid-cols-2'}`}>
                       <div>
-                        <label className="block text-gray-500 font-semibold mb-1">Status Order</label>
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setInputStatus('diproses')}
-                            className={`py-2 rounded-lg border text-[11px] font-bold ${inputStatus === 'diproses' ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 text-gray-600 bg-gray-50'}`}
-                          >
-                            Diproses
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setInputStatus('terkirim')}
-                            className={`py-2 rounded-lg border text-[11px] font-bold ${inputStatus === 'terkirim' ? 'bg-emerald-600 text-white border-emerald-600' : 'border-gray-200 text-gray-600 bg-gray-50'}`}
-                          >
-                            Terkirim
-                          </button>
+                        <label className="block text-gray-500 font-semibold mb-1">Tanggal Transaksi (TGL)</label>
+                        <div className="relative">
+                          <Calendar className="absolute left-3 top-2.5 w-3.5 h-3.5 text-gray-400" />
+                          <input
+                            type="date"
+                            value={inputDate}
+                            onChange={(e) => setInputDate(e.target.value)}
+                            className="w-full bg-gray-50 border border-gray-200 rounded pl-9 pr-3 py-2 text-xs font-semibold text-gray-700 focus:outline-none focus:ring-1 focus:ring-evergreen"
+                            required
+                          />
                         </div>
-                        <p className="text-[10px] text-gray-400 mt-1">Cancel/Retur diubah nanti dari kolom Status di tabel laporan.</p>
                       </div>
-                    )}
+
+                      {/* Status awal order (khusus entri baru; ubah selanjutnya lewat badge di tabel) */}
+                      {!editingOrderNumber && (
+                        <div>
+                          <label className="block text-gray-500 font-semibold mb-1">Status Order</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setInputStatus('diproses')}
+                              className={`py-2 rounded-lg border text-[11px] font-bold ${inputStatus === 'diproses' ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 text-gray-600 bg-gray-50'}`}
+                            >
+                              Diproses
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setInputStatus('terkirim')}
+                              className={`py-2 rounded-lg border text-[11px] font-bold ${inputStatus === 'terkirim' ? 'bg-emerald-600 text-white border-emerald-600' : 'border-gray-200 text-gray-600 bg-gray-50'}`}
+                            >
+                              Terkirim
+                            </button>
+                          </div>
+                          <p className="text-[10px] text-gray-400 mt-1">Cancel/Retur diubah nanti dari kolom Status di tabel laporan.</p>
+                        </div>
+                      )}
+                    </div>
 
                     {/* Order Number & Marketplace Channel */}
                     <div className="grid grid-cols-2 gap-3">
@@ -945,92 +947,92 @@ export const MarketplaceSalesModule: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Baris input item tunggal — masuk ke tabel review bila ditambahkan */}
-                    <div className="bg-gray-50 rounded-lg p-3 border border-gray-100 space-y-2">
+                    {/* Baris input item tunggal — satu baris rapat ala form order, masuk ke tabel review bila ditambahkan */}
+                    <div className="bg-gray-50/50 rounded-lg p-3 border border-gray-100 space-y-2">
                       <span className="font-bold text-gray-700 block">Pilih Produk & Kuantitas</span>
-
-                      {/* Product Selector with Autofill */}
-                      <div>
-                        <label className="block text-gray-500 font-semibold mb-1">Pilih Produk (Autofill)</label>
-                        <select
-                          value={itemRow.selectedProductId}
-                          onChange={(e) => {
-                            const pid = e.target.value;
-                            const prod = products.find(p => p.id === pid);
-                            setItemRow(prev => ({
-                              ...prev,
-                              selectedProductId: pid,
-                              ...(prod ? { price: prod.harga_jual, customDescription: prod.name + (prod.variant ? ` - ${prod.variant}` : '') } : { customDescription: '' }),
-                            }));
-                          }}
-                          className="w-full bg-white border border-gray-200 rounded px-3 py-2 text-xs text-gray-700 font-semibold focus:outline-none focus:ring-1 focus:ring-evergreen"
-                        >
-                          <option value="">-- Ketik Deskripsi Custom / Pilih Produk --</option>
-                          {[...products].sort((a, b) => a.name.localeCompare(b.name)).map(p => (
-                            <option key={p.id} value={p.id}>
-                              {p.name} {p.variant ? `(${p.variant})` : ''} - {formatIDR(p.harga_jual)}
-                            </option>
-                          ))}
-                          <option value="custom">Tulis Custom / Tidak di List</option>
-                        </select>
-
-                        {/* Deskripsi custom input */}
-                        {(!itemRow.selectedProductId || itemRow.selectedProductId === 'custom') && (
-                          <div className="space-y-1 mt-1.5">
-                            <label className="block text-[10px] text-gray-400 font-bold uppercase">Deskripsi Item</label>
-                            <input
-                              type="text"
-                              value={itemRow.customDescription}
-                              onChange={(e) => setItemRow(prev => ({ ...prev, customDescription: e.target.value }))}
-                              placeholder="Ketik deskripsi produk di sini..."
-                              className="w-full bg-white border border-gray-200 rounded px-3 py-2 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-evergreen"
-                            />
-                            <label className="block text-[10px] text-gray-400 font-bold uppercase pt-1">Divisi</label>
-                            <select
-                              value={itemRow.departmentId || ''}
-                              onChange={(e) => setItemRow(prev => ({ ...prev, departmentId: e.target.value }))}
-                              className="w-full bg-white border border-gray-200 rounded px-3 py-2 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-evergreen"
-                            >
-                              <option value="">Belum ditentukan</option>
-                              {DIVISIONS.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
-                            </select>
-                            <p className="text-[10px] text-gray-400">Barang dari daftar produk divisinya ikut produk; baris custom perlu dipilih di sini.</p>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* QTY & Price */}
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-gray-500 font-semibold mb-1">QTY Terjual</label>
+                      <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
+                        <div className="sm:col-span-5">
+                          <label className="block text-[10px] text-gray-400 font-semibold uppercase mb-1">Pilih Produk (Autofill)</label>
+                          <select
+                            value={itemRow.selectedProductId}
+                            onChange={(e) => {
+                              const pid = e.target.value;
+                              const prod = products.find(p => p.id === pid);
+                              setItemRow(prev => ({
+                                ...prev,
+                                selectedProductId: pid,
+                                ...(prod ? { price: prod.harga_jual, customDescription: prod.name + (prod.variant ? ` - ${prod.variant}` : '') } : { customDescription: '' }),
+                              }));
+                            }}
+                            className="w-full bg-white border border-gray-200 rounded px-2.5 py-2 text-xs text-gray-700 font-semibold focus:outline-none focus:ring-1 focus:ring-evergreen"
+                          >
+                            <option value="">-- Ketik Deskripsi Custom / Pilih Produk --</option>
+                            {[...products].sort((a, b) => a.name.localeCompare(b.name)).map(p => (
+                              <option key={p.id} value={p.id}>
+                                {p.name} {p.variant ? `(${p.variant})` : ''} - {formatIDR(p.harga_jual)}
+                              </option>
+                            ))}
+                            <option value="custom">Tulis Custom / Tidak di List</option>
+                          </select>
+                        </div>
+                        <div className="sm:col-span-2">
+                          <label className="block text-[10px] text-gray-400 font-semibold uppercase mb-1">QTY</label>
                           <input
                             type="number"
                             min={1}
                             value={itemRow.qty || ''}
                             onChange={(e) => setItemRow(prev => ({ ...prev, qty: Number(e.target.value) }))}
-                            className="w-full bg-white border border-gray-200 rounded px-3 py-2 text-xs font-bold font-mono focus:outline-none focus:ring-1 focus:ring-evergreen"
+                            className="w-full bg-white border border-gray-200 rounded px-2.5 py-2 text-xs font-bold font-mono focus:outline-none focus:ring-1 focus:ring-evergreen"
                           />
                         </div>
-
-                        <div>
-                          <label className="block text-gray-500 font-semibold mb-1">Harga Satuan (IDR)</label>
+                        <div className="sm:col-span-3">
+                          <label className="block text-[10px] text-gray-400 font-semibold uppercase mb-1">Harga Satuan (IDR)</label>
                           <input
                             type="number"
                             min={0}
                             value={itemRow.price || ''}
                             onChange={(e) => setItemRow(prev => ({ ...prev, price: Number(e.target.value) }))}
-                            className="w-full bg-white border border-gray-200 rounded px-3 py-2 text-xs font-bold font-mono focus:outline-none focus:ring-1 focus:ring-evergreen"
+                            className="w-full bg-white border border-gray-200 rounded px-2.5 py-2 text-xs font-bold font-mono focus:outline-none focus:ring-1 focus:ring-evergreen"
                           />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <button
+                            type="button"
+                            onClick={handleAddDraftRow}
+                            className="w-full bg-evergreen hover:bg-emerald-950 text-white rounded py-2 font-bold text-xs flex items-center justify-center gap-1 shadow-xs cursor-pointer"
+                          >
+                            <Plus className="w-3.5 h-3.5" /> Tambah
+                          </button>
                         </div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={handleAddDraftRow}
-                        className="w-full bg-evergreen hover:bg-emerald-950 text-white rounded-md py-2 font-bold text-[11px] flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
-                      >
-                        <Plus className="w-3.5 h-3.5" /> Tambahkan ke Daftar
-                      </button>
+                      {/* Baris custom — deskripsi + divisi sejajar, hanya saat tidak memilih produk gudang */}
+                      {(!itemRow.selectedProductId || itemRow.selectedProductId === 'custom') && (
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                          <div className="sm:col-span-6">
+                            <label className="block text-[10px] text-gray-400 font-bold uppercase mb-1">Deskripsi Item</label>
+                            <input
+                              type="text"
+                              value={itemRow.customDescription}
+                              onChange={(e) => setItemRow(prev => ({ ...prev, customDescription: e.target.value }))}
+                              placeholder="Ketik deskripsi produk di sini..."
+                              className="w-full bg-white border border-gray-200 rounded px-2.5 py-2 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-evergreen"
+                            />
+                          </div>
+                          <div className="sm:col-span-4">
+                            <label className="block text-[10px] text-gray-400 font-bold uppercase mb-1">Divisi</label>
+                            <select
+                              value={itemRow.departmentId || ''}
+                              onChange={(e) => setItemRow(prev => ({ ...prev, departmentId: e.target.value }))}
+                              className="w-full bg-white border border-gray-200 rounded px-2.5 py-2 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-evergreen"
+                            >
+                              <option value="">Belum ditentukan</option>
+                              {DIVISIONS.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
+                            </select>
+                          </div>
+                          <p className="sm:col-span-2 self-end pb-2 text-[9px] text-gray-400 leading-tight">Barang dari daftar produk divisinya ikut produk; baris custom perlu dipilih di sini.</p>
+                        </div>
+                      )}
                     </div>
 
                     {/* TABEL REVIEW: barang yang sudah masuk pesanan — qty/harga masih bisa dikoreksi di sini */}
@@ -1049,7 +1051,7 @@ export const MarketplaceSalesModule: React.FC = () => {
                         <tbody>
                           {draftRows.length === 0 ? (
                             <tr>
-                              <td colSpan={6} className="p-4 text-center text-gray-400 italic">Belum ada barang dipilih — isi form di atas lalu klik "Tambahkan ke Daftar"</td>
+                              <td colSpan={6} className="p-4 text-center text-gray-400 italic">Belum ada barang dipilih — isi form di atas lalu klik "Tambah"</td>
                             </tr>
                           ) : (
                             draftRows.map((row, idx) => {
@@ -1121,45 +1123,47 @@ export const MarketplaceSalesModule: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Biaya Potongan Admin — diinput manual sekali per PESANAN (angka asli marketplace) */}
-                    <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
-                      <label className="block text-[10px] text-gray-400 font-bold uppercase mb-0.5 flex items-center gap-1">
-                        <Percent className="w-3 h-3 text-amber-500" /> Biaya Potongan Admin — 1 Pesanan (IDR)
-                      </label>
-                      <input
-                        type="number"
-                        min={0}
-                        value={orderAdminFee || ''}
-                        onChange={(e) => setOrderAdminFee(Number(e.target.value))}
-                        className="w-full bg-white border border-gray-200 rounded px-3 py-1.5 text-xs font-bold font-mono text-amber-600 focus:outline-none focus:ring-1 focus:ring-evergreen"
-                        placeholder="Contoh: 25000"
-                      />
-                      {draftRows.length > 1 && (
-                        <p className="text-[10px] text-gray-400 mt-1">Biaya ini dibebankan untuk seluruh {draftRows.length} barang dalam pesanan, disebar otomatis.</p>
-                      )}
-                    </div>
+                    {/* Biaya admin & foto resi sejajar — merapatkan modal ala form order */}
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] text-gray-400 font-bold uppercase mb-0.5 flex items-center gap-1">
+                          <Percent className="w-3 h-3 text-amber-500" /> Biaya Potongan Admin — 1 Pesanan (IDR)
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          value={orderAdminFee || ''}
+                          onChange={(e) => setOrderAdminFee(Number(e.target.value))}
+                          className="w-full bg-gray-50 border border-gray-200 rounded px-3 py-1.5 text-xs font-bold font-mono text-amber-600 focus:outline-none focus:ring-1 focus:ring-evergreen"
+                          placeholder="Contoh: 25000"
+                        />
+                        {draftRows.length > 1 && (
+                          <p className="text-[10px] text-gray-400 mt-1">Dibebankan ke {draftRows.length} barang dalam pesanan, disebar otomatis.</p>
+                        )}
+                      </div>
 
-                    {/* Foto resi — diunggah setelah tombol simpan ditekan */}
-                    <div>
-                      <label className="block text-gray-500 font-semibold mb-1">Foto Resi / Bukti Pengiriman (opsional)</label>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => setProofFile(e.target.files?.[0] || null)}
-                        className="w-full text-[11px] text-gray-600 file:mr-2 file:rounded file:border-0 file:bg-evergreen file:px-3 file:py-1.5 file:text-white file:font-bold"
-                      />
-                      {proofFile && <p className="text-[10px] text-emerald-600 mt-1 font-semibold">{proofFile.name} akan diunggah setelah disimpan.</p>}
-                      {uploadingPhoto && <p className="text-[10px] text-gray-400 mt-1">Mengunggah foto...</p>}
-                      {(() => {
-                        const proof = editingOrderNumber && itemSales.find(i => i.order_number === editingOrderNumber)?.shipping_proof_url;
-                        if (!proof || proofFile) return null;
-                        return (
-                          <div className="flex items-center gap-2 mt-2">
-                            <img src={proof} alt="Bukti pengiriman" onClick={() => setPreviewPhoto(proof)} className="w-16 h-16 object-cover rounded-lg border border-gray-200 cursor-pointer" />
-                            <button type="button" onClick={() => handleDeleteShippingProof(editingOrderNumber, proof)} className="text-[10px] text-rose-600 font-bold cursor-pointer">Hapus Foto</button>
-                          </div>
-                        );
-                      })()}
+                      {/* Foto resi — diunggah setelah tombol simpan ditekan */}
+                      <div>
+                        <label className="block text-gray-500 font-semibold mb-1">Foto Resi / Bukti Pengiriman (opsional)</label>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => setProofFile(e.target.files?.[0] || null)}
+                          className="w-full text-[11px] text-gray-600 file:mr-2 file:rounded file:border-0 file:bg-evergreen file:px-3 file:py-1.5 file:text-white file:font-bold"
+                        />
+                        {proofFile && <p className="text-[10px] text-emerald-600 mt-1 font-semibold">{proofFile.name} akan diunggah setelah disimpan.</p>}
+                        {uploadingPhoto && <p className="text-[10px] text-gray-400 mt-1">Mengunggah foto...</p>}
+                        {(() => {
+                          const proof = editingOrderNumber && itemSales.find(i => i.order_number === editingOrderNumber)?.shipping_proof_url;
+                          if (!proof || proofFile) return null;
+                          return (
+                            <div className="flex items-center gap-2 mt-2">
+                              <img src={proof} alt="Bukti pengiriman" onClick={() => setPreviewPhoto(proof)} className="w-16 h-16 object-cover rounded-lg border border-gray-200 cursor-pointer" />
+                              <button type="button" onClick={() => handleDeleteShippingProof(editingOrderNumber, proof)} className="text-[10px] text-rose-600 font-bold cursor-pointer">Hapus Foto</button>
+                            </div>
+                          );
+                        })()}
+                      </div>
                     </div>
 
                     {/* Submit Button */}
