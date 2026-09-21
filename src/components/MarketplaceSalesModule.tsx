@@ -137,6 +137,11 @@ export const MarketplaceSalesModule: React.FC = () => {
   const [editingDailyId, setEditingDailyId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
+  // Konfirmasi simpan terakhir (strip hijau di atas tabel) — menjawab "sudah tersimpan?"
+  // sekaligus membantu menemukan pesanan yang baru masuk, termasuk bila tanggal
+  // transaksinya di luar filter aktif sehingga tidak tampak di tabel.
+  const [lastSavedInfo, setLastSavedInfo] = useState<{ orderNumber: string; count: number; date: string; outsideFilter: boolean } | null>(null);
+
   // Confirmation state for deleting item sales
   const [deleteDetailedItemId, setDeleteDetailedItemId] = useState<string | null>(null);
   // Confirmation state for deleting daily rekap
@@ -178,8 +183,10 @@ export const MarketplaceSalesModule: React.FC = () => {
     });
   };
 
-  // Handler for Detailed Item Sale Submission
-  const handleAddDetailedSale = (e: React.FormEvent) => {
+  // Handler for Detailed Item Sale Submission.
+  // Mengembalikan true bila data benar-benar tersimpan — dipakai form untuk memutuskan
+  // menutup modal atau tidak, supaya validasi yang gagal tidak terasa seperti "tidak tersimpan".
+  const handleAddDetailedSale = (e: React.FormEvent): boolean => {
     e.preventDefault();
 
     const resolveDescription = (row: { selectedProductId: string; customDescription: string }) =>
@@ -189,17 +196,17 @@ export const MarketplaceSalesModule: React.FC = () => {
 
     if (draftRows.length === 0) {
       alert('Tabel review masih kosong. Isi produk + qty + harga di atas lalu klik "Tambah".');
-      return;
+      return false;
     }
 
     for (const row of draftRows) {
       if (!resolveDescription(row)) {
         alert('Mohon masukkan deskripsi produk/barang di setiap item!');
-        return;
+        return false;
       }
       if (row.qty <= 0) {
         alert('QTY setiap item harus lebih dari 0!');
-        return;
+        return false;
       }
     }
 
@@ -305,7 +312,10 @@ export const MarketplaceSalesModule: React.FC = () => {
       });
       dataStore.setMarketplaceItemSales(updatedItemSales);
       setItemSales(updatedItemSales);
-      alert(draftRows.length > 1 ? `${draftRows.length} item dalam order berhasil dicatatkan!` : 'Detail penjualan produk berhasil dicatatkan!');
+      // Konfirmasi non-blocking via strip di atas tabel (menggantikan alert) —
+      // pesanan langsung bisa dicari dari sana.
+      const outsideFilter = (Boolean(startDate) && inputDate < startDate) || (Boolean(endDate) && inputDate > endDate);
+      setLastSavedInfo({ orderNumber: sharedOrderNumber, count: draftRows.length, date: inputDate, outsideFilter });
     }
 
     // Foto resi diunggah setelah pesanan tersimpan, supaya nomor pesanannya sudah pasti
@@ -319,6 +329,7 @@ export const MarketplaceSalesModule: React.FC = () => {
     setDraftRows([]);
     resetItemInput();
     setOrderAdminFee(0);
+    return true;
   };
 
   const handleUploadShippingProof = async (orderNumber: string, file?: File) => {
@@ -836,6 +847,41 @@ export const MarketplaceSalesModule: React.FC = () => {
               Tambah Penjualan
             </button>
 
+            {/* Strip konfirmasi: pesanan terakhir yang berhasil disimpan */}
+            {lastSavedInfo && (
+              <div className="flex flex-wrap items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2.5 text-xs">
+                <Info className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span className="text-emerald-900">
+                  Tersimpan: pesanan <b className="font-mono select-all">{lastSavedInfo.orderNumber}</b> ({lastSavedInfo.count} barang, {formatDateExcel(lastSavedInfo.date)}).
+                  {lastSavedInfo.outsideFilter && ' Tanggal transaksinya di luar filter aktif, jadi belum tampak di tabel di bawah.'}
+                </span>
+                {lastSavedInfo.outsideFilter && (
+                  <button
+                    type="button"
+                    onClick={() => { setStartDate(lastSavedInfo.date); setEndDate(lastSavedInfo.date); }}
+                    className="px-2 py-0.5 rounded bg-evergreen text-white text-[11px] font-bold cursor-pointer"
+                  >
+                    Tampilkan tanggal itu
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery(lastSavedInfo.orderNumber)}
+                  className="px-2 py-0.5 rounded border border-emerald-300 text-emerald-800 text-[11px] font-bold cursor-pointer"
+                >
+                  Cari pesanan ini
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLastSavedInfo(null)}
+                  className="ml-auto p-1 text-emerald-600 hover:bg-emerald-100 rounded cursor-pointer"
+                  title="Tutup"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
             {/* MODAL SECTION: Entry Form */}
             {isModalOpen && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => { setIsModalOpen(false); handleCancelEditItem(); }}>
@@ -860,7 +906,7 @@ export const MarketplaceSalesModule: React.FC = () => {
                     </button>
                   </div>
 
-                  <form onSubmit={(e) => { handleAddDetailedSale(e); setIsModalOpen(false); }} className="space-y-4 text-xs">
+                  <form onSubmit={(e) => { if (handleAddDetailedSale(e)) setIsModalOpen(false); }} className="space-y-4 text-xs">
                     {/* ... (Form Fields) */}
                     {/* Tanggal & status berdampingan — mengikuti kerapatan layout form order */}
                     <div className={`grid gap-3 ${editingOrderNumber ? 'grid-cols-1' : 'sm:grid-cols-2'}`}>
