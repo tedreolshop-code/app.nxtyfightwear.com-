@@ -23,10 +23,17 @@ export const AuditRecycleModule: React.FC = () => {
     if (!window.confirm(`Hapus permanen "${item.label}"? Tindakan ini tidak dapat dibatalkan.`)) return;
     dataStore.permanentlyDeleteRecycleEntry(item.id); load();
   };
+  const emptyAll = () => {
+    if (recycle.length === 0) return;
+    if (!window.confirm(`Kosongkan seluruh Recycle Bin (${recycle.length} entri)? Semua data terhapus akan hilang permanen dan tidak dapat dipulihkan.`)) return;
+    if (!window.confirm('Konfirmasi terakhir: yakin kosongkan recycle bin?')) return;
+    dataStore.emptyRecycleBin(); load();
+  };
 
   return <div className="space-y-5">
     <div><h2 className="text-xl font-black text-gray-900 flex items-center gap-2"><ShieldCheck className="w-5 h-5 text-[var(--color-evergreen)]" /> Audit & Recycle Bin</h2><p className="text-xs text-gray-500 mt-1">Riwayat kegiatan penting dan data terhapus yang dapat dipulihkan selama 30 hari.</p></div>
     <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between no-print">
+      {tab === 'recycle' && recycle.length > 0 && <button onClick={emptyAll} title="Bebas-kan storage bila localStorage penuh" className="px-4 py-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 text-xs font-bold cursor-pointer hover:bg-rose-100"><Trash2 className="w-3.5 h-3.5 inline mr-1" /> Kosongkan ({recycle.length})</button>}
       <div className="inline-flex bg-gray-100 p-1 rounded-xl"><button onClick={() => setTab('audit')} className={`px-4 py-2 rounded-lg text-xs font-bold cursor-pointer ${tab === 'audit' ? 'bg-[var(--color-evergreen)] text-white' : 'text-gray-600'}`}><History className="w-3.5 h-3.5 inline mr-1" /> Audit Log</button><button onClick={() => setTab('recycle')} className={`px-4 py-2 rounded-lg text-xs font-bold cursor-pointer ${tab === 'recycle' ? 'bg-[var(--color-evergreen)] text-white' : 'text-gray-600'}`}><Trash2 className="w-3.5 h-3.5 inline mr-1" /> Recycle Bin ({recycle.length})</button></div>
       <div className="relative"><Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Cari aktivitas atau data..." className="pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-xs w-full sm:w-72 focus:outline-none focus:border-emerald-600" /></div>
     </div>

@@ -363,6 +363,13 @@ class DataStore {
   private auditKey = 'audit_logs';
   private recycleKey = 'recycle_bin';
 
+  // localStorage dibatasi ±5MB per origin dan seluruh tabel di-cache di sana.
+  // Audit log & recycle bin adalah dua key yang tumbuh paling cepat — tanpa batas
+  // mereka memicu QuotaExceededError yang menggagalkan sinkronisasi cloud.
+  // Versi lengkapnya tetap tersimpan di cloud (ari_store).
+  private static readonly AUDIT_MAX_ENTRIES = 1500;
+  private static readonly RECYCLE_MAX_ENTRIES = 300;
+
   getCurrentActor = (): { id?: string; name: string; role: UserRole | 'system' } => this.currentActor();
 
   private currentActor = (): { id?: string; name: string; role: UserRole | 'system' } => {
@@ -385,8 +392,8 @@ class DataStore {
     const actor = this.currentActor();
     const current = this.get<AuditEntry[]>(this.auditKey, []);
     const audit: AuditEntry = { ...entry, id: uuid(), timestamp: wibNowISO(), actor_id: actor.id, actor_name: actor.name, actor_role: actor.role };
-    const next = [audit, ...current].slice(0, 5000);
-    localStorage.setItem(`nxty_${this.auditKey}`, JSON.stringify(next));
+    const next = [audit, ...current].slice(0, DataStore.AUDIT_MAX_ENTRIES);
+    this.setItemWithQuotaGuard(this.auditKey, JSON.stringify(next));
     pushKeyToCloud(this.auditKey, next);
   };
 
@@ -410,8 +417,9 @@ class DataStore {
         reason: `Dihapus melalui modul ${key}`,
         expires_at: new Date(Date.now() + 30 * 86400000).toISOString()
       });
-      localStorage.setItem(`nxty_${this.recycleKey}`, JSON.stringify(recycle));
-      pushKeyToCloud(this.recycleKey, recycle);
+      const cappedRecycle = recycle.slice(0, DataStore.RECYCLE_MAX_ENTRIES);
+      this.setItemWithQuotaGuard(this.recycleKey, JSON.stringify(cappedRecycle));
+      pushKeyToCloud(this.recycleKey, cappedRecycle);
       this.appendAudit({ action: 'delete', entity_type: key, entity_id: id, description: `Menghapus ${key}: ${String(item.name || item.description || id)}`, metadata: { before: this.safeSnapshot(item), recycle_expires_at: recycle[0].expires_at } });
     }
 
@@ -431,11 +439,49 @@ class DataStore {
     }
   }
 
+  /**
+   * Tulis localStorage dengan jaring pengaman quota: bila penuh
+   * (QuotaExceededError), pangkas dua key terbesar (audit log & recycle bin)
+   * lalu coba sekali lagi. Bila tetap gagal, error dilempar ke pemanggil.
+   */
+  private setItemWithQuotaGuard = (key: string, value: string): void => {
+    try {
+      localStorage.setItem(`nxty_${key}`, value);
+    } catch (e) {
+      if (!this.pruneHeavyKeys()) throw e;
+      localStorage.setItem(`nxty_${key}`, value);
+    }
+  };
+
+  /** Pangkas audit log & recycle bin jadi separuh; true bila ada yang dipangkas. */
+  private pruneHeavyKeys = (): boolean => {
+    let pruned = false;
+    try {
+      const audit = this.get<AuditEntry[]>(this.auditKey, []);
+      if (audit.length > 200) {
+        const kept = audit.slice(0, Math.floor(audit.length / 2));
+        localStorage.setItem(`nxty_${this.auditKey}`, JSON.stringify(kept));
+        pushKeyToCloud(this.auditKey, kept);
+        pruned = true;
+      }
+    } catch { /* biarkan key lain yang mencoba */ }
+    try {
+      const recycle = this.get<RecycleEntry[]>(this.recycleKey, []);
+      if (recycle.length > 50) {
+        const kept = recycle.slice(0, Math.floor(recycle.length / 2));
+        localStorage.setItem(`nxty_${this.recycleKey}`, JSON.stringify(kept));
+        pushKeyToCloud(this.recycleKey, kept);
+        pruned = true;
+      }
+    } catch { /* biarkan key lain yang mencoba */ }
+    return pruned;
+  };
+
   private set<T>(key: string, data: T): void {
     try {
       const previous = this.get<T>(key, data);
       this.captureChanges(key, previous, data);
-      localStorage.setItem(`nxty_${key}`, JSON.stringify(data));
+      this.setItemWithQuotaGuard(key, JSON.stringify(data));
       // Dispatch a storage event so components can listen to changes in real-time
       window.dispatchEvent(new Event('nxty_storage_change'));
       // Sinkron ke Supabase bila dikonfigurasi (no-op saat offline / saat menerapkan data dari cloud)
@@ -450,11 +496,14 @@ class DataStore {
     const now = Date.now();
     const current = this.get<RecycleEntry[]>(this.recycleKey, []);
     const active = current.filter(entry => new Date(entry.expires_at).getTime() > now);
-    if (active.length !== current.length) {
-      localStorage.setItem(`nxty_${this.recycleKey}`, JSON.stringify(active));
-      pushKeyToCloud(this.recycleKey, active);
+    const capped = active.length > DataStore.RECYCLE_MAX_ENTRIES ? active.slice(0, DataStore.RECYCLE_MAX_ENTRIES) : active;
+    if (capped.length !== current.length) {
+      try {
+        localStorage.setItem(`nxty_${this.recycleKey}`, JSON.stringify(capped));
+        pushKeyToCloud(this.recycleKey, capped);
+      } catch { /* storage penuh — jangan gagalkan pembacaan */ }
     }
-    return active;
+    return capped;
   };
 
   logAudit = (action: AuditEntry['action'], entityType: string, description: string, entityId?: string, metadata?: Record<string, unknown>) =>
@@ -467,7 +516,7 @@ class DataStore {
     const records = this.get<Array<Record<string, unknown>>>(entry.entity_type, []);
     if (records.some(item => String(item.id) === entry.entity_id)) throw new Error('Data dengan ID yang sama sudah aktif.');
     const restored = [entry.data, ...records];
-    localStorage.setItem(`nxty_${entry.entity_type}`, JSON.stringify(restored));
+    this.setItemWithQuotaGuard(entry.entity_type, JSON.stringify(restored));
     pushKeyToCloud(entry.entity_type, restored);
     if (entry.entity_type === 'attendance') pushAttendanceToCloud(entry.data as unknown as Attendance);
     // Slip yang dipulihkan pernah mengembalikan potongan kasbonnya saat dihapus
@@ -504,6 +553,18 @@ class DataStore {
     this.appendAudit({ action: 'restore', entity_type: entry.entity_type, entity_id: entry.entity_id, description: `Memulihkan ${entry.entity_type}: ${entry.label}` });
     window.dispatchEvent(new Event('nxty_storage_change'));
     return true;
+  };
+
+  /** Kosongkan seluruh recycle bin sekaligus — pembebas storage saat browser penuh. */
+  emptyRecycleBin = (): number => {
+    // Baca dulu jumlahnya, lalu removeItem — benar-benar membebaskan ruang,
+    // bukan sekadar menimpa dengan array kosong (penting saat storage penuh).
+    const count = this.get<RecycleEntry[]>(this.recycleKey, []).length;
+    localStorage.removeItem(`nxty_${this.recycleKey}`);
+    pushKeyToCloud(this.recycleKey, []);
+    this.appendAudit({ action: 'permanent_delete', entity_type: 'recycle_bin', description: `Mengosongkan recycle bin: ${count} entri dihapus permanen` });
+    window.dispatchEvent(new Event('nxty_storage_change'));
+    return count;
   };
 
   permanentlyDeleteRecycleEntry = (recycleId: string): boolean => {

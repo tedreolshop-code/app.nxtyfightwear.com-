@@ -120,7 +120,7 @@ const snapshotFrom = (rows: RowLike[]): Map<string, string> =>
 const writeLocalRows = (key: string, rows: RowLike[]) => {
   applyingRemote = true;
   try {
-    localStorage.setItem(`nxty_${key}`, JSON.stringify(rows));
+    setItemQuotaSafe(`nxty_${key}`, JSON.stringify(rows));
     // Data dari cloud = baseline baru; simpan lokal berikutnya membandingkan ke sini.
     cloudSnapshot.set(key, snapshotFrom(rows));
     window.dispatchEvent(new Event('nxty_storage_change'));
@@ -234,7 +234,7 @@ const readLocalAttendance = (): AttendanceRecordLike[] => {
 const writeLocalAttendance = (rows: AttendanceRecordLike[]) => {
   applyingRemote = true;
   try {
-    localStorage.setItem(`nxty_${ATT_KEY}`, JSON.stringify(rows));
+    setItemQuotaSafe(`nxty_${ATT_KEY}`, JSON.stringify(rows));
     window.dispatchEvent(new Event('nxty_storage_change'));
   } finally {
     applyingRemote = false;
@@ -414,10 +414,36 @@ export const resyncAttendanceFromCloud = async (sinceDays = 2): Promise<Date | n
 const applyRemoteValue = (key: string, value: unknown) => {
   applyingRemote = true;
   try {
-    localStorage.setItem(`nxty_${key}`, JSON.stringify(value));
+    setItemQuotaSafe(`nxty_${key}`, JSON.stringify(value));
     window.dispatchEvent(new Event('nxty_storage_change'));
   } finally {
     applyingRemote = false;
+  }
+};
+
+/**
+ * setItem tahan quota: bila localStorage penuh (QuotaExceededError), buang cache
+ * audit log & recycle bin — keduanya murni cache, aslinya tetap utuh di cloud —
+ * lalu coba sekali lagi. Bila tetap gagal, catat dan lanjutkan: SATU key yang
+ * gagal tidak boleh menggagalkan seluruh sinkronisasi (bug 21 Sep 2026: satu
+ * nxty_recycle_bin yang kelebihan quota membuat status "Cloud error — data lokal"
+ * dan realtime mati total, padahal cloud sehat).
+ */
+const setItemQuotaSafe = (storageKey: string, value: string): boolean => {
+  try {
+    localStorage.setItem(storageKey, value);
+    return true;
+  } catch (e) {
+    try {
+      localStorage.removeItem('nxty_audit_logs');
+      localStorage.removeItem('nxty_recycle_bin');
+      localStorage.setItem(storageKey, value);
+      console.warn(`[cloudSync] Storage penuh — cache audit/recycle dibuang untuk menulis "${storageKey}".`);
+      return true;
+    } catch {
+      console.error(`[cloudSync] Gagal menulis "${storageKey}" ke localStorage (storage penuh?) — dilewati.`, e);
+      return false;
+    }
   }
 };
 
@@ -449,7 +475,8 @@ export const initCloudSync = async (): Promise<void> => {
       for (const row of data || []) {
         if (row.key === ATT_KEY) continue;
         if (perRowByKey.has(row.key)) continue;
-        localStorage.setItem(`nxty_${row.key}`, JSON.stringify(row.value));
+        // Per-key tahan quota: satu key bermasalah tidak boleh membatalkan sisanya.
+        setItemQuotaSafe(`nxty_${row.key}`, JSON.stringify(row.value));
       }
     } finally {
       applyingRemote = false;
