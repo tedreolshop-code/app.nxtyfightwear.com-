@@ -6,9 +6,13 @@ test.use({ viewport: { width: 1440, height: 900 }, isMobile: false, hasTouch: fa
 const seed = async (page: Page) => {
   await isolateAsOwner(page); // tanpa ini tarikan Supabase menimpa seed dan tes mengubah data nyata
   await page.addInitScript(() => {
+    // Tanggal bulan berjalan: bawaan filter order adalah periode bulan berjalan
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const ym = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
     localStorage.setItem('nxty_orders', JSON.stringify([{
       id: 'ord-edit', order_number: 'ORD/2026/07/005', customer_name: 'Dojo Uji', customer_phone: '0812',
-      source: 'offline', date: '2026-07-29',
+      source: 'offline', date: `${ym}-29`,
       items: [{ id: 'i1', product_id: 'prod-matras-2cm', product_name: 'Matras Beladiri Eva Foam 2cm', variant: 'Merah-Biru', qty: 2, price: 165000, subtotal: 330000 }],
       total: 330000, dp: 0, status: 'pending',
     }]));

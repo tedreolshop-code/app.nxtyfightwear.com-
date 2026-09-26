@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Order, OrderItem, Product, Employee, orderRemaining, orderPaymentStatus, divisionLabel, paidAmountOf } from '../types';
+import { Order, OrderItem, Product, Employee, orderRemaining, orderPaymentStatus, divisionLabel, paidAmountOf, lastDayOfMonth } from '../types';
 import { DivisionFilter } from './DivisionFilter';
 import { PaymentLedger, LedgerRow } from './PaymentLedger';
 import { ContactAutocompleteInput } from './ContactAutocompleteInput';
@@ -28,6 +28,9 @@ export const OrderModule: React.FC = () => {
   const [orderSearch, setOrderSearch] = useState('');
   const [orderDivFilter, setOrderDivFilter] = useState('');
   const [orderSort, setOrderSort] = useState<'newest' | 'oldest' | 'total-desc' | 'total-asc' | 'customer'>('newest');
+  // Periode tanggal ala Penjualan Marketplace. Bawaan bulan berjalan; '' = semua periode.
+  const [startDate, setStartDate] = useState<string>(() => `${wibTodayStr().slice(0, 7)}-01`);
+  const [endDate, setEndDate] = useState<string>(() => lastDayOfMonth(wibTodayStr()));
   // Sub-tab: daftar pesanan vs buku piutang pelanggan
   const [orderView, setOrderView] = useState<'pesanan' | 'piutang'>('pesanan');
   const [shipExpedition, setShipExpedition] = useState('');
@@ -566,6 +569,7 @@ export const OrderModule: React.FC = () => {
   };
 
   // Buku piutang: turunan dari order yang belum lunas. Order dibatalkan tidak ditagih.
+  // Satu baris per order utk kedua sub-tab; ringkasan menyaring per periode tanggal.
   const piutangRows: LedgerRow[] = orders
     .filter(ord => ord.status !== 'cancelled')
     .map(ord => ({
@@ -580,12 +584,32 @@ export const OrderModule: React.FC = () => {
       paid: paidAmountOf(ord),
       payments: ord.payments || [],
     }));
-  const piutangOutstanding = piutangRows.reduce((sum, row) => sum + Math.max(0, row.total - row.paid), 0);
-  // Ringkasan uang seluruh order aktif (order dibatalkan tidak ditagih)
-  const totalTagihan = piutangRows.reduce((sum, row) => sum + row.total, 0);
-  const totalDibayar = piutangRows.reduce((sum, row) => sum + row.paid, 0);
+  // '' = tanpa batas bawah/atas (Semua Periode) agar data lama tanpa tanggal tetap terhitung
+  const periodeAktif = Boolean(startDate) || Boolean(endDate);
+  const dalamPeriode = (date: string) =>
+    (!startDate || (date || '') >= startDate) && (!endDate || (date || '') <= endDate);
+  const rowsPeriode = periodeAktif ? piutangRows.filter(row => dalamPeriode(row.date)) : piutangRows;
+  // Label periode di kartu ringkasan, mis. "1–30 Sep 2026" / "sejak 1 Sep 2026" / "Semua periode"
+  const NAMA_BULAN = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+  const tglPendek = (iso: string) => {
+    const [y, m, d] = iso.split('-').map(Number);
+    if (!y || !m || !d) return iso;
+    return `${d} ${NAMA_BULAN[m - 1]} ${y}`;
+  };
+  const periodeLabel = !periodeAktif
+    ? 'Semua periode'
+    : startDate && endDate
+      ? `${tglPendek(startDate)} – ${tglPendek(endDate)}`
+      : startDate
+        ? `sejak ${tglPendek(startDate)}`
+        : `s.d. ${tglPendek(endDate)}`;
+  const piutangOutstanding = rowsPeriode.reduce((sum, row) => sum + Math.max(0, row.total - row.paid), 0);
+  // Ringkasan uang order dalam periode yang dipilih (order dibatalkan tidak ditagih)
+  const totalTagihan = rowsPeriode.reduce((sum, row) => sum + row.total, 0);
+  const totalDibayar = rowsPeriode.reduce((sum, row) => sum + row.paid, 0);
 
   const visibleOrders = orders.filter(ord => {
+    if (!dalamPeriode(ord.date)) return false;
     if (filterStatus === 'active') {
       if (ord.status === 'cancelled') return false;
     } else if (filterStatus !== 'all' && ord.status !== filterStatus) {
@@ -1019,17 +1043,32 @@ export const OrderModule: React.FC = () => {
       {/* Ringkasan uang — berlaku untuk kedua sub-tab, hitungannya sama dengan buku piutang */}
       <div className="no-print grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Tagihan</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Tagihan</p>
+            <span className="text-[9px] font-mono font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+              {periodeLabel}
+            </span>
+          </div>
           <p className="text-lg font-black font-mono text-gray-800 mt-1">{formatIDR(totalTagihan)}</p>
-          <p className="text-[10px] text-gray-400 mt-0.5">{piutangRows.length} order aktif (tanpa dibatalkan)</p>
+          <p className="text-[10px] text-gray-400 mt-0.5">{rowsPeriode.length} order aktif (tanpa dibatalkan)</p>
         </div>
         <div className="bg-white border border-emerald-200 rounded-xl p-4">
-          <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Sudah Bayar</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Sudah Bayar</p>
+            <span className="text-[9px] font-mono font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+              {periodeLabel}
+            </span>
+          </div>
           <p className="text-lg font-black font-mono text-emerald-700 mt-1">{formatIDR(totalDibayar)}</p>
           <p className="text-[10px] text-gray-400 mt-0.5">DP + cicilan yang sudah masuk</p>
         </div>
         <div className={`bg-white border rounded-xl p-4 ${piutangOutstanding > 0 ? 'border-amber-200' : 'border-gray-200'}`}>
-          <p className={`text-[10px] font-bold uppercase tracking-wider ${piutangOutstanding > 0 ? 'text-amber-700' : 'text-gray-400'}`}>Sisa Tagihan</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className={`text-[10px] font-bold uppercase tracking-wider ${piutangOutstanding > 0 ? 'text-amber-700' : 'text-gray-400'}`}>Sisa Tagihan</p>
+            <span className="text-[9px] font-mono font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+              {periodeLabel}
+            </span>
+          </div>
           <p className={`text-lg font-black font-mono mt-1 ${piutangOutstanding > 0 ? 'text-amber-700' : 'text-gray-400'}`}>{formatIDR(piutangOutstanding)}</p>
           <p className="text-[10px] text-gray-400 mt-0.5">{piutangOutstanding > 0 ? 'Belum lunas — tagih di tab Piutang' : 'Semua order sudah lunas'}</p>
         </div>
@@ -1084,6 +1123,31 @@ export const OrderModule: React.FC = () => {
               className="bg-white border border-gray-200 rounded px-3 py-1.5 text-xs text-gray-800 focus:outline-none focus:border-emerald-600 w-48"
             />
             <DivisionFilter value={orderDivFilter} onChange={setOrderDivFilter} />
+            <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded px-2 py-1" title="Filter pesanan & ringkasan tagihan per periode tanggal order. Kosongkan salah satu untuk tanpa batas.">
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="bg-gray-50 border border-gray-200 rounded px-1.5 py-0.5 text-[10px] font-semibold text-gray-600 focus:outline-none focus:ring-1 focus:ring-evergreen w-[118px]"
+              />
+              <span className="text-[10px] text-gray-400 font-bold">s/d</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="bg-gray-50 border border-gray-200 rounded px-1.5 py-0.5 text-[10px] font-semibold text-gray-600 focus:outline-none focus:ring-1 focus:ring-evergreen w-[118px]"
+              />
+              {periodeAktif && (
+                <button
+                  type="button"
+                  onClick={() => { setStartDate(''); setEndDate(''); }}
+                  title="Tampilkan semua periode"
+                  className="text-[10px] font-bold text-gray-400 hover:text-gray-700 cursor-pointer px-1"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
             <select
               value={orderSort}
               onChange={(e) => setOrderSort(e.target.value as typeof orderSort)}

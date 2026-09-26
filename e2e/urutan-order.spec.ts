@@ -6,9 +6,13 @@ test.use({ viewport: { width: 1440, height: 900 }, isMobile: false, hasTouch: fa
 const seed = async (page: Page) => {
   await isolateAsOwner(page);
   await page.addInitScript(() => {
+    // Tanggal bulan berjalan: bawaan filter order adalah periode bulan berjalan
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const ym = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
     localStorage.setItem('nxty_orders', JSON.stringify([
-      { id: 'ord-1', order_number: 'ORD/2026/07/001', customer_name: 'Cahya', customer_phone: '0812', source: 'offline', date: '2026-07-10', items: [], total: 900000, dp: 0, status: 'pending' },
-      { id: 'ord-2', order_number: 'ORD/2026/07/002', customer_name: 'Anwar', customer_phone: '0812', source: 'offline', date: '2026-07-25', items: [], total: 300000, dp: 0, status: 'pending' },
+      { id: 'ord-1', order_number: 'ORD/2026/07/001', customer_name: 'Cahya', customer_phone: '0812', source: 'offline', date: `${ym}-10`, items: [], total: 900000, dp: 0, status: 'pending' },
+      { id: 'ord-2', order_number: 'ORD/2026/07/002', customer_name: 'Anwar', customer_phone: '0812', source: 'offline', date: `${ym}-25`, items: [], total: 300000, dp: 0, status: 'pending' },
     ]));
   });
 };
