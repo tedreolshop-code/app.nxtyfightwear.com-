@@ -43,13 +43,23 @@ export const PaymentLedger: React.FC<{
   rows: LedgerRow[];
   todayStr: string;
   onPay: (rowId: string, amount: number, date: string, note?: string) => void;
-}> = ({ title, subtitle, partyLabel, rows, todayStr, onPay }) => {
+  /** Filter periode opsional (dipakai Piutang Pelanggan): tanggal order/transaksi. */
+  startDate?: string;
+  endDate?: string;
+  onStartDateChange?: (v: string) => void;
+  onEndDateChange?: (v: string) => void;
+}> = ({ title, subtitle, partyLabel, rows, todayStr, onPay, startDate, endDate, onStartDateChange, onEndDateChange }) => {
   const [divFilter, setDivFilter] = useState('');
   const [showPaid, setShowPaid] = useState(false);
   const [payTarget, setPayTarget] = useState<LedgerRow | null>(null);
   const [payAmount, setPayAmount] = useState(0);
   const [payDate, setPayDate] = useState(todayStr);
   const [payNote, setPayNote] = useState('');
+
+  // Filter periode aktif hanya bila parent menyediakan propertinya ('' = tanpa batas)
+  const periodeAktif = Boolean(onStartDateChange || onEndDateChange);
+  const dalamPeriode = (date: string) =>
+    (!startDate || (date || '') >= startDate) && (!endDate || (date || '') <= endDate);
 
   const visible = useMemo(() => rows
     .filter(row => {
@@ -61,9 +71,10 @@ export const PaymentLedger: React.FC<{
       if (row.departmentIds.length === 0) return divFilter === 'shared';
       return row.departmentIds.some(id => matchesDivision(id, divFilter));
     })
+    .filter(row => !periodeAktif || dalamPeriode(row.date))
     // Jatuh tempo terdekat lebih dulu; yang tanpa jatuh tempo di belakang
     .sort((a, b) => (a.dueDate || '9999').localeCompare(b.dueDate || '9999') || b.date.localeCompare(a.date)),
-    [rows, divFilter, showPaid]);
+    [rows, divFilter, showPaid, startDate, endDate]);
 
   const outstanding = visible.reduce((sum, row) => sum + remainingOf(row.total, row.paid), 0);
   const jatuhTempo = visible.filter(row => row.dueDate && row.dueDate < todayStr && remainingOf(row.total, row.paid) > 0);
@@ -95,6 +106,33 @@ export const PaymentLedger: React.FC<{
           <p className="text-xs text-gray-800">{subtitle}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {periodeAktif && (
+            <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded px-2 py-1" title="Filter tagihan per tanggal transaksi. Kosongkan salah satu untuk tanpa batas.">
+              <input
+                type="date"
+                value={startDate || ''}
+                onChange={(e) => onStartDateChange?.(e.target.value)}
+                className="bg-gray-50 border border-gray-200 rounded px-1.5 py-0.5 text-[10px] font-semibold text-gray-600 focus:outline-none focus:ring-1 focus:ring-evergreen w-[118px]"
+              />
+              <span className="text-[10px] text-gray-400 font-bold">s/d</span>
+              <input
+                type="date"
+                value={endDate || ''}
+                onChange={(e) => onEndDateChange?.(e.target.value)}
+                className="bg-gray-50 border border-gray-200 rounded px-1.5 py-0.5 text-[10px] font-semibold text-gray-600 focus:outline-none focus:ring-1 focus:ring-evergreen w-[118px]"
+              />
+              {(startDate || endDate) && (
+                <button
+                  type="button"
+                  onClick={() => { onStartDateChange?.(''); onEndDateChange?.(''); }}
+                  title="Tampilkan semua periode"
+                  className="text-[10px] font-bold text-gray-400 hover:text-gray-700 cursor-pointer px-1"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          )}
           <DivisionFilter value={divFilter} onChange={setDivFilter} sharedLabel="Bersama" />
           <label className="flex items-center gap-1.5 text-[10px] font-bold text-gray-500 cursor-pointer select-none">
             <input type="checkbox" checked={showPaid} onChange={e => setShowPaid(e.target.checked)} className="accent-[var(--color-evergreen)]" />

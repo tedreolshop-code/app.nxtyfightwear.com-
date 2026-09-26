@@ -9,29 +9,33 @@ const KONVEKSI = 'dept-konveksi';
 const seed = async (page: Page) => {
   await isolateAsOwner(page);
   await page.addInitScript((div) => {
+    // Tanggal bulan berjalan: buku piutang kini mengikuti filter periode bawaan
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const ym = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
     localStorage.setItem('nxty_purchases', JSON.stringify([
       // Hutang Eva Foam, sudah dibayar sebagian, lewat jatuh tempo
-      { id: 'po1', po_number: 'PO/1', supplier: 'Toko Eva', date: '2026-07-01', department_id: div.EVA,
-        total_price: 1_000_000, status: 'completed', payment_method: 'hutang', due_date: '2026-07-10',
-        payments: [{ id: 'p1', date: '2026-07-05', amount: 300_000 }],
+      { id: 'po1', po_number: 'PO/1', supplier: 'Toko Eva', date: `${ym}-01`, department_id: div.EVA,
+        total_price: 1_000_000, status: 'completed', payment_method: 'hutang', due_date: `${ym}-10`,
+        payments: [{ id: 'p1', date: `${ym}-05`, amount: 300_000 }],
         items: [{ id: 'i1', description: 'Eva sheet', qty: 1, price: 1_000_000, subtotal: 1_000_000 }] },
       // Hutang Konveksi, belum dibayar
-      { id: 'po2', po_number: 'PO/2', supplier: 'Toko Kain', date: '2026-07-02', department_id: div.KONVEKSI,
-        total_price: 500_000, status: 'completed', payment_method: 'hutang', due_date: '2026-08-30', payments: [],
+      { id: 'po2', po_number: 'PO/2', supplier: 'Toko Kain', date: `${ym}-02`, department_id: div.KONVEKSI,
+        total_price: 500_000, status: 'completed', payment_method: 'hutang', due_date: `${ym}-28`, payments: [],
         items: [{ id: 'i2', description: 'Kain', qty: 1, price: 500_000, subtotal: 500_000 }] },
       // Tunai, sudah lunas → tidak muncul kecuali "tampilkan yang lunas"
-      { id: 'po3', po_number: 'PO/3', supplier: 'Toko Tunai', date: '2026-07-03',
+      { id: 'po3', po_number: 'PO/3', supplier: 'Toko Tunai', date: `${ym}-03`,
         total_price: 200_000, status: 'completed', payment_method: 'tunai',
-        payments: [{ id: 'p2', date: '2026-07-03', amount: 200_000 }],
+        payments: [{ id: 'p2', date: `${ym}-03`, amount: 200_000 }],
         items: [{ id: 'i3', description: 'Lakban', qty: 1, price: 200_000, subtotal: 200_000 }] },
     ]));
 
     localStorage.setItem('nxty_orders', JSON.stringify([
       { id: 'ord1', order_number: 'ORD/1', customer_name: 'Dojo Eva', customer_phone: '08', source: 'offline',
-        date: '2026-07-04', total: 800_000, status: 'completed', dp: 200_000, due_date: '2026-07-15',
+        date: `${ym}-04`, total: 800_000, status: 'completed', dp: 200_000, due_date: `${ym}-15`,
         items: [{ id: 'oi1', product_id: 'p1', department_id: div.EVA, product_name: 'Matras', variant: 'M', qty: 1, price: 800_000, subtotal: 800_000 }] },
       { id: 'ord2', order_number: 'ORD/2', customer_name: 'Sasana Konveksi', customer_phone: '08', source: 'offline',
-        date: '2026-07-06', total: 400_000, status: 'pending',
+        date: `${ym}-06`, total: 400_000, status: 'pending',
         items: [{ id: 'oi2', product_id: 'p2', department_id: div.KONVEKSI, product_name: 'Samsak', variant: 'L', qty: 1, price: 400_000, subtotal: 400_000 }] },
     ]));
   }, { EVA, KONVEKSI });

@@ -1081,6 +1081,10 @@ export const OrderModule: React.FC = () => {
           partyLabel="Pelanggan"
           rows={piutangRows}
           todayStr={wibTodayStr()}
+          startDate={startDate}
+          endDate={endDate}
+          onStartDateChange={setStartDate}
+          onEndDateChange={setEndDate}
           onPay={(id, amount, date, note) => {
             if (!dataStore.addOrderPayment(id, amount, date, note)) return alert('Pembayaran gagal dicatat.');
             loadData();

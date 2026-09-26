@@ -50,3 +50,23 @@ test('ringkasan & daftar default hanya bulan berjalan, reset menampilkan semua p
   await expect(kartuTotal).toContainText('2 order aktif');
   await expect(kartuTotal).toContainText('Semua periode');
 });
+
+test('buku Piutang Pelanggan ikut filter periode dan punya tombol reset', async ({ page }) => {
+  await seed(page);
+  await bukaOrder(page);
+
+  // Buka sub-tab piutang: default bulan berjalan hanya menampilkan order bulan ini
+  await page.getByRole('button', { name: /Piutang Pelanggan/ }).click();
+  // Kontainer buku piutang (rounded-xl, ber-heading "Piutang Pelanggan") —
+  // daftar pesanan tetap ada di DOM walau ter-hidden, jadi harus dipisah dari situ
+  const kartuPiutang = page.locator('div.bg-white.rounded-xl').filter({ has: page.getByRole('heading', { name: 'Piutang Pelanggan' }) });
+  const bukuPiutang = kartuPiutang.locator('table');
+  await expect(bukuPiutang).toContainText('ORD/NOW/001');
+  await expect(bukuPiutang).not.toContainText('ORD/PREV/001');
+  await expect(page.getByText('1 tagihan', { exact: true })).toBeVisible();
+
+  // Reset periode (tombol di dalam buku piutang) → piutang bulan lalu ikut muncul
+  await kartuPiutang.getByTitle('Tampilkan semua periode').click();
+  await expect(bukuPiutang).toContainText('ORD/PREV/001');
+  await expect(page.getByText('2 tagihan', { exact: true })).toBeVisible();
+});
