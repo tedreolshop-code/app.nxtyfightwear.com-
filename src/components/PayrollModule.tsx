@@ -341,18 +341,39 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
   };
   // -------------------------------------------------------------------------
 
-  // Dynamic recalculation for edited payroll
-  useEffect(() => {
-    if (editingPayroll) {
-      const emp = employees.find(e => e.id === editingPayroll.employee_id);
-      const rateHarian = emp?.rate_harian || 150000;
-      const rateLembur = emp?.rate_lembur_per_jam || 20000;
-      const calculatedBasePay = editDaysWorked * rateHarian;
-      const calculatedOvertimePay = editOvertimeHours * rateLembur;
-      setEditBasePay(calculatedBasePay);
-      setEditTotalPay(calculatedBasePay + calculatedOvertimePay + editBonus - editKasbonDeduction);
-    }
-  }, [editDaysWorked, editOvertimeHours, editBonus, editKasbonDeduction, editingPayroll, employees]);
+  // Tarif pembanding slip yang sedang diedit: profil karyawan; bila karyawan sudah
+  // terhapus, turunkan dari isi slip (base_pay ÷ hari kerja). Gaji pokok yang sudah
+  // diketik manual tidak boleh ditimpa otomatis — dulu effect menghitung ulang setiap
+  // kali field lain berubah, jadi edit manual langsung tergantikan tarif profil lama.
+  const editRates = (pay: PayrollWeekly) => {
+    const emp = employees.find(e => e.id === pay.employee_id);
+    const rateHarian = emp?.rate_harian || (pay.days_worked > 0 ? Math.round(pay.base_pay / pay.days_worked) : 0) || 150000;
+    return { rateHarian, rateLembur: emp?.rate_lembur_per_jam || 20000 };
+  };
+  const editTotalOf = (basePay: number, overtimeHours: number, bonus: number, kasbon: number) =>
+    basePay + overtimeHours * editRates(editingPayroll!).rateLembur + bonus - kasbon;
+
+  // Hari kerja satu-satunya input yang memengaruhi gaji pokok → base pay ikut dihitung ulang.
+  const handleEditDaysWorked = (days: number) => {
+    setEditDaysWorked(days);
+    if (!editingPayroll) return;
+    const basePay = days * editRates(editingPayroll).rateHarian;
+    setEditBasePay(basePay);
+    setEditTotalPay(editTotalOf(basePay, editOvertimeHours, editBonus, editKasbonDeduction));
+  };
+  // Field lain hanya menyegarkan total THP; angka gaji pokok manual dibiarkan apa adanya.
+  const handleEditOvertimeHours = (hours: number) => {
+    setEditOvertimeHours(hours);
+    setEditTotalPay(editTotalOf(editBasePay, hours, editBonus, editKasbonDeduction));
+  };
+  const handleEditBonus = (bonus: number) => {
+    setEditBonus(bonus);
+    setEditTotalPay(editTotalOf(editBasePay, editOvertimeHours, bonus, editKasbonDeduction));
+  };
+  const handleEditKasbonDeduction = (kasbon: number) => {
+    setEditKasbonDeduction(kasbon);
+    setEditTotalPay(editTotalOf(editBasePay, editOvertimeHours, editBonus, kasbon));
+  };
 
   const handleStartEditPayroll = (pay: PayrollWeekly) => {
     setEditingPayroll(pay);
@@ -361,7 +382,9 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     setEditBasePay(pay.base_pay);
     setEditBonus(pay.bonus);
     setEditKasbonDeduction(pay.cash_advance_deduction);
-    setEditTotalPay(pay.total_pay);
+    // THP dihitung ulang dari komponen slip agar konsisten dengan handler per field;
+    // gaji pokok tetap nilai tersimpan slip (boleh berbeda dari hari × tarif profil).
+    setEditTotalPay(pay.base_pay + pay.overtime_hours * editRates(pay).rateLembur + pay.bonus - pay.cash_advance_deduction);
   };
 
   const handleSaveEditPayroll = (e: React.FormEvent) => {
@@ -2269,7 +2292,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                   <input
                     type="number"
                     value={editDaysWorked}
-                    onChange={(e) => setEditDaysWorked(Number(e.target.value))}
+                    onChange={(e) => handleEditDaysWorked(Number(e.target.value))}
                     className="w-full bg-emerald-50/10 border border-emerald-800/25 rounded-lg px-3 py-2 text-emerald-950 font-semibold focus:bg-white focus:outline-none focus:border-emerald-700"
                     required
                   />
@@ -2279,7 +2302,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                   <input
                     type="number"
                     value={editOvertimeHours}
-                    onChange={(e) => setEditOvertimeHours(Number(e.target.value))}
+                    onChange={(e) => handleEditOvertimeHours(Number(e.target.value))}
                     className="w-full bg-emerald-50/10 border border-emerald-800/25 rounded-lg px-3 py-2 text-emerald-950 font-semibold focus:bg-white focus:outline-none focus:border-emerald-700"
                     required
                   />
@@ -2305,7 +2328,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                     <input
                       type="number"
                       value={editBonus}
-                      onChange={(e) => setEditBonus(Number(e.target.value))}
+                      onChange={(e) => handleEditBonus(Number(e.target.value))}
                       className="pl-9 w-full bg-emerald-50/10 border border-emerald-800/25 rounded-lg px-3 py-2 font-mono text-emerald-950 font-bold focus:bg-white focus:outline-none focus:border-emerald-700"
                       required
                     />
@@ -2319,7 +2342,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                     <input
                       type="number"
                       value={editKasbonDeduction}
-                      onChange={(e) => setEditKasbonDeduction(Number(e.target.value))}
+                      onChange={(e) => handleEditKasbonDeduction(Number(e.target.value))}
                       className="pl-9 w-full bg-emerald-50/10 border border-emerald-800/25 rounded-lg px-3 py-2 font-mono text-emerald-950 font-bold focus:bg-white focus:outline-none focus:border-emerald-700"
                       required
                     />

@@ -204,15 +204,32 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
     }
   }, [modalDaysWorked, modalOvertimeHours, modalBonus, modalKasbonDeduction, profileModalEmp]);
 
-  // Dynamic recalculation when editing a past payroll record
-  useEffect(() => {
-    if (editingPayroll && profileModalEmp) {
-      const calculatedBasePay = editDaysWorked * profileModalEmp.rate_harian;
-      const calculatedOvertimePay = editOvertimeHours * profileModalEmp.rate_lembur_per_jam;
-      setEditBasePay(calculatedBasePay);
-      setEditTotalPay(calculatedBasePay + calculatedOvertimePay + editBonus - editKasbonDeduction);
-    }
-  }, [editDaysWorked, editOvertimeHours, editBonus, editKasbonDeduction, editingPayroll, profileModalEmp]);
+  // Gaji pokok slip yang diedit hanya dihitung ulang saat HARI KERJA berubah —
+  // dulu effect menghitung ulang setiap field lain berubah, jadi base_pay tersimpan
+  // slip (yang bisa sudah dikoreksi admin) diam-diam tertimpa hari × tarif profil.
+  const handleEditModalDaysWorked = (days: number) => {
+    setEditDaysWorked(days);
+    if (!profileModalEmp) return;
+    const basePay = days * profileModalEmp.rate_harian;
+    setEditBasePay(basePay);
+    setEditTotalPay(basePay + editOvertimeHours * profileModalEmp.rate_lembur_per_jam + editBonus - editKasbonDeduction);
+  };
+  // Field lain hanya menyegarkan total THP; gaji pokok tersimpan dibiarkan apa adanya.
+  const handleEditModalOvertimeHours = (hours: number) => {
+    setEditOvertimeHours(hours);
+    if (!profileModalEmp) return;
+    setEditTotalPay(editBasePay + hours * profileModalEmp.rate_lembur_per_jam + editBonus - editKasbonDeduction);
+  };
+  const handleEditModalBonus = (bonus: number) => {
+    setEditBonus(bonus);
+    if (!profileModalEmp) return;
+    setEditTotalPay(editBasePay + editOvertimeHours * profileModalEmp.rate_lembur_per_jam + bonus - editKasbonDeduction);
+  };
+  const handleEditModalKasbonDeduction = (kasbon: number) => {
+    setEditKasbonDeduction(kasbon);
+    if (!profileModalEmp) return;
+    setEditTotalPay(editBasePay + editOvertimeHours * profileModalEmp.rate_lembur_per_jam + editBonus - kasbon);
+  };
 
   const refreshModalData = (emp: Employee) => {
     const pWeekly = dataStore.getPayrollWeekly().filter(p => p.employee_id === emp.id);
@@ -343,7 +360,9 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
     setEditBasePay(pay.base_pay);
     setEditBonus(pay.bonus);
     setEditKasbonDeduction(pay.cash_advance_deduction);
-    setEditTotalPay(pay.total_pay);
+    // Total dihitung ulang dari komponen slip agar konsisten dengan handler per field;
+    // gaji pokok tetap nilai tersimpan slip, bukan hari × tarif profil saat ini.
+    setEditTotalPay(pay.base_pay + pay.overtime_hours * profileModalEmp!.rate_lembur_per_jam + pay.bonus - pay.cash_advance_deduction);
   };
 
   const handleSaveEditModalPayroll = (e: React.FormEvent) => {
@@ -1668,7 +1687,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                             <input 
                               type="number" 
                               value={editDaysWorked}
-                              onChange={(e) => setEditDaysWorked(Number(e.target.value))}
+                              onChange={(e) => handleEditModalDaysWorked(Number(e.target.value))}
                               className="bg-white border border-amber-200 rounded-lg px-3 py-2 text-xs font-mono font-bold text-gray-800 w-full"
                               min={0}
                               required
@@ -1681,7 +1700,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                               type="number" 
                               step="0.1"
                               value={editOvertimeHours}
-                              onChange={(e) => setEditOvertimeHours(Number(e.target.value))}
+                              onChange={(e) => handleEditModalOvertimeHours(Number(e.target.value))}
                               className="bg-white border border-amber-200 rounded-lg px-3 py-2 text-xs font-mono font-bold text-gray-800 w-full"
                               min={0}
                               required
@@ -1693,7 +1712,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                             <input 
                               type="number" 
                               value={editBonus}
-                              onChange={(e) => setEditBonus(Number(e.target.value))}
+                              onChange={(e) => handleEditModalBonus(Number(e.target.value))}
                               className="bg-white border border-amber-200 rounded-lg px-3 py-2 text-xs font-mono font-bold text-gray-800 w-full"
                               min={0}
                               required
@@ -1705,7 +1724,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                             <input 
                               type="number" 
                               value={editKasbonDeduction}
-                              onChange={(e) => setEditKasbonDeduction(Number(e.target.value))}
+                              onChange={(e) => handleEditModalKasbonDeduction(Number(e.target.value))}
                               className="bg-white border border-amber-200 rounded-lg px-3 py-2 text-xs font-mono font-bold text-rose-900 w-full"
                               min={0}
                               required
