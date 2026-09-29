@@ -76,7 +76,10 @@ export const MarketplaceSalesModule: React.FC = () => {
   const [returChoice, setReturChoice] = useState<'stok' | 'rusak' | null>(null); // muncul saat pilih Retur
 
   // Input states for NEW DETAILED SALE
-  const [inputDate, setInputDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  // Tanggal transaksi default = hari ini WIB (bukan UTC). toISOString() memakai UTC
+  // sehingga antara 00:00–07:00 WIB tanggalnya mundur sehari — di awal bulan itu
+  // membuat transaksi tersimpan di bulan lalu dan langsung hilang dari filter bawaan.
+  const [inputDate, setInputDate] = useState<string>(() => wibTodayStr());
   const [orderNumber, setOrderNumber] = useState<string>('');
   const [marketplaceRef, setMarketplaceRef] = useState<string>('Tokopedia');
   const [customMarketplaceRef, setCustomMarketplaceRef] = useState<string>('');
@@ -430,7 +433,7 @@ export const MarketplaceSalesModule: React.FC = () => {
       const newDailySale: MarketplaceSale = {
         id: Math.random().toString(36).substring(2, 9),
         channel: dailyChannel,
-        date: new Date().toISOString().split('T')[0],
+        date: wibTodayStr(),
         order_count: dailyOrderCount,
         revenue: dailyRevenue,
         admin_name: staffName

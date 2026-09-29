@@ -46,7 +46,8 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
   // PO Form states
   const [poSupplier, setPoSupplier] = useState('');
   const [poNumber, setPoNumber] = useState('');
-  const [poDate, setPoDate] = useState(() => new Date().toISOString().split('T')[0]);
+  // Tanggal default = hari ini WIB; toISOString() (UTC) bisa mundur sehari pagi hari.
+  const [poDate, setPoDate] = useState(() => wibTodayStr());
   const [poStatus, setPoStatus] = useState<'pending' | 'completed' | 'cancelled'>('completed');
   const [poStaff, setPoStaff] = useState('Admin Keuangan');
   // Divisi pemakai belanja; '' = bersama (dipakai kedua divisi)
@@ -71,7 +72,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
   const [selectedPoId, setSelectedPoId] = useState<string>('');
 
   // Expense states
-  const [expenseDate, setExpenseDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [expenseDate, setExpenseDate] = useState(() => wibTodayStr());
   const [expenseCategory, setExpenseCategory] = useState('Lain-lain / Overhead');
   const [expenseDesc, setExpenseDesc] = useState('');
   const [expenseQty, setExpenseQty] = useState<number>(1);
@@ -372,7 +373,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
     // Reset Form Fields
     setPoSupplier('');
     setPoNumber('');
-    setPoDate(new Date().toISOString().split('T')[0]);
+    setPoDate(wibTodayStr());
     setDraftItems([]);
     loadData();
     setIsPoModalOpen(false);
@@ -407,7 +408,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
     setPoPaidNow(0);
     setPoSupplier('');
     setPoNumber('');
-    setPoDate(new Date().toISOString().split('T')[0]);
+    setPoDate(wibTodayStr());
     setDraftItems([]);
   };
 

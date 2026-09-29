@@ -442,14 +442,25 @@ class DataStore {
   /**
    * Tulis localStorage dengan jaring pengaman quota: bila penuh
    * (QuotaExceededError), pangkas dua key terbesar (audit log & recycle bin)
-   * lalu coba sekali lagi. Bila tetap gagal, error dilempar ke pemanggil.
+   * lalu coba sekali lagi.
+   *
+   * Mengembalikan false (bukan melempar) bila tetap tidak muat. Storage lokal
+   * hanyalah cache: membiarkannya melempar dulu membuat satu penulisan yang gagal
+   * mematikan sisa alur — termasuk login (storage penuh → tombol Masuk tidak
+   * bereaksi) dan pengiriman data ke cloud (input pengguna ikut hilang).
    */
-  private setItemWithQuotaGuard = (key: string, value: string): void => {
+  private setItemWithQuotaGuard = (key: string, value: string): boolean => {
     try {
       localStorage.setItem(`nxty_${key}`, value);
-    } catch (e) {
-      if (!this.pruneHeavyKeys()) throw e;
-      localStorage.setItem(`nxty_${key}`, value);
+      return true;
+    } catch {
+      if (!this.pruneHeavyKeys()) return false;
+      try {
+        localStorage.setItem(`nxty_${key}`, value);
+        return true;
+      } catch {
+        return false;
+      }
     }
   };
 
@@ -478,17 +489,30 @@ class DataStore {
   };
 
   private set<T>(key: string, data: T): void {
+    let serialized: string;
     try {
-      const previous = this.get<T>(key, data);
-      this.captureChanges(key, previous, data);
-      this.setItemWithQuotaGuard(key, JSON.stringify(data));
-      // Dispatch a storage event so components can listen to changes in real-time
-      window.dispatchEvent(new Event('nxty_storage_change'));
-      // Sinkron ke Supabase bila dikonfigurasi (no-op saat offline / saat menerapkan data dari cloud)
-      pushKeyToCloud(key, data);
+      serialized = JSON.stringify(data);
     } catch (e) {
-      console.error('Failed to write to localStorage', e);
+      console.error('Data tidak bisa diserialisasi', e);
+      return;
     }
+
+    // Catatan audit/recycle tidak boleh menggagalkan penyimpanan data utama.
+    try {
+      this.captureChanges(key, this.get<T>(key, data), data);
+    } catch (e) {
+      console.error('Gagal mencatat riwayat perubahan', e);
+    }
+
+    // Cache lokal boleh gagal saat storage penuh — tetapi cloud WAJIB tetap
+    // menerima datanya, supaya input pengguna tidak hilang tanpa jejak.
+    if (!this.setItemWithQuotaGuard(key, serialized)) {
+      console.warn(`Storage penuh — "nxty_${key}" tidak bisa di-cache lokal; data tetap dikirim ke cloud.`);
+    }
+    // Dispatch a storage event so components can listen to changes in real-time
+    window.dispatchEvent(new Event('nxty_storage_change'));
+    // Sinkron ke Supabase bila dikonfigurasi (no-op saat offline / saat menerapkan data dari cloud)
+    pushKeyToCloud(key, data);
   }
 
   getAuditLogs = (): AuditEntry[] => this.get(this.auditKey, []);
@@ -1330,7 +1354,7 @@ class DataStore {
       product_name: product.name,
       qty_produced: qty,
       materials_used: materialsLogDetails,
-      date: new Date().toISOString().split('T')[0]
+      date: wibTodayStr()
     });
 
     this.setProducts(updatedProducts);

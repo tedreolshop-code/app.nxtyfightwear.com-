@@ -235,7 +235,14 @@ export default function App() {
   });
 
   const handleLogin = (s: Session, emp?: Employee) => {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+    // Sesi hanya penanda sementara — jangan sampai storage yang penuh membuat
+    // tombol Masuk gagal dan aplikasi terasa "tidak bisa dibuka". Sesi tetap
+    // dipakai di memori walau penulisan cache lokalnya gagal.
+    try {
+      localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+    } catch {
+      console.warn('Storage penuh — sesi login tidak tersimpan; sesi tetap aktif sampai tab ditutup.');
+    }
     setSession(s);
     if (emp) setLoggedEmployee(emp);
     dataStore.logAudit('login', 'session', `Login berhasil sebagai ${s.name}`, s.employeeId);

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Employee, PayrollWeekly, CashAdvance, Attendance, AttendanceAdjustment, CashAdvanceTransaction, divisionLabel, terbilang } from '../types';
-import { dataStore, wibNowISO, dayFraction } from '../dataStore';
+import { dataStore, wibNowISO, wibTodayStr, dayFraction } from '../dataStore';
 import { brandName, brandLegalName, brandInitials } from '../brand';
 import { exportExcel } from '../exportExcel';
 import { Printer, Landmark, DollarSign, Plus, CheckCircle2, Sliders, History, Trash2, X, Calculator, Edit2, FileSpreadsheet, Wallet, Award } from 'lucide-react';
@@ -471,7 +471,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     dataStore.createCashAdvance({
       employee_id: emp.id,
       amount: newKasbonAmount,
-      date: new Date().toISOString().split('T')[0],
+      date: wibTodayStr(),
       note: 'Kasbon baru dari modul payroll'
     });
 

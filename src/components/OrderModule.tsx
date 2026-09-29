@@ -263,7 +263,7 @@ export const OrderModule: React.FC = () => {
         customer_phone: customerPhone,
         source,
         marketplace_name: source === 'online' ? marketplaceName : undefined,
-        date: new Date().toISOString().split('T')[0],
+        date: wibTodayStr(),
         items: selectedItems,
         shipping_fee: cleanShippingFee,
         discount: cleanDiscount,
@@ -406,7 +406,7 @@ export const OrderModule: React.FC = () => {
     dataStore.updateOrderShipping(order.id, {
       shipping_expedition: shipExpedition.trim(),
       tracking_number: shipTracking.trim(),
-      shipping_date: new Date().toISOString().slice(0, 10),
+      shipping_date: wibTodayStr(),
       shipping_proof_url: shipProof || undefined,
       shipping_status: 'dikirim'
     });

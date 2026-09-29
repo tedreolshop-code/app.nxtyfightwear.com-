@@ -454,7 +454,9 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
     let deviceToken = localStorage.getItem(`nxty_device_token_${emp.id}`);
     if (!deviceToken) {
       deviceToken = `device-bind-${emp.id}-${Math.random().toString(36).substring(7)}`;
-      localStorage.setItem(`nxty_device_token_${emp.id}`, deviceToken);
+      // Penanda perangkat hanya pelengkap audit: storage penuh tidak boleh
+      // menggagalkan absen (dulu error di sini membatalkan seluruh proses scan).
+      try { localStorage.setItem(`nxty_device_token_${emp.id}`, deviceToken); } catch { /* abaikan */ }
     }
 
     // Pulang cepat (>= full_day_from tapi sebelum end_time) tetap 1 hari, tapi wajib beralasan
