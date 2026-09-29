@@ -727,13 +727,16 @@ export default function App() {
             bahwa masih ada menu di luar layar. scrollbar-wheel dimatikan
             agar tidak menabrak gradient. */}
         <div className="relative no-print md:hidden bg-white border-b border-gray-200 shrink-0">
-          <div className="flex overflow-x-auto px-3 py-2 gap-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {/* data-testid: penanda stabil untuk tes e2e — kelas Tailwind bisa berubah
+              (pembungkus gradient ditambahkan belakangan), jadi tes jangan bergantung padanya. */}
+          <div data-testid="menu-mobile" className="flex overflow-x-auto px-3 py-2 gap-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {permittedMenus.map((menu) => {
               const Icon = menu.icon;
               const isSelected = activeTab === menu.id;
               return (
                 <button
                   key={menu.id}
+                  data-testid={`menu-mobile-${menu.id}`}
                   onClick={() => setActiveTab(menu.id)}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 ${
                     isSelected

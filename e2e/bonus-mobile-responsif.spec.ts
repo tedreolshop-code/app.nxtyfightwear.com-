@@ -39,7 +39,9 @@ const seed = async (page: Page) => {
 
 const bukaBonus = async (page: Page) => {
   await page.goto('/');
-  await page.locator('div.md\\:hidden.flex.overflow-x-auto > button', { hasText: 'Karyawan' }).click();
+  // Penanda stabil menu mobile — kelas Tailwind pembungkusnya pernah berubah
+  // dan mematahkan selektor kelas, padahal perilakunya tidak berubah.
+  await page.locator('[data-testid="menu-mobile"] > button', { hasText: 'Karyawan' }).click();
   await page.getByRole('button', { name: 'Payroll & Slip Gaji' }).click();
   await page.getByRole('button', { name: 'Bonus Kehadiran' }).click();
 };
@@ -66,7 +68,9 @@ const detectKepotong = (page: Page) =>
     document.querySelectorAll('*').forEach(el => {
       const elc = el as HTMLElement;
       if (elc.scrollWidth > elc.clientWidth + 2 && getComputedStyle(elc).overflowX !== 'visible') {
-        const isNavBar = elc.className && String(elc.className).includes('md:hidden');
+        // Menu bar atas sengaja scroll-x. Dikenali dari data-testid, bukan kelas
+        // Tailwind: kelas pembungkusnya pernah berubah dan bikin tes ini gagal palsu.
+        const isNavBar = !!elc.closest('[data-testid="menu-mobile"]');
         if (!isNavBar && out.scrollableContainer.length < 8) {
           out.scrollableContainer.push(`overflow-x: scrollW=${elc.scrollWidth} clientW=${elc.clientWidth} <${elc.tagName.toLowerCase()} class="${String(elc.className).slice(0, 60)}">`);
         }
@@ -79,7 +83,7 @@ const detectKepotong = (page: Page) =>
       // desktop off-canvas (sepenuhnya di kiri luar layar) juga bukan bug.
       let diMenuBar = false;
       for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
-        if (String(a.className).includes('md:hidden')) { diMenuBar = true; break; }
+        if (a.matches('[data-testid="menu-mobile"]') || a.className && String(a.className).includes('md:hidden')) { diMenuBar = true; break; }
       }
       if (diMenuBar) return;
       const keluarKanan = r.left < vw && r.right > vw + 2;

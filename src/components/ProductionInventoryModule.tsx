@@ -2540,9 +2540,14 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                   )}
 
                   <div className="flex gap-2 pt-2">
-                    {manualStep > 1 && <button type="button" onClick={() => setManualStep((manualStep - 1) as 1 | 2 | 3)} className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2.5 rounded-lg font-bold text-xs cursor-pointer">Kembali</button>}
+                    {/* key wajib berbeda per tombol: tanpa itu React memakai ulang node DOM yang
+                        sama dan mengubah type="button" jadi type="submit" tepat saat klik sedang
+                        diproses browser — default action-nya jadi submit, sehingga klik "Lanjut"
+                        di Langkah 2 melompati Langkah 3 dan langsung membuat order produksi. */}
+                    {manualStep > 1 && <button key="kembali" type="button" onClick={() => setManualStep((manualStep - 1) as 1 | 2 | 3)} className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2.5 rounded-lg font-bold text-xs cursor-pointer">Kembali</button>}
                     {manualStep < 3 ? (
                       <button
+                        key="lanjut"
                         type="button"
                         onClick={() => {
                           if (manualStep === 1 && !manualBasicValid) return alert('Pilih departemen dan minimal satu output produk.');
@@ -2554,7 +2559,7 @@ export const ProductionInventoryModule: React.FC<ProductionInventoryModuleProps>
                         Lanjut
                       </button>
                     ) : (
-                      <button type="submit" disabled={!manualStagesValid || !manualMaterialsValid} className={`flex-1 py-2.5 rounded-lg font-bold text-xs shadow-md flex items-center justify-center gap-1.5 ${manualStagesValid && manualMaterialsValid ? 'bg-amber-600 hover:bg-amber-700 text-white cursor-pointer' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
+                      <button key="buat-order" type="submit" disabled={!manualStagesValid || !manualMaterialsValid} className={`flex-1 py-2.5 rounded-lg font-bold text-xs shadow-md flex items-center justify-center gap-1.5 ${manualStagesValid && manualMaterialsValid ? 'bg-amber-600 hover:bg-amber-700 text-white cursor-pointer' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
                         <AlertTriangle className="w-4 h-4" />
                         Buat Order &amp; Potong Bahan
                       </button>

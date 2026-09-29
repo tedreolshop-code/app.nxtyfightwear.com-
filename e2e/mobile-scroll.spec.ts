@@ -5,6 +5,10 @@ import { isolateAsOwner } from './isolate';
 // dan Supabase diblokir supaya tes tidak menyentuh data produksi.
 const seedOwnerSession = isolateAsOwner;
 
+// Penanda stabil menu mobile (bukan kelas Tailwind, yang bisa berubah tanpa
+// mengubah perilaku: dulu pembungkus gradient mematahkan selektor kelas).
+const MENU_MOBILE = '[data-testid="menu-mobile"] > button';
+
 /**
  * Area scroll utama: <div class="flex-1 min-h-0 overflow-y-auto"> di dalam <main>.
  * Kalau min-h-0 hilang, div ini memanjang setinggi kontennya dan bagian bawahnya
@@ -20,7 +24,7 @@ test.describe('viewport HP: konten harus bisa di-scroll sampai bawah', () => {
   });
 
   test('setiap menu bisa di-scroll sampai baris terakhir', async ({ page }) => {
-    const menuButtons = page.locator('div.md\\:hidden.flex.overflow-x-auto > button');
+    const menuButtons = page.locator(MENU_MOBILE);
     const total = await menuButtons.count();
     expect(total).toBeGreaterThan(0);
 
@@ -55,7 +59,7 @@ test.describe('viewport HP: konten harus bisa di-scroll sampai bawah', () => {
   });
 
   test('modal Stock Opname bisa di-scroll sampai tombol posting', async ({ page }) => {
-    await page.locator('div.md\\:hidden.flex.overflow-x-auto > button', { hasText: 'Gudang' }).first().click();
+    await page.locator(MENU_MOBILE, { hasText: 'Gudang' }).first().click();
     await page.getByRole('button', { name: /Stock Opname/i }).first().click();
 
     const postButton = page.getByRole('button', { name: /Posting Opname/i });

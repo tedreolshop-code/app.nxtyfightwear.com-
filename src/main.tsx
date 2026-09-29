@@ -15,10 +15,14 @@ createRoot(document.getElementById('root')!).render(
 );
 
 // Service worker hanya aktif pada build produksi agar cache tidak mengganggu HMR.
+// Cap build dikirim lewat query: sw.js memakainya sebagai nama cache, sehingga
+// update selalu terpasang (cache lama dibuang) walau perangkat jarang dimuat ulang.
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch((error) => {
-      console.error('Service worker gagal didaftarkan:', error);
-    });
+    navigator.serviceWorker.register(`/sw.js?v=${__BUILD_ID__}`, { updateViaCache: 'none' })
+      .then((registration) => registration.update())
+      .catch((error) => {
+        console.error('Service worker gagal didaftarkan:', error);
+      });
   });
 }

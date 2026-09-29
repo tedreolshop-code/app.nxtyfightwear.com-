@@ -1,14 +1,54 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { History, RotateCcw, Search, ShieldCheck, Trash2 } from 'lucide-react';
+import { CloudUpload, HardDrive, History, RotateCcw, Search, ShieldCheck, Trash2 } from 'lucide-react';
 import { dataStore } from '../dataStore';
 import { AuditEntry, RecycleEntry } from '../types';
+import { findLegacyProofPhotos, migrateLegacyProofPhotos, STORAGE_BUDGET_BYTES, LegacyProofPhoto } from '../storageMaintenance';
+
+const formatBytes = (bytes: number) => bytes >= 1024 * 1024
+  ? `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  : `${Math.max(0, Math.round(bytes / 1024))} KB`;
 
 export const AuditRecycleModule: React.FC = () => {
   const [tab, setTab] = useState<'audit' | 'recycle'>('audit');
   const [logs, setLogs] = useState<AuditEntry[]>([]);
   const [recycle, setRecycle] = useState<RecycleEntry[]>([]);
   const [query, setQuery] = useState('');
-  const load = () => { setLogs(dataStore.getAuditLogs()); setRecycle(dataStore.getRecycleBin()); };
+  // Panel penyimpanan: localStorage hanya ±5 MB di iPhone, sedangkan aplikasi ini
+  // dipakai harian dan terus bertambah. Pemakaian harus terlihat sebelum penuh.
+  const [usage, setUsage] = useState(() => dataStore.getStorageUsage());
+  const [legacyProofs, setLegacyProofs] = useState<LegacyProofPhoto[]>([]);
+  const [busyStorage, setBusyStorage] = useState(false);
+  const load = () => {
+    setLogs(dataStore.getAuditLogs());
+    setRecycle(dataStore.getRecycleBin());
+    setUsage(dataStore.getStorageUsage());
+    setLegacyProofs(findLegacyProofPhotos());
+  };
+
+  const pakaiPersen = Math.min(100, Math.round((usage.totalBytes / STORAGE_BUDGET_BYTES) * 100));
+
+  const pindahkanFotoLama = async () => {
+    if (busyStorage || legacyProofs.length === 0) return;
+    const total = legacyProofs.reduce((sum, item) => sum + item.bytes, 0);
+    if (!window.confirm(`Pindahkan ${legacyProofs.length} foto bukti pengiriman (${formatBytes(total)}) dari cache perangkat ke cloud?\n\nFoto tetap tampil di aplikasi, hanya disimpan sebagai tautan — tidak lagi menumpuk di penyimpanan browser.`)) return;
+    setBusyStorage(true);
+    try {
+      const hasil = await migrateLegacyProofPhotos();
+      load();
+      window.alert(hasil.failed === 0
+        ? `${hasil.moved} foto dipindahkan ke cloud. Penyimpanan browser menyusut ±${formatBytes(hasil.freedBytes)}.`
+        : `${hasil.moved} foto berhasil dipindahkan, ${hasil.failed} gagal — periksa koneksi lalu coba lagi.`);
+    } finally {
+      setBusyStorage(false);
+    }
+  };
+
+  const buangCacheAman = () => {
+    if (!window.confirm('Buang cache audit log & recycle bin di perangkat ini?\n\nData aslinya tetap ada di cloud dan ditarik ulang saat aplikasi dibuka kembali.')) return;
+    const freed = dataStore.clearCacheOnlyKeys();
+    load();
+    window.alert(`Cache dibuang. Penyimpanan browser bebas ±${formatBytes(freed)}.`);
+  };
   useEffect(() => { load(); window.addEventListener('nxty_storage_change', load); return () => window.removeEventListener('nxty_storage_change', load); }, []);
 
   const filteredLogs = useMemo(() => logs.filter(log => `${log.actor_name} ${log.action} ${log.entity_type} ${log.description}`.toLowerCase().includes(query.toLowerCase())), [logs, query]);
@@ -32,6 +72,52 @@ export const AuditRecycleModule: React.FC = () => {
 
   return <div className="space-y-5">
     <div><h2 className="text-xl font-black text-gray-900 flex items-center gap-2"><ShieldCheck className="w-5 h-5 text-[var(--color-evergreen)]" /> Audit & Recycle Bin</h2><p className="text-xs text-gray-500 mt-1">Riwayat kegiatan penting dan data terhapus yang dapat dipulihkan selama 30 hari.</p></div>
+
+    {/* PENYIMPANAN LOKAL — data asli ada di cloud, localStorage cuma cache.
+        Batasnya ±5 MB (iOS Safari), jadi pemakaian harus terlihat sebelum penuh. */}
+    <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h3 className="font-bold text-sm text-gray-800 flex items-center gap-2"><HardDrive className="w-4 h-4 text-[var(--color-evergreen)]" /> Penyimpanan di Perangkat Ini</h3>
+          <p className="text-[11px] text-gray-500 mt-0.5">Data asli tersimpan di cloud. Yang ini hanya cache supaya aplikasi cepat dibuka.</p>
+        </div>
+        <span className={`text-xs font-bold font-mono ${pakaiPersen >= 85 ? 'text-rose-600' : pakaiPersen >= 70 ? 'text-amber-600' : 'text-emerald-700'}`}>
+          {formatBytes(usage.totalBytes)} / {formatBytes(STORAGE_BUDGET_BYTES)} ({pakaiPersen}%)
+        </span>
+      </div>
+      <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+        <div className={`h-full transition-all ${pakaiPersen >= 85 ? 'bg-rose-500' : pakaiPersen >= 70 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${pakaiPersen}%` }} />
+      </div>
+      {pakaiPersen >= 70 && (
+        <p className="text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+          Penyimpanan browser sudah terisi {pakaiPersen}%. Jalankan aksi di bawah supaya input baru tetap tersimpan lancar (data tetap aman di cloud).
+        </p>
+      )}
+      {usage.perKey.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {usage.perKey.slice(0, 6).map(item => (
+            <span key={item.key} className="text-[10px] font-mono text-gray-500 bg-gray-50 border border-gray-200 rounded px-2 py-1">
+              {item.key} · {formatBytes(item.bytes)}
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="flex flex-wrap gap-2 pt-1">
+        {legacyProofs.length > 0 && (
+          <button
+            onClick={pindahkanFotoLama}
+            disabled={busyStorage}
+            className="px-3 py-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 text-emerald-800 border border-emerald-100 text-xs font-bold cursor-pointer"
+          >
+            <CloudUpload className="w-3.5 h-3.5 inline mr-1" />
+            {busyStorage ? 'Memindahkan...' : `Pindahkan ${legacyProofs.length} foto lama ke cloud (${formatBytes(legacyProofs.reduce((sum, item) => sum + item.bytes, 0))})`}
+          </button>
+        )}
+        <button onClick={buangCacheAman} className="px-3 py-2 rounded-lg bg-gray-50 hover:bg-gray-100 text-gray-600 border border-gray-200 text-xs font-bold cursor-pointer">
+          <Trash2 className="w-3.5 h-3.5 inline mr-1" /> Buang cache audit & recycle
+        </button>
+      </div>
+    </div>
     <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between no-print">
       {tab === 'recycle' && recycle.length > 0 && <button onClick={emptyAll} title="Bebas-kan storage bila localStorage penuh" className="px-4 py-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 text-xs font-bold cursor-pointer hover:bg-rose-100"><Trash2 className="w-3.5 h-3.5 inline mr-1" /> Kosongkan ({recycle.length})</button>}
       <div className="inline-flex bg-gray-100 p-1 rounded-xl"><button onClick={() => setTab('audit')} className={`px-4 py-2 rounded-lg text-xs font-bold cursor-pointer ${tab === 'audit' ? 'bg-[var(--color-evergreen)] text-white' : 'text-gray-600'}`}><History className="w-3.5 h-3.5 inline mr-1" /> Audit Log</button><button onClick={() => setTab('recycle')} className={`px-4 py-2 rounded-lg text-xs font-bold cursor-pointer ${tab === 'recycle' ? 'bg-[var(--color-evergreen)] text-white' : 'text-gray-600'}`}><Trash2 className="w-3.5 h-3.5 inline mr-1" /> Recycle Bin ({recycle.length})</button></div>

@@ -1,4 +1,9 @@
-const CACHE_NAME = 'ari-sportindo-v1';
+// Versi cache diambil dari query pendaftaran (/sw.js?v=<cap build>, lihat main.tsx).
+// Sebelumnya namanya tetap 'ari-sportindo-v1' sehingga cache TIDAK pernah diganti:
+// aset setiap deploy menumpuk selamanya, dan perangkat yang dipakai harian bisa
+// menyajikan berkas lama berhari-hari setelah rilis baru.
+const BUILD_ID = new URL(self.location.href).searchParams.get('v') || 'dev';
+const CACHE_NAME = `ari-sportindo-${BUILD_ID}`;
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -19,6 +24,8 @@ self.addEventListener('activate', (event) => {
     caches
       .keys()
       .then((keys) => Promise.all(
+        // Semua cache dari build lain dibuang — termasuk 'ari-sportindo-*' versi lama
+        // yang menahan aset tak terpakai.
         keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)),
       )),
   );
@@ -45,17 +52,32 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  event.respondWith(
-    caches.match(request).then((cached) => {
-      const fromNetwork = fetch(request).then((response) => {
+  // Aset ber-hash milik build ini boleh cache-first; permintaan lain (mis. file di
+  // public/ yang namanya tetap) memakai network-first supaya perbaikan tidak
+  // tertahan cache lama di perangkat yang dipakai harian.
+  const hashedAsset = /\/assets\/[^/]+-[A-Za-z0-9_]{8,}\.[a-z0-9]+$/.test(url.pathname);
+  if (hashedAsset) {
+    event.respondWith(
+      caches.match(request).then((cached) => cached || fetch(request).then((response) => {
         if (response.ok) {
           const copy = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
         }
         return response;
-      });
+      })),
+    );
+    return;
+  }
 
-      return cached || fromNetwork;
-    }),
+  event.respondWith(
+    fetch(request)
+      .then((response) => {
+        if (response.ok) {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+        }
+        return response;
+      })
+      .catch(() => caches.match(request).then((cached) => cached || new Response('', { status: 504, statusText: 'Offline' }))),
   );
 });

@@ -509,11 +509,23 @@ class DataStore {
     if (!this.setItemWithQuotaGuard(key, serialized)) {
       console.warn(`Storage penuh — "nxty_${key}" tidak bisa di-cache lokal; data tetap dikirim ke cloud.`);
     }
-    // Dispatch a storage event so components can listen to changes in real-time
-    window.dispatchEvent(new Event('nxty_storage_change'));
+    // Beri tahu komponen bahwa storage berubah
+    this.notifyStorageChange();
     // Sinkron ke Supabase bila dikonfigurasi (no-op saat offline / saat menerapkan data dari cloud)
     pushKeyToCloud(key, data);
   }
+
+  /**
+   * Umumkan perubahan storage ke komponen.
+   *
+   * Dikirim lewat microtask, bukan langsung: sebagian tulisan terjadi SAAT render
+   * (migrasi akun owner di getEmployees, pemangkasan recycle bin). Listener di App
+   * memanggil setState, dan setState saat komponen lain sedang render memicu
+   * "Cannot update a component while rendering a different component".
+   */
+  private notifyStorageChange = (): void => {
+    queueMicrotask(() => window.dispatchEvent(new Event('nxty_storage_change')));
+  };
 
   getAuditLogs = (): AuditEntry[] => this.get(this.auditKey, []);
   getRecycleBin = (): RecycleEntry[] => {
@@ -575,7 +587,7 @@ class DataStore {
     localStorage.setItem(`nxty_${this.recycleKey}`, JSON.stringify(nextRecycle));
     pushKeyToCloud(this.recycleKey, nextRecycle);
     this.appendAudit({ action: 'restore', entity_type: entry.entity_type, entity_id: entry.entity_id, description: `Memulihkan ${entry.entity_type}: ${entry.label}` });
-    window.dispatchEvent(new Event('nxty_storage_change'));
+    this.notifyStorageChange();
     return true;
   };
 
@@ -587,7 +599,7 @@ class DataStore {
     localStorage.removeItem(`nxty_${this.recycleKey}`);
     pushKeyToCloud(this.recycleKey, []);
     this.appendAudit({ action: 'permanent_delete', entity_type: 'recycle_bin', description: `Mengosongkan recycle bin: ${count} entri dihapus permanen` });
-    window.dispatchEvent(new Event('nxty_storage_change'));
+    this.notifyStorageChange();
     return count;
   };
 
@@ -599,8 +611,47 @@ class DataStore {
     localStorage.setItem(`nxty_${this.recycleKey}`, JSON.stringify(next));
     pushKeyToCloud(this.recycleKey, next);
     this.appendAudit({ action: 'permanent_delete', entity_type: entry.entity_type, entity_id: entry.entity_id, description: `Menghapus permanen ${entry.entity_type}: ${entry.label}` });
-    window.dispatchEvent(new Event('nxty_storage_change'));
+    this.notifyStorageChange();
     return true;
+  };
+
+  /**
+   * Pemakaian cache localStorage aplikasi (byte per key) — dasar panel Penyimpanan.
+   * Kuota browser dihitung per karakter UTF-16, jadi panjang string dikali 2.
+   */
+  getStorageUsage = (): { totalBytes: number; perKey: Array<{ key: string; bytes: number }> } => {
+    const perKey: Array<{ key: string; bytes: number }> = [];
+    let totalBytes = 0;
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const storageKey = localStorage.key(i);
+        if (!storageKey?.startsWith('nxty_')) continue;
+        const bytes = (localStorage.getItem(storageKey) || '').length * 2;
+        perKey.push({ key: storageKey.replace(/^nxty_/, ''), bytes });
+        totalBytes += bytes;
+      }
+    } catch (e) {
+      console.error('[dataStore] Gagal menghitung pemakaian storage:', e);
+    }
+    perKey.sort((a, b) => b.bytes - a.bytes);
+    return { totalBytes, perKey };
+  };
+
+  /**
+   * Buang cache lokal yang sumber aslinya tetap utuh di cloud (audit log & recycle
+   * bin). Dipakai panel Penyimpanan saat browser mendekati kuota.
+   * @returns byte yang dibebaskan
+   */
+  clearCacheOnlyKeys = (): number => {
+    let freed = 0;
+    for (const key of ['audit_logs', 'recycle_bin']) {
+      try {
+        const size = (localStorage.getItem(`nxty_${key}`) || '').length * 2;
+        localStorage.removeItem(`nxty_${key}`);
+        freed += size;
+      } catch { /* storage tidak bisa diakses: abaikan */ }
+    }
+    return freed;
   };
 
   getDepartments = (): Department[] => this.get('departments', INITIAL_DEPARTMENTS);
@@ -923,11 +974,14 @@ class DataStore {
   getExpenseCategories = (): string[] => this.get('expense_categories', INITIAL_EXPENSE_CATEGORIES);
   setExpenseCategories = (data: string[]) => this.set('expense_categories', data);
 
-  getWorkSettings = (): WorkSettings => {
-    const settings = { ...INITIAL_WORK_SETTINGS, ...this.get<Partial<WorkSettings>>('work_settings', INITIAL_WORK_SETTINGS) };
-    if (!localStorage.getItem('nxty_work_settings') || !settings.attendance_radius_meters) this.setWorkSettings(settings);
-    return settings;
-  };
+  // Pembaca murni: mengembalikan nilai tersimpan yang sudah dilengkapi default, tanpa
+  // menulis. Getter ini dipanggil di dalam render banyak komponen (mis. panel
+  // serah-terima produksi), jadi menulis di sini berarti tiap render memicu event
+  // storage + push cloud — dan listener App yang setState kena aturan "tidak boleh
+  // setState saat komponen lain sedang render". Radius 0 (tanpa batas) juga dulu
+  // salah dianggap "belum diisi" sehingga memaksa tulis terus-menerus.
+  getWorkSettings = (): WorkSettings =>
+    ({ ...INITIAL_WORK_SETTINGS, ...this.get<Partial<WorkSettings>>('work_settings', INITIAL_WORK_SETTINGS) });
   setWorkSettings = (data: WorkSettings) => this.set('work_settings', data);
 
   getBrandSettings = (): BrandSettings =>

@@ -607,7 +607,10 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
               className="bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs w-full sm:w-56 focus:outline-none focus:ring-1 focus:ring-evergreen"
             />
             <span className="text-[10px] text-gray-400 sm:ml-auto">
-              {running.rows.length} dari {running.employeeCount} karyawan
+              {/* Pembandingnya jumlah karyawan AKTIF, bukan jumlah baris yang sedang tampil —
+                  kalau pakai running.employeeCount angkanya selalu "N dari N" dan penyaringan
+                  divisi/pencarian jadi tidak kelihatan efeknya. */}
+              {running.rows.length} dari {employees.length} karyawan aktif
             </span>
           </div>
           <div className="overflow-x-auto">
@@ -689,7 +692,7 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
             className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-xs w-full sm:w-56 focus:outline-none focus:ring-1 focus:ring-evergreen"
           />
           <span className="text-[10px] text-gray-400 sm:ml-auto">
-            {evaluations.length} dari {employees.length} karyawan
+            {evaluations.length} dari {employees.length} karyawan aktif
           </span>
         </div>
 

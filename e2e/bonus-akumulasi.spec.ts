@@ -94,9 +94,10 @@ test('bonus kehadiran bisa disortir per karyawan dan per divisi', async ({ page 
   await expect(tabelHarian).toContainText('Koni Konveksi');
   await expect(page.getByText('1 dari 3 karyawan aktif')).toBeVisible();
 
-  // Pencarian nama
+  // Pencarian nama — dibatasi ke dalam <details> tabel harian, sebab modul payroll
+  // yang tersembunyi (display:none) memakai placeholder yang sama.
   await page.getByRole('button', { name: 'Semua Divisi', exact: true }).click();
-  await page.getByPlaceholder('Cari nama karyawan...').fill('eka');
+  await page.locator('details').getByPlaceholder('Cari nama karyawan...').fill('eka');
   await expect(tabelHarian.locator('tbody tr')).toHaveCount(1);
   await expect(tabelHarian).toContainText('Eka Evafoam');
 
