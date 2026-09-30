@@ -146,20 +146,12 @@ const writeLocalRows = (key: string, rows: RowLike[]) => {
 const MASS_DELETE_MAX = 5;          // hapus > ini dalam 1 push = mencurigakan
 const MASS_DELETE_MAX_RATIO = 0.25; // ...dan > 25% dari baseline = ditolak
 
-// Izin hapus EKSPLISIT: hanya aksi yang memang berniat menghapus (mis. tombol
-// "Hapus semua data transaksi") yang boleh melewati pengaman hapus massal.
-// Pengaman "tanpa baseline = dilarang hapus" tetap berlaku agar perangkat baru
-// tidak pernah mengosongkan cloud.
-const intentionalClearKeys = new Set<string>();
-/** Tandai bahwa push berikutnya untuk key-key ini memang bermaksud menghapus. */
-export const markIntentionalClear = (keys: string[]): void => {
-  keys.forEach(key => intentionalClearKeys.add(key));
-};
-
+// CATATAN: sengaja TIDAK ada jalan keluar (escape hatch) di sisi klien. Hapus
+// massal hanya mungkin lewat ari_clear_table() di supabase/guard-mass-delete.sql,
+// dan akses fungsi itu sudah dicabut dari publik — hanya admin database.
 /** Alasan menolak hapus (string) atau null bila hapus boleh jalan. */
 const blockDeleteReason = (key: string, prev: Map<string, string> | undefined, removed: string[]): string | null => {
   if (removed.length === 0) return null;
-  if (intentionalClearKeys.has(key)) return null; // aksi hapus yang disengaja
   if (!prev) {
     return `baseline cloud "${key}" belum diketahui (tarikan awal belum sukses)`;
   }
@@ -167,19 +159,6 @@ const blockDeleteReason = (key: string, prev: Map<string, string> | undefined, r
     return `hapus massal ${removed.length} dari ${prev.size} baris "${key}" — kemungkinan daftar lokal tidak lengkap`;
   }
   return null;
-};
-
-/**
- * Kosongkan seluruh isi satu tabel lewat RPC ari_clear_table() (lihat
- * supabase/guard-mass-delete.sql). Trigger DB menolak hapus massal dari jalur
- * biasa, jadi hanya aksi eksplisit yang boleh lewat sini. Bila RPC belum
- * dipasang, jatuh ke hapus biasa supaya aplikasi tetap jalan sebelum SQL dijalankan.
- */
-const clearTableUpstream = async (table: string): Promise<void> => {
-  const { error } = await client!.rpc('ari_clear_table', { p_table: table });
-  if (!error) return;
-  const { error: fallbackError } = await client!.from(table).delete().neq('id', '');
-  if (fallbackError) throw fallbackError;
 };
 
 /**
@@ -219,8 +198,8 @@ const pushRowsToCloud = (cfg: PerRowSync, list: RowLike[]): void => {
           notifyBlocked(`Penghapusan seluruh data "${cfg.key}" ditolak cloud: ${reason}. Data di perangkat Anda tidak jadi terhapus permanen.`);
           return;
         }
-        intentionalClearKeys.delete(cfg.key);
-        await clearTableUpstream(cfg.table);
+        const { error } = await client!.from(cfg.table).delete().neq('id', '');
+        if (error) throw error;
         cloudSnapshot.set(cfg.key, new Map());
         if (status !== 'online') setStatus('online');
         return;
@@ -246,7 +225,6 @@ const pushRowsToCloud = (cfg: PerRowSync, list: RowLike[]): void => {
           console.warn(`[cloudSync] Tolak hapus di "${cfg.key}": ${reason}. Tidak ada yang dihapus.`);
           notifyBlocked(`Penghapusan ${removed.length} data "${cfg.key}" ditolak cloud: ${reason}. Data di cloud tetap utuh.`);
         } else if (removed.length > 0) {
-          intentionalClearKeys.delete(cfg.key);
           const { error: delErr } = await client!.from(cfg.table).delete().in('id', removed);
           if (delErr) throw delErr;
         }
@@ -302,9 +280,6 @@ export const pushKeyToCloud = (key: string, data: unknown): void => {
 
 // ===================== Jalur khusus absensi (per baris) =====================
 
-// true setelah tarikan absensi pertama benar-benar sukses. Gerbang anti-salah-hapus:
-// perangkat yang belum pernah menyinkronkan absensi tidak boleh mengosongkan tabel.
-let attendanceReady = !isCloudEnabled;
 type AttendanceRecordLike = { id: string; timestamp?: string };
 
 const readLocalAttendance = (): AttendanceRecordLike[] => {
@@ -372,38 +347,6 @@ export const pushAttendanceToCloud = (record: AttendanceRecordLike): void => {
       if (!pending.some(r => r.id === record.id)) writePendingAttendance([...pending, record]);
     } else {
       void flushPendingAttendance();
-    }
-  })();
-};
-
-/**
- * Kosongkan seluruh absensi di cloud — HANYA untuk aksi hapus yang disengaja
- * (tombol "Hapus Semua Data Contoh"), dan hanya bila tarikan absensi awal sudah
- * sukses. Tanpa dua syarat itu, perangkat dengan daftar kosong bisa menghapus
- * seluruh riwayat absensi (dasar hitung gaji) tanpa jejak.
- */
-export const clearAttendanceInCloud = (): void => {
-  writePendingAttendance([]);
-  if (!client) return;
-  // Intent dikonsumsi sekali pakai supaya tidak tertinggal aktif di memori.
-  const disengaja = intentionalClearKeys.has(ATT_KEY);
-  intentionalClearKeys.delete(ATT_KEY);
-  if (!disengaja) {
-    console.warn('[cloudSync] Tolak kosongkan absensi di cloud: bukan aksi hapus yang disengaja.');
-    return;
-  }
-  if (!attendanceReady) {
-    console.warn('[cloudSync] Tolak kosongkan absensi di cloud: tarikan absensi awal belum sukses.');
-    notifyBlocked('Riwayat absensi di cloud TIDAK dikosongkan: perangkat ini belum berhasil menarik data absensi. Muat ulang aplikasi saat sinyal stabil, lalu ulangi.');
-    return;
-  }
-  void (async () => {
-    try {
-      await clearTableUpstream(ATT_TABLE);
-      if (status !== 'online') setStatus('online');
-    } catch (e) {
-      console.error('[cloudSync] Gagal mengosongkan absensi di cloud:', e);
-      setStatus('error');
     }
   })();
 };
@@ -503,7 +446,6 @@ export const resyncAttendanceFromCloud = async (sinceDays = 2): Promise<Date | n
       const kept = readLocalAttendance().filter(r => r.id && !freshIds.has(r.id));
       writeLocalAttendance(sortAttendance([...fresh, ...kept]));
     }
-    attendanceReady = true;
     void flushPendingAttendance();
     if (status !== 'online') setStatus('online');
     return new Date();
@@ -604,7 +546,6 @@ export const initCloudSync = async (): Promise<void> => {
         writeLocalAttendance(sortAttendance([...freshRecs, ...localOnly]));
         for (const rec of localOnly) pushAttendanceToCloud(rec);
       }
-      attendanceReady = true;
       void flushPendingAttendance();
     } catch (e) {
       console.error('[cloudSync] Gagal sinkron tabel absensi (sudah jalankan supabase/setup.sql terbaru?):', e);

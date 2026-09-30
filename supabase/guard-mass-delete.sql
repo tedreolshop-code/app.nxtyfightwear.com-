@@ -16,13 +16,13 @@
 -- Aturannya (sengaja lebih longgar dari pengaman aplikasi agar TIDAK bentrok
 -- dengan hapus wajar satu-per-satu):
 --   1 perintah DELETE ditolak bila menghapus > 8 baris DAN > 25% isi tabel.
--- Hapus yang MEMANG disengaja lewat tombol "Hapus Semua Data Contoh" memakai
--- RPC ari_clear_table() yang menyalakan penanda sesi khusus.
+-- Hapus massal kini HANYA bisa dilakukan admin database lewat ari_clear_table()
+-- dari SQL Editor. Aplikasi sengaja TIDAK punya jalan keluar apa pun lagi:
+-- tombol "Hapus Semua Data Contoh" sudah dihapus dari aplikasi.
 --
--- CATATAN KEAMANAN: karena anon key bersifat publik, RPC ari_clear_table() juga
--- bisa dipanggil siapa pun yang memegang key itu. Trigger ini menutup kecelakaan
--- (perangkat/bug klien), BUKAN penyerang yang sengaja. Penutup penuh butuh
--- Supabase Auth + policy berbasis auth.uid().
+-- CATATAN KEAMANAN: anon key bersifat publik dan policy RLS mengizinkan delete.
+-- Trigger ini menutup hapus massal, tetapi penutup penuh terhadap penyerang yang
+-- sengaja tetap butuh Supabase Auth + policy berbasis auth.uid().
 
 -- ---------- Trigger penolak hapus massal ----------
 create or replace function public.ari_guard_mass_delete()
@@ -85,9 +85,10 @@ begin
   end loop;
 end $$;
 
--- ---------- Jalan keluar untuk hapus yang disengaja ----------
--- Mengosongkan satu tabel penuh, dipakai tombol "Hapus Semua Data Contoh".
--- Dibatasi hanya tabel berawalan ari_ di schema public.
+-- ---------- Alat admin: kosongkan satu tabel penuh ----------
+-- Bukan dipanggil aplikasi. Dipakai manual dari SQL Editor bila benar-benar perlu
+-- mengosongkan satu tabel (mis. membersihkan data uji). Dibatasi hanya tabel
+-- berawalan ari_ di schema public.
 create or replace function public.ari_clear_table(p_table text)
 returns void
 language plpgsql
@@ -107,7 +108,11 @@ begin
   execute format('delete from public.%I', p_table);
 end $$;
 
-grant execute on function public.ari_clear_table(text) to anon, authenticated;
+-- RPC ini HANYA untuk admin database. PostgreSQL memberi EXECUTE ke PUBLIC
+-- secara bawaan, jadi tanpa revoke ini siapa pun yang memegang anon key bisa
+-- memanggilnya dan melewati trigger di atas.
+revoke execute on function public.ari_clear_table(text) from public;
+revoke execute on function public.ari_clear_table(text) from anon, authenticated;
 
 -- ---------- Verifikasi ----------
 -- Daftar tabel yang sudah terpasang pengaman:
@@ -118,10 +123,18 @@ join pg_namespace n on n.oid = c.relnamespace
 where n.nspname = 'public' and t.tgname = 'ari_guard_mass_delete'
 order by 1;
 
--- Uji coba (opsional, aman): perintah berikut HARUS gagal dengan error 42501.
---   delete from public.ari_employees;
--- Perintah berikut harus BERHASIL (lewat jalur disengaja):
---   select public.ari_clear_table('ari_attendance_failures');
+-- Uji coba (opsional, aman):
+-- 1. Di SQL Editor ini (sebagai admin) perintah berikut HARUS gagal 42501:
+--      delete from public.ari_employees;
+--    karena dijalankan langsung, bukan lewat ari_clear_table().
+-- 2. Jalur admin harus tetap berhasil:
+--      select public.ari_clear_table('ari_attendance_failures');
+-- 3. Dari aplikasi/perangkat (anon), panggilan RPC berikut HARUS DITOLAK
+--    "permission denied for function ari_clear_table" — bukti lubang sudah tertutup.
+--    Cek juga daftar hak akses: harus kosong untuk anon.
+select grantee, privilege_type
+from information_schema.routine_privileges
+where routine_schema = 'public' and routine_name = 'ari_clear_table';
 
 -- ============================================================
 -- Pemulihan (jalur terakhir yang harus selalu ada):

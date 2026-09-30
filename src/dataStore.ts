@@ -33,7 +33,7 @@ import {
   ,AttendanceAdjustment
   ,CashAdvanceTransaction
   ,AttendanceBonusPayout, isEligibleForAttendanceBonus, PaymentEntry, purchaseRemaining, orderRemaining, clockMinutes, checkoutMetrics, AttendanceFailure } from './types';
-import { pushKeyToCloud, pushAttendanceToCloud, clearAttendanceInCloud, markIntentionalClear } from './cloudSync';
+import { pushKeyToCloud, pushAttendanceToCloud } from './cloudSync';
 
 // Helper to generate UUIDs
 const uuid = () => Math.random().toString(36).substring(2, 11);
@@ -1421,44 +1421,6 @@ class DataStore {
     this.setStockMovements(stockMovements);
     this.setProductionLogs(productionLogs);
     return true;
-  };
-
-  // Hapus SEMUA data transaksi (pesanan, produksi, penjualan, pembelian, absensi, gaji, dst)
-  // untuk memulai pemakaian nyata dengan bersih. Data master (karyawan, produk, bahan baku) dipertahankan.
-  clearAllTransactions = (): void => {
-    // Aksi ini MEMANG berniat menghapus. Beri izin eksplisit supaya push berikutnya
-    // melewati pengaman hapus massal — tanpa membuka celah untuk perangkat baru.
-    // 'attendance' ikut ditandai karena jalurnya sendiri (clearAttendanceInCloud),
-    // yang kini juga menuntut izin eksplisit sebelum mengosongkan tabel di cloud.
-    markIntentionalClear([
-      'orders', 'production_jobs', 'production_handoffs', 'rejected_goods', 'production_task_logs',
-      'packing_tasks', 'attendance_adjustments', 'production_logs', 'marketplace_sales',
-      'marketplace_item_sales', 'purchases', 'daily_expenses', 'invoices', 'delivery_notes',
-      'returns', 'stock_movements', 'payroll_weekly', 'cash_advances', 'cash_advance_transactions',
-      'notifications', 'attendance',
-    ]);
-    this.setOrders([]);
-    this.setProductionJobs([]);
-    this.setProductionHandoffs([]);
-    this.setRejectedGoods([]);
-    this.setProductionTaskLogs([]);
-    this.setPackingTasks([]);
-    this.setAttendanceAdjustments([]);
-    this.setProductionLogs([]);
-    this.setMarketplaceSales([]);
-    this.setMarketplaceItemSales([]);
-    this.setPurchases([]);
-    this.setDailyExpenses([]);
-    this.setInvoices([]);
-    this.setDeliveryNotes([]);
-    this.setReturns([]);
-    this.setStockMovements([]);
-    this.setAttendance([]);
-    clearAttendanceInCloud();
-    this.setPayrollWeekly([]);
-    this.setCashAdvances([]);
-    this.setCashAdvanceTransactions([]);
-    this.setNotifications([]);
   };
 
   // Cek kecukupan bahan untuk seluruh item order sekaligus (kebutuhan bahan yang sama dijumlahkan).

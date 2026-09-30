@@ -1042,28 +1042,6 @@ export default function App() {
                     ))}
                   </div>
                 </div>
-
-                {/* Zona persiapan pemakaian nyata */}
-                <div className="no-print">
-                  <div className="bg-rose-50 border border-rose-100 rounded-lg p-4 space-y-2">
-                    <p className="text-sm font-bold text-rose-800">Mulai Data Bersih</p>
-                    <p className="text-xs text-rose-700 leading-relaxed">
-                      Hapus semua data contoh/transaksi (pesanan, produksi, penjualan, pembelian, absensi, gaji) untuk
-                      memulai pemakaian nyata. Data karyawan, produk, dan bahan baku tetap dipertahankan. Tidak bisa dibatalkan.
-                    </p>
-                    <button
-                      onClick={() => {
-                        if (!window.confirm('Yakin hapus SEMUA data transaksi?\n\nPesanan, produksi, penjualan, pembelian, absensi, dan gaji akan dikosongkan. Karyawan, produk, dan bahan baku tetap ada.\n\nTindakan ini tidak bisa dibatalkan.')) return;
-                        if (!window.confirm('Konfirmasi sekali lagi: data transaksi akan dihapus permanen (termasuk di cloud). Lanjutkan?')) return;
-                        dataStore.clearAllTransactions();
-                        alert('Semua data transaksi telah dikosongkan. Sistem siap dipakai dengan data nyata.');
-                      }}
-                      className="bg-rose-600 hover:bg-rose-700 text-white font-semibold text-sm px-4 py-2 rounded-lg cursor-pointer"
-                    >
-                      Hapus Semua Data Contoh
-                    </button>
-                  </div>
-                </div>
               </div>
             )}
 
