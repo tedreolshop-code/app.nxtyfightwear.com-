@@ -14,6 +14,7 @@
  */
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { getCloudToken, setCloudToken, clearCloudToken } from './cloudAuth';
 
 const SUPABASE_URL = import.meta.env?.VITE_SUPABASE_URL as string | undefined;
 const SUPABASE_ANON_KEY = import.meta.env?.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -94,6 +95,41 @@ if (isCloudEnabled) {
 }
 export const getSupabaseClient = () => client;
 
+/**
+ * Verifikasi PIN di SERVER lalu simpan token sesinya.
+ *
+ * Sejak policy DELETE dicabut di database (supabase/auth-hapus-bagian2-cutover.sql),
+ * menghapus data hanya sah lewat RPC ber-token. Token ini sumbernya ari_login(),
+ * yang memeriksa PIN terhadap data karyawan di server — bukan lagi di perangkat.
+ *
+ * Mengembalikan false (tanpa melempar) bila cloud mati atau PIN ditolak: pemanggil
+ * tetap boleh melanjutkan masuk mode offline seperti sebelumnya.
+ */
+export const loginCloud = async (username: string, pin: string): Promise<boolean> => {
+  if (!client) return false;
+  try {
+    const { data, error } = await client.rpc('ari_login', { p_username: username, p_pin: pin });
+    if (error) throw error;
+    const row = (Array.isArray(data) ? data[0] : data) as { token?: string } | null;
+    if (!row?.token) return false;
+    setCloudToken(row.token);
+    return true;
+  } catch (e) {
+    console.error('[cloudSync] Gagal masuk ke cloud (verifikasi PIN di server):', e);
+    return false;
+  }
+};
+
+/** Buang sesi cloud: hapus di server (best-effort) lalu lupakan tokennya. */
+export const logoutCloud = (): void => {
+  const token = getCloudToken();
+  clearCloudToken();
+  if (!client || !token) return;
+  void client.rpc('ari_logout', { p_token: token }).then(({ error }) => {
+    if (error) console.error('[cloudSync] Gagal menghapus sesi cloud:', error);
+  });
+};
+
 // Penanda agar penulisan yang berasal dari cloud tidak di-push balik ke cloud (loop)
 let applyingRemote = false;
 export const isApplyingRemote = () => applyingRemote;
@@ -146,9 +182,11 @@ const writeLocalRows = (key: string, rows: RowLike[]) => {
 const MASS_DELETE_MAX = 5;          // hapus > ini dalam 1 push = mencurigakan
 const MASS_DELETE_MAX_RATIO = 0.25; // ...dan > 25% dari baseline = ditolak
 
-// CATATAN: sengaja TIDAK ada jalan keluar (escape hatch) di sisi klien. Hapus
-// massal hanya mungkin lewat ari_clear_table() di supabase/guard-mass-delete.sql,
-// dan akses fungsi itu sudah dicabut dari publik — hanya admin database.
+// CATATAN: tidak ada jalan keluar (escape hatch) di sisi klien. Hapus selalu lewat
+// RPC ber-token (ari_delete_rows / ari_clear_table di supabase/auth-hapus-bagian1.sql)
+// yang memverifikasi sesi dan membatasi peran ke owner/admin. Policy DELETE di
+// database dicabut oleh auth-hapus-bagian2-cutover.sql, jadi hapus langsung dari
+// klien mana pun tidak menghapus apa pun.
 /** Alasan menolak hapus (string) atau null bila hapus boleh jalan. */
 const blockDeleteReason = (key: string, prev: Map<string, string> | undefined, removed: string[]): string | null => {
   if (removed.length === 0) return null;
@@ -198,8 +236,16 @@ const pushRowsToCloud = (cfg: PerRowSync, list: RowLike[]): void => {
           notifyBlocked(`Penghapusan seluruh data "${cfg.key}" ditolak cloud: ${reason}. Data di perangkat Anda tidak jadi terhapus permanen.`);
           return;
         }
-        const { error } = await client!.from(cfg.table).delete().neq('id', '');
-        if (error) throw error;
+        // Policy DELETE sudah dicabut di database, jadi hapus seluruh tabel hanya
+        // sah lewat RPC ini — yang memeriksa token sesi dan peran owner/admin.
+        const { error } = await client!.rpc('ari_clear_table', {
+          p_table: cfg.table,
+          p_token: getCloudToken() ?? '',
+        });
+        if (error) {
+          notifyBlocked(`Penghapusan seluruh data "${cfg.key}" ditolak cloud: ${error.message}`);
+          throw error;
+        }
         cloudSnapshot.set(cfg.key, new Map());
         if (status !== 'online') setStatus('online');
         return;
@@ -225,8 +271,18 @@ const pushRowsToCloud = (cfg: PerRowSync, list: RowLike[]): void => {
           console.warn(`[cloudSync] Tolak hapus di "${cfg.key}": ${reason}. Tidak ada yang dihapus.`);
           notifyBlocked(`Penghapusan ${removed.length} data "${cfg.key}" ditolak cloud: ${reason}. Data di cloud tetap utuh.`);
         } else if (removed.length > 0) {
-          const { error: delErr } = await client!.from(cfg.table).delete().in('id', removed);
-          if (delErr) throw delErr;
+          // Policy DELETE sudah dicabut di database, jadi hapus hanya sah lewat RPC
+          // ini — yang memeriksa token sesi (hasil verifikasi PIN di server) dan
+          // membatasi peran ke owner/admin.
+          const { error: delErr } = await client!.rpc('ari_delete_rows', {
+            p_table: cfg.table,
+            p_ids: removed,
+            p_token: getCloudToken() ?? '',
+          });
+          if (delErr) {
+            notifyBlocked(`Penghapusan ${removed.length} data "${cfg.key}" ditolak cloud: ${delErr.message}`);
+            throw delErr;
+          }
         }
       }
 

@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserRole, Employee, ProductionHandoff, ProductionJob, PackingTask } from './types';
 import { dataStore, wibTodayStr } from './dataStore';
-import { isCloudEnabled, getCloudStatus, CloudStatus } from './cloudSync';
+import { isCloudEnabled, getCloudStatus, CloudStatus, loginCloud, logoutCloud } from './cloudSync';
 import { MainDashboard } from './components/MainDashboard';
 import { EmployeeDashboard } from './components/EmployeeDashboard';
 import { AttendanceModule } from './components/AttendanceModule';
@@ -97,8 +97,10 @@ function KaryawanLoginCard({ onLogin }: { onLogin: (emp: Employee) => void }) {
   const [username, setUsername] = useState('');
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const bisaMasuk = Boolean(username.trim()) && pin.length >= 4 && !busy;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     const emp = dataStore.verifyLogin(username, pin);
@@ -108,6 +110,11 @@ function KaryawanLoginCard({ onLogin }: { onLogin: (emp: Employee) => void }) {
       setPin('');
       return;
     }
+    // PIN juga diverifikasi di server untuk membuka sesi cloud (dipakai operasi
+    // hapus). Non-fatal: kalau cloud mati atau ditolak, karyawan tetap bisa masuk
+    // dan aplikasi jalan mode offline seperti sebelumnya.
+    setBusy(true);
+    try { await loginCloud(username.trim(), pin); } finally { setBusy(false); }
     onLogin(emp);
   };
 
@@ -154,14 +161,14 @@ function KaryawanLoginCard({ onLogin }: { onLogin: (emp: Employee) => void }) {
 
         <button
           type="submit"
-          disabled={!username.trim() || pin.length < 4}
+          disabled={!bisaMasuk}
           className={`w-full py-3 rounded-lg text-sm font-bold transition-colors ${
-            !username.trim() || pin.length < 4
+            !bisaMasuk
               ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
               : 'bg-[var(--color-evergreen)] hover:bg-[var(--color-evergreen-dark)] text-white cursor-pointer'
           }`}
         >
-          Masuk
+          {busy ? 'Memeriksa…' : 'Masuk'}
         </button>
       </form>
     </div>
@@ -251,6 +258,7 @@ export default function App() {
 
   const handleLogout = () => {
     dataStore.logAudit('logout', 'session', `Logout akun ${session?.name || 'pengguna'}`, session?.employeeId);
+    logoutCloud();
     localStorage.removeItem(SESSION_KEY);
     setSession(null);
     setLoggedEmployee(null);

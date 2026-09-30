@@ -1,5 +1,12 @@
 -- Setup database ARI SPORTINDO Production System
 -- Jalankan sekali di Supabase Dashboard > SQL Editor.
+--
+-- LENGKAPNYA: berkas ini membuat skema + policy dasar. Setelahnya jalankan
+-- supabase/guard-mass-delete.sql (trigger penolak hapus massal), lalu
+-- supabase/auth-hapus-bagian1.sql dan supabase/auth-hapus-bagian2-cutover.sql
+-- (verifikasi PIN di server + hapus hanya owner/admin). Policy DELETE yang dibuat
+-- di bawah sengaja dibiarkan supaya berkas ini tetap kompatibel dengan urutan
+-- pemasangan lama; Bagian 2 yang mencabutnya.
 
 -- Tabel key-value: satu baris per "tabel" aplikasi (orders, products, attendance, dst).
 create table if not exists public.ari_store (
@@ -73,7 +80,8 @@ drop policy if exists "ari_attendance_update" on public.ari_attendance;
 create policy "ari_attendance_update" on public.ari_attendance
   for update using (true);
 
--- Delete dibutuhkan tombol "Hapus Semua Data Contoh" (mulai data bersih).
+-- Delete: hanya sementara di sini. auth-hapus-bagian2-cutover.sql mencabut policy
+-- ini supaya penghapusan hanya lewat RPC ber-token (owner/admin).
 drop policy if exists "ari_attendance_delete" on public.ari_attendance;
 create policy "ari_attendance_delete" on public.ari_attendance
   for delete using (true);
