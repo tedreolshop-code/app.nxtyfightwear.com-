@@ -349,7 +349,11 @@ const INITIAL_WORK_SETTINGS: WorkSettings = {
   full_day_from: '14:00',
   attendance_radius_meters: 100,
   monthly_bonus_amount: 0,
-  location_qr_token: 'ari-hq-' + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2),
+  // Token QR lokasi bawaan HARUS sama di semua perangkat. Kalau diacak per muat
+  // (Math.random), QR yang dicetak admin tak cocok di HP karyawan dan scan lokasi
+  // selalu ditolak. Rotasi tetap bisa lewat tombol "Ganti QR" (menyimpan token acak
+  // baru ke setelan + cloud, lalu ditiru semua perangkat).
+  location_qr_token: 'ari-hq-lokasi-tetap',
   production_handoff_mode: 'hybrid'
 };
 
@@ -974,12 +978,13 @@ class DataStore {
   getExpenseCategories = (): string[] => this.get('expense_categories', INITIAL_EXPENSE_CATEGORIES);
   setExpenseCategories = (data: string[]) => this.set('expense_categories', data);
 
-  // Pembaca murni: mengembalikan nilai tersimpan yang sudah dilengkapi default, tanpa
-  // menulis. Getter ini dipanggil di dalam render banyak komponen (mis. panel
-  // serah-terima produksi), jadi menulis di sini berarti tiap render memicu event
-  // storage + push cloud — dan listener App yang setState kena aturan "tidak boleh
-  // setState saat komponen lain sedang render". Radius 0 (tanpa batas) juga dulu
-  // salah dianggap "belum diisi" sehingga memaksa tulis terus-menerus.
+  // Pembaca murni: mengembalikan nilai tersimpan yang sudah dilengkapi default,
+  // TANPA menulis. Getter ini dipanggil di dalam render banyak komponen, jadi
+  // menulis di sini berarti tiap render memicu event storage + push cloud, dan
+  // menyimpan token QR acak bawaan per perangkat — itulah yang membuat QR admin
+  // tak cocok di HP karyawan (absen portal gagal di langkah scan lokasi).
+  // Token bawaan kini deterministik, jadi semua perangkat cocok walau belum
+  // pernah menyimpan setelan sekalipun.
   getWorkSettings = (): WorkSettings =>
     ({ ...INITIAL_WORK_SETTINGS, ...this.get<Partial<WorkSettings>>('work_settings', INITIAL_WORK_SETTINGS) });
   setWorkSettings = (data: WorkSettings) => this.set('work_settings', data);
