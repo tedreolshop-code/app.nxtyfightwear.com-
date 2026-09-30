@@ -10,3 +10,8 @@ coverage/
 graphify-out/
 test-results/
 playwright-report/
+
+# Cadangan & data sensitif — JANGAN di-commit (berisi data karyawan + hash PIN)
+backup/
+*.dump
+restore-employees.sql
