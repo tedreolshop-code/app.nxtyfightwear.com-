@@ -129,19 +129,65 @@ const writeLocalRows = (key: string, rows: RowLike[]) => {
   }
 };
 
+// ===================== Pengaman anti-hapus cloud =====================
+// Insiden 29 Sep 2026: satu perangkat yang daftar lokalnya hanya berisi
+// karyawan bawaan (cache baru / tarikan awal gagal) menulis data karyawan,
+// lalu menghapus SELURUH karyawan asli di cloud. Penghapusan terjadi di level
+// DB sehingga tidak tercatat di Recycle Bin. Sejak itu, hapus di cloud wajib
+// melewati pengaman berlapis di bawah — jangan pernah melonggarkan ini.
+//
+// Lapis 1: tanpa baseline (tarikan awal belum pernah sukses) → DILARANG hapus.
+// Lapis 2: hapus hanya bila baris itu memang ada di baseline (bukan baris asing).
+// Lapis 3: hapus massal dalam satu push ditolak — hampir selalu tanda daftar
+//         lokal tidak lengkap, bukan penghapusan sungguhan oleh pengguna.
+const MASS_DELETE_MAX = 5;          // hapus > ini dalam 1 push = mencurigakan
+const MASS_DELETE_MAX_RATIO = 0.25; // ...dan > 25% dari baseline = ditolak
+
+// Izin hapus EKSPLISIT: hanya aksi yang memang berniat menghapus (mis. tombol
+// "Hapus semua data transaksi") yang boleh melewati pengaman hapus massal.
+// Pengaman "tanpa baseline = dilarang hapus" tetap berlaku agar perangkat baru
+// tidak pernah mengosongkan cloud.
+const intentionalClearKeys = new Set<string>();
+/** Tandai bahwa push berikutnya untuk key-key ini memang bermaksud menghapus. */
+export const markIntentionalClear = (keys: string[]): void => {
+  keys.forEach(key => intentionalClearKeys.add(key));
+};
+
+/** Alasan menolak hapus (string) atau null bila hapus boleh jalan. */
+const blockDeleteReason = (key: string, prev: Map<string, string> | undefined, removed: string[]): string | null => {
+  if (removed.length === 0) return null;
+  if (intentionalClearKeys.has(key)) return null; // aksi hapus yang disengaja
+  if (!prev) {
+    return `baseline cloud "${key}" belum diketahui (tarikan awal belum sukses)`;
+  }
+  if (removed.length > MASS_DELETE_MAX && removed.length > prev.size * MASS_DELETE_MAX_RATIO) {
+    return `hapus massal ${removed.length} dari ${prev.size} baris "${key}" — kemungkinan daftar lokal tidak lengkap`;
+  }
+  return null;
+};
+
 /**
  * Simpan SELURUH daftar sebuah key ke Supabase secara per-baris:
  * - setiap record di-upsert (onConflict id) — aman dari tabrakan array besar,
- * - record yang tidak lagi ada di daftar dihapus dari database.
- * No-op sampai tarikan awal selesai (cfg.ready) agar seed/migrasi tidak
- * menghapus data asli di database sebelum kita membacanya.
+ * - penghapusan baris WAJIB lolos pengaman berlapis (lihat blockDeleteReason).
+ * No-op sampai tarikan awal sukses (cfg.ready) agar seed/migrasi perangkat baru
+ * tidak pernah menghapus data asli di database.
  */
 const pushRowsToCloud = (cfg: PerRowSync, list: RowLike[]): void => {
   if (!client || applyingRemote || !cfg.ready) return;
   void (async () => {
     try {
       const clean = list.filter(r => r && r.id);
+      const prev = cloudSnapshot.get(cfg.key);
+
       if (clean.length === 0) {
+        // Kosongkan tabel hanya bila baseline diketahui DAN ada hapus yang sah.
+        const reason = blockDeleteReason(cfg.key, prev, prev ? [...prev.keys()] : []);
+        if (reason) {
+          console.warn(`[cloudSync] Tolak kosongkan "${cfg.key}": ${reason}. Tidak ada yang dihapus.`);
+          return;
+        }
+        intentionalClearKeys.delete(cfg.key);
         const { error } = await client!.from(cfg.table).delete().neq('id', '');
         if (error) throw error;
         cloudSnapshot.set(cfg.key, new Map());
@@ -149,8 +195,8 @@ const pushRowsToCloud = (cfg: PerRowSync, list: RowLike[]): void => {
         return;
       }
 
-      const prev = cloudSnapshot.get(cfg.key);
       // Baris baru / berubah saja yang di-upsert (updated_at ikut ter-refresh).
+      // Upsert selalu aman — menambah/memperbarui tidak pernah menghilangkan data.
       const changed = prev
         ? clean.filter(r => prev.get(r.id) !== JSON.stringify(r))
         : clean;
@@ -159,20 +205,19 @@ const pushRowsToCloud = (cfg: PerRowSync, list: RowLike[]): void => {
         const { error: upErr } = await client!.from(cfg.table).upsert(rows, { onConflict: 'id' });
         if (upErr) throw upErr;
       }
-      // Baris yang hilang dari daftar → hapus di cloud (kecuali log append-only).
+
+      // Baris yang hilang dari daftar → hapus, HANYA bila lolos pengaman.
       if (!cfg.appendOnly && prev) {
         const currentIds = new Set(clean.map(r => r.id));
         const removed = [...prev.keys()].filter(id => !currentIds.has(id));
-        if (removed.length > 0) {
+        const reason = blockDeleteReason(cfg.key, prev, removed);
+        if (reason) {
+          console.warn(`[cloudSync] Tolak hapus di "${cfg.key}": ${reason}. Tidak ada yang dihapus.`);
+        } else if (removed.length > 0) {
+          intentionalClearKeys.delete(cfg.key);
           const { error: delErr } = await client!.from(cfg.table).delete().in('id', removed);
           if (delErr) throw delErr;
         }
-      } else if (!cfg.appendOnly && !prev) {
-        // Belum ada baseline (sinkron awal gagal / offline saat start) → jaga
-        // konsistensi seperti sebelumnya: hapus baris yang tidak ada di daftar.
-        const keep = `(${clean.map(r => `"${r.id}"`).join(',')})`;
-        const { error: delErr } = await client!.from(cfg.table).delete().not('id', 'in', keep);
-        if (delErr) throw delErr;
       }
 
       cloudSnapshot.set(cfg.key, snapshotFrom(clean));
@@ -509,7 +554,10 @@ export const initCloudSync = async (): Promise<void> => {
     let anyTableFailed = false;
     for (const cfg of PER_ROW) {
       try {
-        cfg.ready = true;
+        // cfg.ready sengaja BELUM di-set di sini: push (termasuk hapus) hanya
+        // boleh jalan setelah tarikan tabel ini benar-benar sukses. Kalau
+        // tarikan gagal, ready tetap false sehingga tidak ada tulis/hapus yang
+        // bisa menimpa cloud dengan cache perangkat yang belum lengkap.
         if (incremental) {
           const changed = (await fetchAllRows(cfg.table, { sinceCol: 'updated_at', since: since! }))
             .map(r => r.value as RowLike).filter(r => r && r.id);
@@ -519,6 +567,7 @@ export const initCloudSync = async (): Promise<void> => {
           const merged = mergeRowsById(changed, localRows, cloudIds);
           if (merged.length !== localRows.length || changed.length > 0) writeLocalRows(cfg.key, merged);
           else cloudSnapshot.set(cfg.key, snapshotFrom(localRows));
+          cfg.ready = true;
           continue;
         }
 
@@ -535,8 +584,8 @@ export const initCloudSync = async (): Promise<void> => {
             cloudSnapshot.set(cfg.key, snapshotFrom(seed));
           }
         }
-      } catch (e) {
         cfg.ready = true;
+      } catch (e) {
         anyTableFailed = true;
         console.error(`[cloudSync] Gagal sinkron tabel "${cfg.table}" (sudah jalankan supabase/setup.sql terbaru?):`, e);
       }

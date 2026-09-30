@@ -33,7 +33,7 @@ import {
   ,AttendanceAdjustment
   ,CashAdvanceTransaction
   ,AttendanceBonusPayout, isEligibleForAttendanceBonus, PaymentEntry, purchaseRemaining, orderRemaining, clockMinutes, checkoutMetrics, AttendanceFailure } from './types';
-import { pushKeyToCloud, pushAttendanceToCloud, clearAttendanceInCloud } from './cloudSync';
+import { pushKeyToCloud, pushAttendanceToCloud, clearAttendanceInCloud, markIntentionalClear } from './cloudSync';
 
 // Helper to generate UUIDs
 const uuid = () => Math.random().toString(36).substring(2, 11);
@@ -1426,6 +1426,15 @@ class DataStore {
   // Hapus SEMUA data transaksi (pesanan, produksi, penjualan, pembelian, absensi, gaji, dst)
   // untuk memulai pemakaian nyata dengan bersih. Data master (karyawan, produk, bahan baku) dipertahankan.
   clearAllTransactions = (): void => {
+    // Aksi ini MEMANG berniat menghapus. Beri izin eksplisit supaya push berikutnya
+    // melewati pengaman hapus massal — tanpa membuka celah untuk perangkat baru.
+    markIntentionalClear([
+      'orders', 'production_jobs', 'production_handoffs', 'rejected_goods', 'production_task_logs',
+      'packing_tasks', 'attendance_adjustments', 'production_logs', 'marketplace_sales',
+      'marketplace_item_sales', 'purchases', 'daily_expenses', 'invoices', 'delivery_notes',
+      'returns', 'stock_movements', 'payroll_weekly', 'cash_advances', 'cash_advance_transactions',
+      'notifications',
+    ]);
     this.setOrders([]);
     this.setProductionJobs([]);
     this.setProductionHandoffs([]);
