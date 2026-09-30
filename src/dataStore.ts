@@ -1428,12 +1428,14 @@ class DataStore {
   clearAllTransactions = (): void => {
     // Aksi ini MEMANG berniat menghapus. Beri izin eksplisit supaya push berikutnya
     // melewati pengaman hapus massal — tanpa membuka celah untuk perangkat baru.
+    // 'attendance' ikut ditandai karena jalurnya sendiri (clearAttendanceInCloud),
+    // yang kini juga menuntut izin eksplisit sebelum mengosongkan tabel di cloud.
     markIntentionalClear([
       'orders', 'production_jobs', 'production_handoffs', 'rejected_goods', 'production_task_logs',
       'packing_tasks', 'attendance_adjustments', 'production_logs', 'marketplace_sales',
       'marketplace_item_sales', 'purchases', 'daily_expenses', 'invoices', 'delivery_notes',
       'returns', 'stock_movements', 'payroll_weekly', 'cash_advances', 'cash_advance_transactions',
-      'notifications',
+      'notifications', 'attendance',
     ]);
     this.setOrders([]);
     this.setProductionJobs([]);

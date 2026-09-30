@@ -330,6 +330,15 @@ export default function App() {
     return () => window.removeEventListener('nxty_cloud_status', handler);
   }, []);
 
+  // Cloud menolak penghapusan (pengaman anti-hapus massal) → beri tahu pengguna,
+  // supaya data yang terlihat "hilang" di perangkat tidak membingungkan saat
+  // muncul lagi setelah sinkron.
+  useEffect(() => {
+    const handler = (e: Event) => setToast((e as CustomEvent<string>).detail);
+    window.addEventListener('nxty_cloud_blocked', handler);
+    return () => window.removeEventListener('nxty_cloud_blocked', handler);
+  }, []);
+
   // Sub-tab sederhana per halaman
   const [salesSubTab, setSalesSubTab] = useState<'marketplace' | 'order' | 'packing-docs'>('marketplace');
   const [karyawanSubTab, setKaryawanSubTab] = useState<'data' | 'absensi' | 'kasbon' | 'payroll'>('data');
