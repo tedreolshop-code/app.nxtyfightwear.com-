@@ -22,7 +22,7 @@ const hariKerjaMundur = (dari: number, sampai: number) => {
 };
 
 const dalamJendela = hariKerjaMundur(2, 7);
-const diLuarJendela = hariKerjaMundur(8, 14);
+const diLuarJendela = hariKerjaMundur(31, 37);
 
 /** Seed dua karyawan tanpa catatan absensi sama sekali. */
 const seedKaryawanTanpaAbsensi = () => {
@@ -80,7 +80,7 @@ test('koreksi scan masuk tersimpan sebagai absensi bertanda admin dan hilang dar
   await expect(page.getByRole('group', { name: nama })).toHaveCount(0);
 });
 
-test('daftar koreksi hanya memuat 7 hari terakhir', async ({ page }) => {
+test('daftar koreksi hanya memuat 30 hari terakhir', async ({ page }) => {
   await isolateAsOwner(page);
   await page.addInitScript(seedKaryawanTanpaAbsensi);
 

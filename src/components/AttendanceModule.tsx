@@ -221,6 +221,9 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
   const [correctionDraft, setCorrectionDraft] = useState<Record<string, { masuk: string; pulang: string; reason: string }>>({});
   // Alasan saat membatalkan koreksi yang salah input, per id absensi
   const [cancelCorrectionDraft, setCancelCorrectionDraft] = useState<Record<string, string>>({});
+  // Pencarian nama di panel koreksi. Jendela 30 hari bisa memuat ratusan baris,
+  // jadi tanpa pencarian admin tidak akan menemukan orang yang dimaksud.
+  const [correctionSearch, setCorrectionSearch] = useState('');
 
   // Selected Employee & Scan Details
   const [selectedEmpId, setSelectedEmpId] = useState('');
@@ -691,13 +694,13 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
   const notCheckedOutToday = employees.filter(employee => todayCheckInIds.has(employee.id) && !todayCheckOutIds.has(employee.id));
   const assistedPeriodLogs = periodLogs.filter(log => (log.verification_method || 'gps_self') === 'admin_qr');
   const latePeriodLogs = periodLogs.filter(log => (log.late_minutes || 0) > 0);
-  // Koreksi hanya boleh 7 hari terakhir (lihat dataStore.assertTanggalKoreksi).
-  const KOREKSI_HARI = 7;
+  // Koreksi hanya boleh 30 hari terakhir (lihat dataStore.assertTanggalKoreksi).
+  const KOREKSI_HARI = 30;
   const sejakKoreksi = new Date(new Date(`${todayWib}T00:00:00Z`).getTime() - KOREKSI_HARI * 86400000)
     .toISOString().slice(0, 10);
   const workSettingsNow = dataStore.getWorkSettings();
 
-  // Hari dengan scan MASUK tapi tanpa scan PULANG, 7 hari terakhir sampai kemarin
+  // Hari dengan scan MASUK tapi tanpa scan PULANG, 30 hari terakhir sampai kemarin
   // (hari ini belum selesai, jadi belum dianggap terlewat).
   const missingCheckouts = (() => {
     const perHari = new Map<string, { employee_id: string; employee_name: string; date: string; masuk: string; pulang: boolean }>();
@@ -715,7 +718,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
       .sort((a, b) => b.date.localeCompare(a.date) || a.employee_name.localeCompare(b.employee_name));
   })();
 
-  // Hari kerja TANPA scan masuk pada 7 hari terakhir — termasuk hari yang gagal
+  // Hari kerja TANPA scan masuk pada 30 hari terakhir — termasuk hari yang gagal
   // total (masuk & pulang dua-duanya tidak tercatat). Inilah "error masuk absensi"
   // yang sebelumnya tidak punya jalan koreksi sama sekali.
   const missingCheckins = (() => {
@@ -742,10 +745,16 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
       || a.employee_name.localeCompare(b.employee_name));
   })();
 
-  // Koreksi admin yang sudah tercatat pada 7 hari terakhir — bisa dibatalkan bila salah input.
+  // Koreksi admin yang sudah tercatat pada 30 hari terakhir — bisa dibatalkan bila salah input.
   const adminCorrections = attendanceLogs
     .filter(l => l.device_token === 'koreksi-admin' && l.timestamp.slice(0, 10) >= sejakKoreksi)
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+
+  // Pencarian nama berlaku untuk kedua kelompok koreksi.
+  const cocokCariKoreksi = (nama: string) =>
+    !correctionSearch.trim() || nama.toLowerCase().includes(correctionSearch.trim().toLowerCase());
+  const missingCheckinsTampil = missingCheckins.filter(r => cocokCariKoreksi(r.employee_name));
+  const missingCheckoutsTampil = missingCheckouts.filter(r => cocokCariKoreksi(r.employee_name));
 
   // Slip gaji menyimpan jumlah hari sebagai snapshot, jadi koreksi setelah slip
   // periode itu dibuat TIDAK mengubah angkanya sendiri.
@@ -1598,21 +1607,30 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                   {statusMessage.text}
                 </div>
               )}
-              <div><h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider">Koreksi Absensi (7 Hari Terakhir)</h3><p className="text-[10px] text-gray-400">Untuk scan yang gagal atau lupa. Tanpa koreksi, hari itu dihitung 0 hari — upah harian dan bonus kehadirannya ikut hilang. Setiap koreksi wajib beralasan, ditandai "dikoreksi admin", dan tercatat di audit log.</p></div>
+              <div><h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider">Koreksi Absensi (30 Hari Terakhir)</h3><p className="text-[10px] text-gray-400">Untuk scan yang gagal atau lupa. Tanpa koreksi, hari itu dihitung 0 hari — upah harian dan bonus kehadirannya ikut hilang. Setiap koreksi wajib beralasan, ditandai "dikoreksi admin", dan tercatat di audit log.</p></div>
+              <input
+                type="text"
+                value={correctionSearch}
+                onChange={e => setCorrectionSearch(e.target.value)}
+                placeholder="Cari nama karyawan…"
+                aria-label="Cari karyawan di daftar koreksi"
+                className="w-full border border-gray-200 rounded-lg p-2 text-xs bg-white"
+              />
 
               {/* A. Belum ada scan MASUK — termasuk hari yang gagal total */}
               <div className="space-y-2">
-                <p className="text-[10px] font-black uppercase tracking-wider text-rose-600">Belum Ada Scan Masuk{missingCheckins.length > 0 ? ` (${missingCheckins.length})` : ''}</p>
-                {/* Daftar panjang hampir selalu berarti data absensi belum tersinkron,
-                    bukan puluhan karyawan yang gagal scan sekaligus. */}
-                {missingCheckins.length > 15 && (
+                <p className="text-[10px] font-black uppercase tracking-wider text-rose-600">Belum Ada Scan Masuk{missingCheckinsTampil.length > 0 ? ` (${missingCheckinsTampil.length})` : ''}</p>
+                {/* Daftar yang jauh lebih panjang dari "beberapa orang lupa scan" hampir
+                    selalu berarti data absensi belum tersinkron, bukan seisi pabrik gagal
+                    scan sekaligus. Ambangnya diskalakan ke jumlah karyawan (2 hari penuh). */}
+                {missingCheckinsTampil.length > Math.max(12, employees.length * 2) && (
                   <p className="text-[10px] text-amber-800 bg-amber-50 border border-amber-100 rounded-lg p-2 font-bold">
                     Daftarnya panjang. Periksa dulu status sinkronisasi cloud di kanan atas (dan minta karyawan menyegarkan halaman) sebelum mengoreksi — bisa jadi catatannya hanya belum masuk ke perangkat ini.
                   </p>
                 )}
-                {missingCheckins.length === 0 ? (
+                {missingCheckinsTampil.length === 0 ? (
                   <p className="p-6 text-center text-xs text-gray-400 bg-gray-50 border border-dashed rounded-xl">Semua hari kerja sudah punya scan masuk. Bagus.</p>
-                ) : missingCheckins.slice(0, 40).map(row => {
+                ) : missingCheckinsTampil.slice(0, 40).map(row => {
                   const key = `${row.employee_id}|${row.date}`;
                   const draft = correctionDraft[key] || { masuk: workSettingsNow.start_time, pulang: '', reason: '' };
                   const ubah = (patch: Partial<{ masuk: string; pulang: string; reason: string }>) => setCorrectionDraft(prev => ({ ...prev, [key]: { ...draft, ...patch } }));
@@ -1644,8 +1662,8 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
 
               {/* B. Ada masuk, belum ada pulang */}
               <div className="space-y-2 pt-2 border-t border-gray-100">
-                <p className="text-[10px] font-black uppercase tracking-wider text-gray-600">Scan Pulang Terlewat</p>
-                {missingCheckouts.length === 0 ? <p className="p-6 text-center text-xs text-gray-400 bg-gray-50 border border-dashed rounded-xl">Tidak ada scan pulang yang terlewat. Bagus.</p> : missingCheckouts.map(row => {
+                <p className="text-[10px] font-black uppercase tracking-wider text-gray-600">Scan Pulang Terlewat{missingCheckoutsTampil.length > 0 ? ` (${missingCheckoutsTampil.length})` : ''}</p>
+                {missingCheckoutsTampil.length === 0 ? <p className="p-6 text-center text-xs text-gray-400 bg-gray-50 border border-dashed rounded-xl">Tidak ada scan pulang yang terlewat. Bagus.</p> : missingCheckoutsTampil.slice(0, 40).map(row => {
                   const key = `${row.employee_id}|${row.date}`;
                   const draft = correctionDraft[key] || { masuk: '', pulang: workSettingsNow.end_time, reason: '' };
                   const ubah = (patch: Partial<{ masuk: string; pulang: string; reason: string }>) => setCorrectionDraft(prev => ({ ...prev, [key]: { ...draft, ...patch } }));

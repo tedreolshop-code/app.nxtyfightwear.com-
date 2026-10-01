@@ -373,9 +373,10 @@ class DataStore {
   // Versi lengkapnya tetap tersimpan di cloud (ari_store).
   private static readonly AUDIT_MAX_ENTRIES = 1500;
   private static readonly RECYCLE_MAX_ENTRIES = 300;
-  // Batas mundur koreksi absensi: cukup untuk kasus nyata (lupa/salah kemarin),
-  // tapi mempersempit celah mengarang riwayat lama.
-  private static readonly KOREKSI_MAX_HARI = 7;
+  // Batas mundur koreksi absensi. Perlu cukup longgar untuk koreksi yang telat
+  // disadari (mis. baru ketahuan saat tutup buku mingguan), tapi tetap membatasi
+  // celah mengarang riwayat lama.
+  private static readonly KOREKSI_MAX_HARI = 30;
 
   getCurrentActor = (): { id?: string; name: string; role: UserRole | 'system' } => this.currentActor();
 
