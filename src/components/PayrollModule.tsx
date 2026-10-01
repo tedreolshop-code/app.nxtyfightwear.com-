@@ -43,6 +43,9 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
   // yang bisa dikoreksi admin sebelum disetujui.
   type ReviewDraft = { lateComp: number; overtime: number; live: number };
   const [reviewDraft, setReviewDraft] = useState<Record<string, ReviewDraft>>({});
+  // Ubah keputusan yang sudah tersimpan (tanpa harus Batalkan lalu input ulang).
+  const [editAdjustmentId, setEditAdjustmentId] = useState('');
+  const [editAdjustmentDraft, setEditAdjustmentDraft] = useState<ReviewDraft>({ lateComp: 0, overtime: 0, live: 0 });
   // Filter tab "Perlu Review" per karyawan ('' = semua). Diisi otomatis saat
   // datang dari modal generate lewat tombol "Buka Perlu Review" / "Lihat Riwayat".
   const [reviewFilterEmpId, setReviewFilterEmpId] = useState('');
@@ -617,6 +620,45 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     }
     if (!window.confirm(`Batalkan keputusan ${adj.employee_name} (${adj.date})? Pengajuan kembali ke daftar "Perlu Diputuskan".`)) return;
     dataStore.deleteAttendanceAdjustment(adj.id);
+    loadData();
+  };
+
+  // Ubah keputusan yang sudah tersimpan. Aturannya sama seperti Batalkan: tidak
+  // boleh bila slip periode itu sudah diposting, karena angkanya sudah terlanjur masuk.
+  const openAdjustmentEdit = (adj: AttendanceAdjustment) => {
+    if (slipPostedFor(adj)) {
+      alert(`Slip gaji ${adj.employee_name} untuk periode yang memuat ${adj.date} sudah diposting. Hapus atau edit slipnya dulu sebelum mengubah keputusan ini.`);
+      return;
+    }
+    setEditAdjustmentId(adj.id);
+    setEditAdjustmentDraft({
+      lateComp: adj.late_compensation_minutes || 0,
+      overtime: adj.overtime_minutes || 0,
+      live: adj.bonus_amount || 0,
+    });
+  };
+
+  const saveAdjustmentEdit = () => {
+    const adj = adjustments.find(a => a.id === editAdjustmentId);
+    if (!adj) return;
+    const actor = JSON.parse(localStorage.getItem('nxty_session') || 'null');
+    const lateComp = Math.max(0, Math.round(editAdjustmentDraft.lateComp));
+    const overtime = Math.max(0, Math.round(editAdjustmentDraft.overtime));
+    const live = Math.max(0, Math.round(editAdjustmentDraft.live));
+    dataStore.approveAttendanceAdjustment({
+      ...adj,
+      type: overtime > 0 ? 'overtime' : live > 0 ? 'live_tiktok' : 'late_compensation',
+      status: 'approved',
+      rejection_reason: undefined,
+      late_compensation_minutes: lateComp,
+      overtime_minutes: overtime,
+      bonus_amount: live,
+      note: [lateComp > 0 && `pengganti telat ${lateComp}m`, overtime > 0 && `lembur ${overtime}m`, live > 0 && `live TikTok ${formatIDR(live)}`].filter(Boolean).join(' · ') || 'Tanpa tambahan',
+      approved_by_id: actor?.employeeId,
+      approved_by_name: actor?.name,
+      approved_at: wibNowISO(),
+    });
+    setEditAdjustmentId('');
     loadData();
   };
 
@@ -1425,6 +1467,41 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
             )}
           </div>
 
+          {/* Ubah keputusan yang sudah tersimpan */}
+          {editAdjustmentId && (() => {
+            const adj = adjustments.find(a => a.id === editAdjustmentId);
+            if (!adj) return null;
+            return (
+              <div className="bg-white border-2 border-amber-300 rounded-xl p-4 space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <h3 className="font-black text-sm text-gray-800">Ubah Keputusan</h3>
+                    <p className="text-xs text-gray-500">{adj.employee_name} · {adj.date} · pulang {adj.checkout_time}</p>
+                  </div>
+                  <button type="button" onClick={() => setEditAdjustmentId('')} className="p-1.5 rounded-lg hover:bg-gray-100 cursor-pointer" aria-label="Tutup ubah keputusan"><X className="w-4 h-4" /></button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                  <label className="flex flex-col gap-1">
+                    <span className="font-bold text-gray-600">Pengganti telat (menit)</span>
+                    <input type="number" min="0" value={editAdjustmentDraft.lateComp} onChange={e => setEditAdjustmentDraft(d => ({ ...d, lateComp: Number(e.target.value) }))} className="border border-gray-200 rounded px-2 py-1 bg-white" aria-label="Ubah pengganti telat (menit)" />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="font-bold text-gray-600">Lembur disetujui (menit)</span>
+                    <input type="number" min="0" step="30" value={editAdjustmentDraft.overtime} onChange={e => setEditAdjustmentDraft(d => ({ ...d, overtime: Number(e.target.value) }))} className="border border-gray-200 rounded px-2 py-1 bg-white" aria-label="Ubah lembur disetujui (menit)" />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="font-bold text-gray-600">Bonus Live TikTok (Rp)</span>
+                    <input type="number" min="0" step="1000" value={editAdjustmentDraft.live} onChange={e => setEditAdjustmentDraft(d => ({ ...d, live: Number(e.target.value) }))} className="border border-gray-200 rounded px-2 py-1 bg-white" aria-label="Ubah bonus live TikTok" />
+                  </label>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={saveAdjustmentEdit} className="px-3 py-2 rounded-lg bg-[var(--color-evergreen)] text-white font-bold cursor-pointer">Simpan Perubahan</button>
+                  <button type="button" onClick={() => setEditAdjustmentId('')} className="px-3 py-2 rounded-lg bg-white border border-gray-200 text-gray-700 font-bold cursor-pointer">Batal</button>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Riwayat keputusan — data pengajuan yang sudah di-ACC / ditolak */}
           <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
             <div>
@@ -1458,11 +1535,18 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                           <td className="p-2 text-gray-600 max-w-[220px] truncate">{reason}</td>
                           <td className="p-2 text-gray-500 whitespace-nowrap">{adj.approved_by_name || '-'}{adj.approved_at ? ` · ${adj.approved_at.slice(0, 10)}` : ''}</td>
                           <td className="p-2 text-right">
-                            <button type="button" onClick={() => cancelDecision(adj)} disabled={posted}
-                              title={posted ? 'Slip periode ini sudah diposting' : 'Batalkan keputusan'}
-                              className="px-2 py-1 rounded border border-gray-200 text-gray-600 font-bold hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
-                              Batalkan
-                            </button>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button type="button" onClick={() => openAdjustmentEdit(adj)} disabled={posted}
+                                title={posted ? 'Slip periode ini sudah diposting' : 'Ubah keputusan'}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded border border-gray-200 text-gray-700 font-bold hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+                                <Edit2 className="w-3 h-3" /> Ubah
+                              </button>
+                              <button type="button" onClick={() => cancelDecision(adj)} disabled={posted}
+                                title={posted ? 'Slip periode ini sudah diposting' : 'Batalkan keputusan'}
+                                className="px-2 py-1 rounded border border-gray-200 text-gray-600 font-bold hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+                                Batalkan
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );

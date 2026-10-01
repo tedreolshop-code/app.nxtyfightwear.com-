@@ -217,8 +217,10 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
   const [historyStatus, setHistoryStatus] = useState<'all' | 'normal' | 'late' | 'anomaly'>('all');
   const [historyMethod, setHistoryMethod] = useState<'all' | 'gps_self' | 'admin_qr'>('all');
   const [historyPage, setHistoryPage] = useState(1);
-  // Koreksi scan pulang yang terlewat: { 'empId|tanggal': { time, reason } }
-  const [correctionDraft, setCorrectionDraft] = useState<Record<string, { time: string; reason: string }>>({});
+  // Draft koreksi absensi: { 'empId|tanggal': { masuk, pulang, reason } }
+  const [correctionDraft, setCorrectionDraft] = useState<Record<string, { masuk: string; pulang: string; reason: string }>>({});
+  // Alasan saat membatalkan koreksi yang salah input, per id absensi
+  const [cancelCorrectionDraft, setCancelCorrectionDraft] = useState<Record<string, string>>({});
 
   // Selected Employee & Scan Details
   const [selectedEmpId, setSelectedEmpId] = useState('');
@@ -689,14 +691,19 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
   const notCheckedOutToday = employees.filter(employee => todayCheckInIds.has(employee.id) && !todayCheckOutIds.has(employee.id));
   const assistedPeriodLogs = periodLogs.filter(log => (log.verification_method || 'gps_self') === 'admin_qr');
   const latePeriodLogs = periodLogs.filter(log => (log.late_minutes || 0) > 0);
-  // Hari dengan scan MASUK tapi tanpa scan PULANG, 30 hari terakhir sampai kemarin
+  // Koreksi hanya boleh 7 hari terakhir (lihat dataStore.assertTanggalKoreksi).
+  const KOREKSI_HARI = 7;
+  const sejakKoreksi = new Date(new Date(`${todayWib}T00:00:00Z`).getTime() - KOREKSI_HARI * 86400000)
+    .toISOString().slice(0, 10);
+  const workSettingsNow = dataStore.getWorkSettings();
+
+  // Hari dengan scan MASUK tapi tanpa scan PULANG, 7 hari terakhir sampai kemarin
   // (hari ini belum selesai, jadi belum dianggap terlewat).
   const missingCheckouts = (() => {
-    const sejak = new Date(new Date(`${todayWib}T00:00:00+07:00`).getTime() - 30 * 86400000).toISOString().slice(0, 10);
     const perHari = new Map<string, { employee_id: string; employee_name: string; date: string; masuk: string; pulang: boolean }>();
     attendanceLogs.forEach(log => {
       const date = log.timestamp.slice(0, 10);
-      if (date < sejak || date >= todayWib) return;
+      if (date < sejakKoreksi || date >= todayWib) return;
       const key = `${log.employee_id}|${date}`;
       const row = perHari.get(key) || { employee_id: log.employee_id, employee_name: log.employee_name, date, masuk: '', pulang: false };
       if (log.type_scan === 'masuk') row.masuk = log.timestamp.slice(11, 16);
@@ -707,6 +714,43 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
       .filter(row => row.masuk && !row.pulang)
       .sort((a, b) => b.date.localeCompare(a.date) || a.employee_name.localeCompare(b.employee_name));
   })();
+
+  // Hari kerja TANPA scan masuk pada 7 hari terakhir — termasuk hari yang gagal
+  // total (masuk & pulang dua-duanya tidak tercatat). Inilah "error masuk absensi"
+  // yang sebelumnya tidak punya jalan koreksi sama sekali.
+  const missingCheckins = (() => {
+    const adaLog = new Set(attendanceLogs.map(l => `${l.employee_id}|${l.timestamp.slice(0, 10)}`));
+    const adaMasuk = new Set(
+      attendanceLogs.filter(l => l.type_scan === 'masuk').map(l => `${l.employee_id}|${l.timestamp.slice(0, 10)}`)
+    );
+    const rows: Array<{ employee_id: string; employee_name: string; date: string; kosong: boolean }> = [];
+    for (let i = KOREKSI_HARI; i >= 1; i--) {
+      const date = new Date(new Date(`${todayWib}T00:00:00Z`).getTime() - i * 86400000).toISOString().slice(0, 10);
+      if (date < sejakKoreksi) continue;
+      if (new Date(`${date}T00:00:00Z`).getUTCDay() === 0) continue; // Minggu libur
+      if (workSettingsNow.attendance_effective_from && date < workSettingsNow.attendance_effective_from) continue;
+      for (const emp of employees) {
+        if (emp.join_date && date < emp.join_date) continue;
+        if (adaMasuk.has(`${emp.id}|${date}`)) continue;
+        rows.push({ employee_id: emp.id, employee_name: emp.name, date, kosong: !adaLog.has(`${emp.id}|${date}`) });
+      }
+    }
+    // Hari tanpa catatan sama sekali (gagal total) ditaruh paling atas.
+    return rows.sort((a, b) =>
+      Number(b.kosong) - Number(a.kosong)
+      || b.date.localeCompare(a.date)
+      || a.employee_name.localeCompare(b.employee_name));
+  })();
+
+  // Koreksi admin yang sudah tercatat pada 7 hari terakhir — bisa dibatalkan bila salah input.
+  const adminCorrections = attendanceLogs
+    .filter(l => l.device_token === 'koreksi-admin' && l.timestamp.slice(0, 10) >= sejakKoreksi)
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+
+  // Slip gaji menyimpan jumlah hari sebagai snapshot, jadi koreksi setelah slip
+  // periode itu dibuat TIDAK mengubah angkanya sendiri.
+  const slipSudahDibuat = (date: string) =>
+    dataStore.getPayrollWeekly().some(p => date >= p.period_start && date <= p.period_end);
 
   // Jejak scan gagal, 7 hari terakhir — sumber jawaban saat ada keluhan "tidak bisa absen"
   const recentFailures = (() => {
@@ -720,16 +764,41 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
     return acc;
   }, {});
 
-  const submitCorrection = (row: { employee_id: string; employee_name: string; date: string }) => {
+  const submitCorrection = (row: { employee_id: string; employee_name: string; date: string }, jenis: 'masuk' | 'pulang') => {
     const key = `${row.employee_id}|${row.date}`;
-    const draft = correctionDraft[key] || { time: '', reason: '' };
+    const draft = correctionDraft[key] || { masuk: '', pulang: '', reason: '' };
     try {
-      dataStore.recordMissingCheckout(row.employee_id, row.date, draft.time, draft.reason);
+      if (jenis === 'masuk') {
+        dataStore.recordMissingCheckin(row.employee_id, row.date, draft.masuk, draft.reason);
+        // Sekalian catatkan pulang bila admin mengisinya (hari yang gagal total).
+        if (draft.pulang) dataStore.recordMissingCheckout(row.employee_id, row.date, draft.pulang, draft.reason);
+      } else {
+        dataStore.recordMissingCheckout(row.employee_id, row.date, draft.pulang, draft.reason);
+      }
       setCorrectionDraft(prev => { const next = { ...prev }; delete next[key]; return next; });
       loadData();
-      setStatusMessage({ text: `Scan pulang ${row.employee_name} ${row.date} berhasil dikoreksi.`, error: false });
+      setStatusMessage({ text: `Koreksi ${jenis} ${row.employee_name} ${row.date} berhasil disimpan.`, error: false });
     } catch (err) {
       setStatusMessage({ text: err instanceof Error ? err.message : 'Koreksi gagal.', error: true });
+    }
+  };
+
+  // Batalkan koreksi yang salah input. Hanya baris hasil koreksi admin yang bisa
+  // dibatalkan (scan asli karyawan tidak tersentuh).
+  const cancelCorrection = (log: Attendance) => {
+    const alasan = (cancelCorrectionDraft[log.id] || '').trim();
+    if (!alasan) {
+      setStatusMessage({ text: 'Isi alasan sebelum membatalkan koreksi.', error: true });
+      return;
+    }
+    if (!window.confirm(`Batalkan koreksi ${log.employee_name} ${log.timestamp.slice(0, 10)} (${log.type_scan})?`)) return;
+    try {
+      dataStore.deleteAttendanceCorrection(log.id, alasan);
+      setCancelCorrectionDraft(prev => { const next = { ...prev }; delete next[log.id]; return next; });
+      loadData();
+      setStatusMessage({ text: 'Koreksi dibatalkan.', error: false });
+    } catch (err) {
+      setStatusMessage({ text: err instanceof Error ? err.message : 'Gagal membatalkan koreksi.', error: true });
     }
   };
   const pendingAttendanceSync = (() => {
@@ -1521,28 +1590,108 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
 
           {adminAttendanceTab === 'correction' && (
             <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4 shadow-xs text-left">
-              <div><h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider">Scan Pulang Terlewat</h3><p className="text-[10px] text-gray-400">Hari yang ada scan masuk tapi tidak ada scan pulang (30 hari terakhir). Tanpa scan pulang, hari itu dihitung 0 hari — gaji dan bonus kehadirannya ikut hilang.</p></div>
-              <div className="space-y-2">{missingCheckouts.length === 0 ? <p className="p-10 text-center text-xs text-gray-400 bg-gray-50 border border-dashed rounded-xl">Tidak ada scan pulang yang terlewat. Bagus.</p> : missingCheckouts.map(row => {
-                const key = `${row.employee_id}|${row.date}`;
-                const draft = correctionDraft[key] || { time: '', reason: '' };
-                const ubah = (patch: Partial<{ time: string; reason: string }>) => setCorrectionDraft(prev => ({ ...prev, [key]: { ...draft, ...patch } }));
-                return (
-                  <div key={key} className="rounded-xl border border-rose-100 bg-rose-50/60 p-3 text-xs space-y-2">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              {/* Umpan balik koreksi. statusMessage dirender juga di panel scanner,
+                  tapi admin mengerjakan koreksi di sini — tanpa ini hasil koreksi
+                  (berhasil / ditolak) tidak terlihat sama sekali. */}
+              {statusMessage && (
+                <div role="status" className={`rounded-lg p-3 text-xs font-bold border ${statusMessage.error ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-emerald-50 border-emerald-200 text-emerald-800'}`}>
+                  {statusMessage.text}
+                </div>
+              )}
+              <div><h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider">Koreksi Absensi (7 Hari Terakhir)</h3><p className="text-[10px] text-gray-400">Untuk scan yang gagal atau lupa. Tanpa koreksi, hari itu dihitung 0 hari — upah harian dan bonus kehadirannya ikut hilang. Setiap koreksi wajib beralasan, ditandai "dikoreksi admin", dan tercatat di audit log.</p></div>
+
+              {/* A. Belum ada scan MASUK — termasuk hari yang gagal total */}
+              <div className="space-y-2">
+                <p className="text-[10px] font-black uppercase tracking-wider text-rose-600">Belum Ada Scan Masuk{missingCheckins.length > 0 ? ` (${missingCheckins.length})` : ''}</p>
+                {/* Daftar panjang hampir selalu berarti data absensi belum tersinkron,
+                    bukan puluhan karyawan yang gagal scan sekaligus. */}
+                {missingCheckins.length > 15 && (
+                  <p className="text-[10px] text-amber-800 bg-amber-50 border border-amber-100 rounded-lg p-2 font-bold">
+                    Daftarnya panjang. Periksa dulu status sinkronisasi cloud di kanan atas (dan minta karyawan menyegarkan halaman) sebelum mengoreksi — bisa jadi catatannya hanya belum masuk ke perangkat ini.
+                  </p>
+                )}
+                {missingCheckins.length === 0 ? (
+                  <p className="p-6 text-center text-xs text-gray-400 bg-gray-50 border border-dashed rounded-xl">Semua hari kerja sudah punya scan masuk. Bagus.</p>
+                ) : missingCheckins.slice(0, 40).map(row => {
+                  const key = `${row.employee_id}|${row.date}`;
+                  const draft = correctionDraft[key] || { masuk: workSettingsNow.start_time, pulang: '', reason: '' };
+                  const ubah = (patch: Partial<{ masuk: string; pulang: string; reason: string }>) => setCorrectionDraft(prev => ({ ...prev, [key]: { ...draft, ...patch } }));
+                  return (
+                    <div key={key} role="group" aria-label={`Koreksi masuk ${row.employee_name} ${row.date}`} className="rounded-xl border border-rose-100 bg-rose-50/60 p-3 text-xs space-y-2">
                       <div>
                         <p className="font-black text-gray-900">{row.employee_name}</p>
-                        <p className="text-gray-500">{row.date} · masuk {row.masuk} · <b className="text-rose-600">tanpa scan pulang</b></p>
+                        <p className="text-gray-500">{row.date} · <b className="text-rose-600">tanpa scan masuk</b>{row.kosong && ' · juga tanpa catatan pulang'}</p>
                       </div>
-                      <span className="rounded-full bg-white border border-rose-200 px-2 py-1 text-[10px] font-black text-rose-700">0 hari</span>
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <label className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-bold text-gray-500">Masuk</span>
+                          <input type="time" value={draft.masuk} onChange={e => ubah({ masuk: e.target.value })} className="border rounded-lg p-2 bg-white" aria-label="Jam masuk sebenarnya" />
+                        </label>
+                        <label className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-bold text-gray-500">Pulang (opsional)</span>
+                          <input type="time" value={draft.pulang} onChange={e => ubah({ pulang: e.target.value })} className="border rounded-lg p-2 bg-white" aria-label="Jam pulang koreksi" />
+                        </label>
+                        <input type="text" value={draft.reason} onChange={e => ubah({ reason: e.target.value })} placeholder="Alasan koreksi (wajib)" className="flex-1 border rounded-lg p-2 bg-white" aria-label="Alasan koreksi masuk" />
+                        <button onClick={() => submitCorrection(row, 'masuk')} disabled={!draft.masuk || !draft.reason.trim()} className="rounded-lg bg-[var(--color-evergreen)] text-white font-bold px-4 py-2 disabled:opacity-40">Catat Masuk</button>
+                      </div>
+                      {slipSudahDibuat(row.date) && (
+                        <p className="text-[10px] text-amber-800 bg-amber-50 border border-amber-100 rounded-lg p-2">Slip gaji periode ini sudah dibuat. Setelah koreksi, buka slipnya dan sesuaikan jumlah harinya.</p>
+                      )}
                     </div>
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <input type="time" value={draft.time} onChange={e => ubah({ time: e.target.value })} className="border rounded-lg p-2 bg-white" aria-label="Jam pulang sebenarnya" />
-                      <input type="text" value={draft.reason} onChange={e => ubah({ reason: e.target.value })} placeholder="Alasan koreksi (wajib)" className="flex-1 border rounded-lg p-2 bg-white" />
-                      <button onClick={() => submitCorrection(row)} disabled={!draft.time || !draft.reason.trim()} className="rounded-lg bg-[var(--color-evergreen)] text-white font-bold px-4 py-2 disabled:opacity-40">Catat Pulang</button>
+                  );
+                })}
+              </div>
+
+              {/* B. Ada masuk, belum ada pulang */}
+              <div className="space-y-2 pt-2 border-t border-gray-100">
+                <p className="text-[10px] font-black uppercase tracking-wider text-gray-600">Scan Pulang Terlewat</p>
+                {missingCheckouts.length === 0 ? <p className="p-6 text-center text-xs text-gray-400 bg-gray-50 border border-dashed rounded-xl">Tidak ada scan pulang yang terlewat. Bagus.</p> : missingCheckouts.map(row => {
+                  const key = `${row.employee_id}|${row.date}`;
+                  const draft = correctionDraft[key] || { masuk: '', pulang: workSettingsNow.end_time, reason: '' };
+                  const ubah = (patch: Partial<{ masuk: string; pulang: string; reason: string }>) => setCorrectionDraft(prev => ({ ...prev, [key]: { ...draft, ...patch } }));
+                  return (
+                    <div key={key} role="group" aria-label={`Koreksi pulang ${row.employee_name} ${row.date}`} className="rounded-xl border border-rose-100 bg-rose-50/60 p-3 text-xs space-y-2">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                        <div>
+                          <p className="font-black text-gray-900">{row.employee_name}</p>
+                          <p className="text-gray-500">{row.date} · masuk {row.masuk} · <b className="text-rose-600">tanpa scan pulang</b></p>
+                        </div>
+                        <span className="rounded-full bg-white border border-rose-200 px-2 py-1 text-[10px] font-black text-rose-700">0 hari</span>
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input type="time" value={draft.pulang} onChange={e => ubah({ pulang: e.target.value })} className="border rounded-lg p-2 bg-white" aria-label="Jam pulang sebenarnya" />
+                        <input type="text" value={draft.reason} onChange={e => ubah({ reason: e.target.value })} placeholder="Alasan koreksi (wajib)" className="flex-1 border rounded-lg p-2 bg-white" aria-label="Alasan koreksi pulang" />
+                        <button onClick={() => submitCorrection(row, 'pulang')} disabled={!draft.pulang || !draft.reason.trim()} className="rounded-lg bg-[var(--color-evergreen)] text-white font-bold px-4 py-2 disabled:opacity-40">Catat Pulang</button>
+                      </div>
+                      {slipSudahDibuat(row.date) && (
+                        <p className="text-[10px] text-amber-800 bg-amber-50 border border-amber-100 rounded-lg p-2">Slip gaji periode ini sudah dibuat. Setelah koreksi, buka slipnya dan sesuaikan jumlah harinya.</p>
+                      )}
                     </div>
-                  </div>
-                );
-              })}</div>
+                  );
+                })}
+              </div>
+
+              {/* C. Koreksi yang sudah tercatat — bisa dibatalkan bila salah input */}
+              {adminCorrections.length > 0 && (
+                <div className="space-y-2 pt-2 border-t border-gray-100">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-gray-600">Koreksi Tercatat</p>
+                  {adminCorrections.map(log => (
+                    <div key={log.id} className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 text-xs space-y-2">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                        <div>
+                          <p className="font-black text-gray-900">{log.employee_name} <span className="font-normal text-gray-500">· {log.type_scan}</span></p>
+                          <p className="text-gray-500">{log.timestamp.slice(0, 10)} {log.timestamp.slice(11, 16)} · oleh {log.assisted_by_name || 'admin'}</p>
+                        </div>
+                        <span className="rounded-full bg-white border border-slate-200 px-2 py-0.5 text-[10px] font-black text-slate-600">Dikoreksi admin</span>
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input type="text" value={cancelCorrectionDraft[log.id] || ''} onChange={e => setCancelCorrectionDraft(prev => ({ ...prev, [log.id]: e.target.value }))} placeholder="Alasan pembatalan (wajib)" className="flex-1 border rounded-lg p-2 bg-white" aria-label={`Alasan pembatalan koreksi ${log.employee_name}`} />
+                        <button onClick={() => cancelCorrection(log)} disabled={!(cancelCorrectionDraft[log.id] || '').trim()} className="rounded-lg bg-white border border-rose-200 text-rose-700 font-bold px-4 py-2 disabled:opacity-40">Batalkan Koreksi</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               <div className="pt-2 border-t border-gray-100"><h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider">Scan Gagal (7 Hari Terakhir)</h3><p className="text-[10px] text-gray-400">Tiap percobaan absen yang ditolak beserta sebabnya. Kosong = tidak ada yang gagal mencoba di perangkat ini.</p></div>
               {recentFailures.length > 0 && (

@@ -33,7 +33,7 @@ import {
   ,AttendanceAdjustment
   ,CashAdvanceTransaction
   ,AttendanceBonusPayout, isEligibleForAttendanceBonus, PaymentEntry, purchaseRemaining, orderRemaining, clockMinutes, checkoutMetrics, AttendanceFailure } from './types';
-import { pushKeyToCloud, pushAttendanceToCloud } from './cloudSync';
+import { pushKeyToCloud, pushAttendanceToCloud, deleteAttendanceRowsInCloud } from './cloudSync';
 
 // Helper to generate UUIDs
 const uuid = () => Math.random().toString(36).substring(2, 11);
@@ -373,6 +373,9 @@ class DataStore {
   // Versi lengkapnya tetap tersimpan di cloud (ari_store).
   private static readonly AUDIT_MAX_ENTRIES = 1500;
   private static readonly RECYCLE_MAX_ENTRIES = 300;
+  // Batas mundur koreksi absensi: cukup untuk kasus nyata (lupa/salah kemarin),
+  // tapi mempersempit celah mengarang riwayat lama.
+  private static readonly KOREKSI_MAX_HARI = 7;
 
   getCurrentActor = (): { id?: string; name: string; role: UserRole | 'system' } => this.currentActor();
 
@@ -756,6 +759,39 @@ class DataStore {
       p.id === payoutId ? { ...p, payment_status: status, paid_at: status === 'paid' ? wibNowISO() : undefined } : p
     );
     this.setAttendanceBonusPayouts(payouts);
+  };
+
+  /**
+   * Koreksi manual satu slip bonus yang sudah terbit. Wajib beralasan dan
+   * meninggalkan jejak siapa/kapan, supaya perubahan nominal bisa ditelusuri.
+   *
+   * Slip yang sudah LUNAS tetap boleh dikoreksi (kebijakan pemilik) — UI yang
+   * menampilkan peringatan tegas sebelum menyimpan.
+   */
+  updateBonusPayout = (id: string, patch: Partial<AttendanceBonusPayout>, reason: string): void => {
+    const trimmed = reason.trim();
+    if (!trimmed) throw new Error('Alasan koreksi slip bonus wajib diisi.');
+
+    const payouts = this.getAttendanceBonusPayouts();
+    const target = payouts.find(p => p.id === id);
+    if (!target) throw new Error('Slip bonus tidak ditemukan.');
+
+    const actor = this.getCurrentActor();
+    const updated: AttendanceBonusPayout = {
+      ...target,
+      ...patch,
+      // Nilai asli disimpan sekali saja, supaya jejak tidak ikut tertimpa saat diedit lagi.
+      original_amount: target.original_amount ?? target.amount,
+      original_qualified_days: target.original_qualified_days ?? target.qualified_days,
+      edited_at: wibNowISO(),
+      edited_by: actor.name,
+      edit_reason: trimmed,
+    };
+
+    this.setAttendanceBonusPayouts(payouts.map(p => (p.id === id ? updated : p)));
+    this.logAudit('update', 'attendance_bonus',
+      `Mengoreksi slip bonus ${target.employee_name} ${target.month}: Rp ${Math.round(target.amount).toLocaleString('id-ID')} → Rp ${Math.round(updated.amount).toLocaleString('id-ID')} — ${trimmed}`,
+      id);
   };
 
   /**
@@ -1976,6 +2012,74 @@ class DataStore {
   };
 
   /**
+   * Tolak tanggal koreksi yang belum terjadi atau sudah lewat batas mundur.
+   * Dipakai bersama oleh koreksi scan masuk dan scan pulang.
+   */
+  private assertTanggalKoreksi = (date: string): void => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Koreksi ditolak: tanggal tidak valid.');
+    const today = wibTodayStr();
+    if (date > today) throw new Error('Koreksi ditolak: tanggal belum terjadi.');
+    const batas = new Date(new Date(`${today}T00:00:00Z`).getTime() - DataStore.KOREKSI_MAX_HARI * 86400000)
+      .toISOString().slice(0, 10);
+    if (date < batas) {
+      throw new Error(`Koreksi ditolak: hanya ${DataStore.KOREKSI_MAX_HARI} hari terakhir yang bisa dikoreksi (batas ${batas}).`);
+    }
+  };
+
+  /**
+   * Koreksi admin: catatkan scan MASUK yang gagal/tidak pernah tercatat (mis.
+   * karyawan gagal scan saat datang). Tanpa GPS — dipertanggungjawabkan lewat
+   * alasan wajib + audit log. Tanpa ini hari itu dihitung tidak hadir sehingga
+   * upah harian dan bonus kehadirannya ikut hilang.
+   */
+  recordMissingCheckin = (employeeId: string, date: string, time: string, reason: string): Attendance => {
+    const trimmedReason = reason.trim();
+    if (!trimmedReason) throw new Error('Koreksi ditolak: alasan wajib diisi.');
+    if (!/^\d{2}:\d{2}$/.test(time)) throw new Error('Koreksi ditolak: jam masuk tidak valid.');
+
+    const settings = this.getWorkSettings();
+    const emp = this.getEmployees().find(e => e.id === employeeId);
+    if (!emp) throw new Error('Karyawan tidak ditemukan.');
+    this.assertTanggalKoreksi(date);
+
+    const logs = this.getAttendance();
+    const dayLogs = logs.filter(l => l.employee_id === employeeId && l.timestamp.slice(0, 10) === date);
+    if (dayLogs.some(l => l.type_scan === 'masuk')) {
+      throw new Error(`Koreksi ditolak: scan MASUK ${date} sudah ada.`);
+    }
+
+    const actor = this.getCurrentActor();
+    const record: Attendance = {
+      id: `att-${employeeId}-${date}-masuk`,
+      employee_id: employeeId,
+      employee_name: emp.name,
+      timestamp: `${date}T${time}:00+07:00`,
+      type_scan: 'masuk',
+      // Koreksi manual tidak punya titik GPS; nol = penanda, bukan lokasi nyata.
+      latitude: 0,
+      longitude: 0,
+      distance_meters: 0,
+      selfie_url: '',
+      device_token: 'koreksi-admin',
+      is_mock_location_flag: false,
+      status: 'normal',
+      verification_method: 'admin_qr',
+      assisted_by_id: actor.id,
+      assisted_by_name: actor.name,
+      assistance_reason: trimmedReason,
+      // Telat dihitung dari setelan jam masuk supaya bonus & rekap ikut konsisten.
+      late_minutes: Math.max(0, clockMinutes(time) - clockMinutes(settings.start_time)),
+      note: `Koreksi admin: scan masuk dicatat manual. Alasan: ${trimmedReason}`,
+    };
+
+    logs.unshift(record);
+    this.setAttendance(logs);
+    pushAttendanceToCloud(record);
+    this.logAudit('create', 'attendance', `Koreksi scan masuk ${emp.name} ${date} jam ${time} — ${trimmedReason}`);
+    return record;
+  };
+
+  /**
    * Koreksi admin: catatkan scan PULANG yang tidak pernah dilakukan karyawan
    * (mis. lupa scan saat pulang Sabtu). Tanpa GPS — dipertanggungjawabkan lewat
    * alasan wajib + audit log, dan hanya untuk hari yang scan masuknya sudah ada.
@@ -1984,7 +2088,7 @@ class DataStore {
     const trimmedReason = reason.trim();
     if (!trimmedReason) throw new Error('Koreksi ditolak: alasan wajib diisi.');
     if (!/^\d{2}:\d{2}$/.test(time)) throw new Error('Koreksi ditolak: jam pulang tidak valid.');
-    if (date > wibTodayStr()) throw new Error('Koreksi ditolak: tanggal belum terjadi.');
+    this.assertTanggalKoreksi(date);
 
     const emp = this.getEmployees().find(e => e.id === employeeId);
     if (!emp) throw new Error('Karyawan tidak ditemukan.');
@@ -2025,6 +2129,28 @@ class DataStore {
     pushAttendanceToCloud(record);
     this.logAudit('update', 'attendance', `Koreksi scan pulang ${emp.name} ${date} jam ${time} — ${trimmedReason}`);
     return record;
+  };
+
+  /**
+   * Batalkan koreksi absensi yang salah input. Sengaja hanya menerima baris hasil
+   * koreksi admin — scan asli karyawan (gps_self) tidak bisa dihapus dari sini.
+   */
+  deleteAttendanceCorrection = (attendanceId: string, reason: string): void => {
+    const trimmedReason = reason.trim();
+    if (!trimmedReason) throw new Error('Batalkan koreksi ditolak: alasan wajib diisi.');
+
+    const logs = this.getAttendance();
+    const target = logs.find(l => l.id === attendanceId);
+    if (!target) throw new Error('Catatan absensi tidak ditemukan.');
+    if ((target.verification_method || 'gps_self') !== 'admin_qr') {
+      throw new Error('Hanya catatan hasil koreksi admin yang bisa dibatalkan di sini.');
+    }
+
+    this.setAttendance(logs.filter(l => l.id !== attendanceId));
+    // Absensi tidak lewat jalur pushKeyToCloud, jadi penghapusan di cloud harus
+    // lewat RPC ber-token; tanpa itu baris ini kembali saat sinkron berikutnya.
+    deleteAttendanceRowsInCloud([attendanceId]);
+    this.logAudit('delete', 'attendance', `Membatalkan koreksi absensi ${target.employee_name} ${target.timestamp.slice(0, 10)} (${target.type_scan}) — ${trimmedReason}`);
   };
 
   recordAttendance = (att: Omit<Attendance, 'id' | 'employee_name' | 'status' | 'is_mock_location_flag' | 'distance_meters'>): Attendance => {

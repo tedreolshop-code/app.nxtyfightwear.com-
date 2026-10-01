@@ -7,7 +7,7 @@ import { A4PreviewSheet } from './A4PreviewSheet';
 import { renderBonusSlipLayout } from '../bonusSlip';
 import { DivisionFilter } from './DivisionFilter';
 import { AttendanceCalendar } from './AttendanceCalendar';
-import { Award, CalendarCheck2, CheckCircle2, XCircle, Gift, History, AlertTriangle, FileSpreadsheet, Printer, ChevronDown, Trash2 } from 'lucide-react';
+import { Award, CalendarCheck2, CheckCircle2, XCircle, Gift, History, AlertTriangle, FileSpreadsheet, Printer, ChevronDown, Trash2, Edit2, X } from 'lucide-react';
 
 /** Tanggal hari ini dalam bahasa Indonesia, mis. "27 Juli 2026". */
 const todayLabel = () => new Date(`${wibTodayStr()}T00:00:00`).toLocaleDateString('id-ID', {
@@ -414,6 +414,47 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
     setDeletePayoutId('');
     load();
   };
+
+  // Koreksi manual slip bonus yang sudah terbit. Slip yang sudah LUNAS tetap boleh
+  // dikoreksi (kebijakan pemilik), tapi wajib lewat peringatan + alasan.
+  const [editPayout, setEditPayout] = useState<AttendanceBonusPayout | null>(null);
+  const [editDraft, setEditDraft] = useState<{ days: number; rate: number; amount: number; status: 'cair' | 'gugur'; note: string; reason: string }>(
+    { days: 0, rate: 0, amount: 0, status: 'cair', note: '', reason: '' });
+
+  const openPayoutEdit = (p: AttendanceBonusPayout) => {
+    const { days, rate } = bonusHariLayakTarif(p, employeeById.get(p.employee_id), 0);
+    setEditDraft({ days, rate, amount: p.amount, status: p.status, note: p.reason || '', reason: '' });
+    setEditPayout(p);
+  };
+
+  const savePayoutEdit = () => {
+    if (!editPayout) return;
+    const alasan = editDraft.reason.trim();
+    if (!alasan) return alert('Alasan koreksi wajib diisi.');
+    if (editPayout.payment_status === 'paid') {
+      const lanjut = window.confirm(
+        `PERHATIAN: slip bonus ${editPayout.employee_name} (${monthLabel(editPayout.month)}) sudah ditandai LUNAS.\n\n` +
+        `Nominalnya akan berubah dari ${formatIDR(editPayout.amount)} menjadi ${formatIDR(editDraft.amount)}.\n` +
+        `Pastikan pembayaran yang sudah dilakukan ikut disesuaikan. Lanjutkan?`
+      );
+      if (!lanjut) return;
+    }
+    try {
+      dataStore.updateBonusPayout(editPayout.id, {
+        qualified_days: Math.max(0, Math.round(editDraft.days)),
+        daily_rate: Math.max(0, Math.round(editDraft.rate)),
+        amount: Math.max(0, Math.round(editDraft.amount)),
+        status: editDraft.status,
+        reason: editDraft.note.trim() || undefined,
+      }, alasan);
+      setEditPayout(null);
+      load();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Gagal menyimpan koreksi slip bonus.');
+    }
+  };
+
+  const acuanBonus = editPayout ? dataStore.evaluateAttendanceBonus(editPayout.employee_id, editPayout.month) : null;
 
   const employeeDept = useMemo(() => new Map(employees.map(e => [e.id, e.department_id])), [employees]);
   // Semua karyawan (bukan cuma aktif) — slip lama milik karyawan nonaktif tetap
@@ -960,6 +1001,12 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
                                 {p.payment_status === 'paid' ? 'Batalkan Lunas' : 'Tandai Lunas'}
                               </button>
                             )}
+                            <button type="button" onClick={() => openPayoutEdit(p)}
+                              className="inline-flex items-center gap-1.5 bg-white border border-emerald-800/20 hover:bg-emerald-50 text-emerald-800 px-2 py-1.5 rounded-lg text-[10px] font-bold transition-colors cursor-pointer"
+                              title="Ubah angka slip bonus">
+                              <Edit2 className="w-3.5 h-3.5" />
+                              <span>Ubah</span>
+                            </button>
                             <button type="button" onClick={() => setDeletePayoutId(p.id)}
                               className="inline-flex items-center justify-center p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors cursor-pointer"
                               title="Hapus Slip Bonus">
@@ -1033,6 +1080,96 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
           <div className="bg-slate-50 p-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between text-[11px] text-slate-500 gap-2">
             <span>● Slip dicetak pada kertas A4 biasa atau disimpan sebagai PDF.</span>
             <span className="font-semibold text-slate-700">Pilih &quot;Save as PDF&quot; di dialog cetak bila ingin disimpan.</span>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Ubah slip bonus (koreksi manual) */}
+    {editPayout && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 no-print animate-fade-in"
+        onClick={() => setEditPayout(null)}
+      >
+        <div
+          className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-gray-200 space-y-4 max-h-[90vh] overflow-y-auto"
+          onClick={e => e.stopPropagation()}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <h4 className="font-bold text-base text-gray-800">Ubah Slip Bonus</h4>
+              <p className="text-xs text-gray-500">{editPayout.employee_name} · {monthLabel(editPayout.month)}</p>
+            </div>
+            <button type="button" onClick={() => setEditPayout(null)} className="p-1.5 rounded-lg hover:bg-gray-100 cursor-pointer" aria-label="Tutup ubah slip bonus"><X className="w-4 h-4" /></button>
+          </div>
+
+          {editPayout.payment_status === 'paid' && (
+            <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-3 font-bold">
+              Slip ini sudah ditandai LUNAS. Mengubah nominal berarti pembayaran yang sudah dilakukan perlu ikut disesuaikan.
+            </p>
+          )}
+
+          {editPayout.edited_at && (
+            <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-100 rounded-lg p-2">
+              Pernah dikoreksi {editPayout.edited_at.slice(0, 10)} oleh {editPayout.edited_by || 'admin'} — nilai asli {formatIDR(editPayout.original_amount ?? editPayout.amount)}
+              {editPayout.edit_reason ? ` · ${editPayout.edit_reason}` : ''}
+            </p>
+          )}
+
+          {acuanBonus && (
+            <p className="text-[11px] text-gray-500">
+              Hitungan absensi sekarang: <b>{acuanBonus.qualifiedDays} hari layak</b> × {formatIDR(acuanBonus.dailyRate)} = <b>{formatIDR(acuanBonus.amount)}</b>
+            </p>
+          )}
+
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <label className="flex flex-col gap-1">
+              <span className="font-bold text-gray-600">Hari layak</span>
+              <input type="number" min="0" value={editDraft.days}
+                onChange={e => { const days = Number(e.target.value); setEditDraft(d => ({ ...d, days, amount: Math.max(0, Math.round(days * d.rate)) })); }}
+                className="border border-gray-200 rounded px-2 py-1 bg-white" aria-label="Hari layak slip bonus" />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="font-bold text-gray-600">Tarif per hari (Rp)</span>
+              <input type="number" min="0" step="1000" value={editDraft.rate}
+                onChange={e => { const rate = Number(e.target.value); setEditDraft(d => ({ ...d, rate, amount: Math.max(0, Math.round(d.days * rate)) })); }}
+                className="border border-gray-200 rounded px-2 py-1 bg-white" aria-label="Tarif harian slip bonus" />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="font-bold text-gray-600">Nominal (Rp)</span>
+              <input type="number" min="0" step="1000" value={editDraft.amount}
+                onChange={e => setEditDraft(d => ({ ...d, amount: Number(e.target.value) }))}
+                className="border border-gray-200 rounded px-2 py-1 bg-white" aria-label="Nominal slip bonus" />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="font-bold text-gray-600">Status</span>
+              <select value={editDraft.status} onChange={e => setEditDraft(d => ({ ...d, status: e.target.value as 'cair' | 'gugur' }))}
+                className="border border-gray-200 rounded px-2 py-1 bg-white" aria-label="Status slip bonus">
+                <option value="cair">Cair</option>
+                <option value="gugur">Gugur</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 col-span-2">
+              <span className="font-bold text-gray-600">Keterangan slip (opsional)</span>
+              <input type="text" value={editDraft.note} onChange={e => setEditDraft(d => ({ ...d, note: e.target.value }))}
+                className="border border-gray-200 rounded px-2 py-1 bg-white" aria-label="Keterangan slip bonus" />
+            </label>
+            <label className="flex flex-col gap-1 col-span-2">
+              <span className="font-bold text-rose-700">Alasan koreksi (wajib)</span>
+              <input type="text" value={editDraft.reason} onChange={e => setEditDraft(d => ({ ...d, reason: e.target.value }))}
+                className="border border-rose-200 rounded px-2 py-1 bg-white" aria-label="Alasan koreksi slip bonus" />
+            </label>
+          </div>
+
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setEditPayout(null)}
+              className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-xs font-bold hover:bg-gray-50 transition-colors cursor-pointer">
+              Batal
+            </button>
+            <button type="button" onClick={savePayoutEdit} disabled={!editDraft.reason.trim()}
+              className="flex-1 px-4 py-2.5 rounded-xl bg-emerald-700 text-white text-xs font-bold hover:bg-emerald-800 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
+              Simpan Koreksi
+            </button>
           </div>
         </div>
       </div>

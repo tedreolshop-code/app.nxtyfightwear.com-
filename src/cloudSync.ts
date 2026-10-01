@@ -378,6 +378,26 @@ const upsertAttendanceRow = async (record: AttendanceRecordLike): Promise<boolea
   }
 };
 
+/**
+ * Hapus baris absensi di cloud lewat RPC ber-token. Dipakai saat membatalkan
+ * koreksi admin. Perlu ini karena penghapusan absensi tidak ikut jalur
+ * pushKeyToCloud (absensi dilewati di sana) — tanpa RPC, baris yang dihapus di
+ * perangkat akan kembali saat sinkron berikutnya.
+ */
+export const deleteAttendanceRowsInCloud = (ids: string[]): void => {
+  if (!client || ids.length === 0) return;
+  void client.rpc('ari_delete_rows', {
+    p_table: ATT_TABLE,
+    p_ids: ids,
+    p_token: getCloudToken() ?? '',
+  }).then(({ error }) => {
+    if (error) {
+      console.error('[cloudSync] Gagal menghapus absensi di cloud:', error);
+      notifyBlocked(`Pembatalan koreksi absensi gagal di cloud: ${error.message}`);
+    }
+  });
+};
+
 /** Kirim ulang scan absensi yang tertunda (mis. saat sinyal hilang). */
 const flushPendingAttendance = async (): Promise<void> => {
   const pending = readPendingAttendance();

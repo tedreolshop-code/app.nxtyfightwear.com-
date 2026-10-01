@@ -243,6 +243,13 @@ export interface AttendanceBonusPayout {
   issued_by?: string;
   payment_status: 'paid' | 'unpaid';
   paid_at?: string;
+  // Jejak koreksi manual: admin mengubah angka slip yang sudah terbit.
+  edited_at?: string;
+  edited_by?: string;
+  edit_reason?: string;
+  // Nilai sebelum diedit, supaya perubahan nominal bisa ditelusuri.
+  original_amount?: number;
+  original_qualified_days?: number;
 }
 
 /**
