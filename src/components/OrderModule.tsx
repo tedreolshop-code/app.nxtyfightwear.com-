@@ -603,10 +603,18 @@ export const OrderModule: React.FC = () => {
       : startDate
         ? `sejak ${tglPendek(startDate)}`
         : `s.d. ${tglPendek(endDate)}`;
-  const piutangOutstanding = rowsPeriode.reduce((sum, row) => sum + Math.max(0, row.total - row.paid), 0);
+  // Kartu ringkasan mengikuti PERIODE dan DIVISI yang sedang dipilih di Daftar
+  // Pesanan. Filter lain (pencarian, status bayar/kirim) sengaja tidak diikutkan
+  // supaya kartu tetap berperan sebagai ringkasan, bukan cerminan tabel.
+  // Sebelumnya kartu hanya ikut periode, sehingga klik divisi mengubah tabel tapi
+  // angkanya diam — terlihat seperti filter yang tidak bekerja.
+  const rowsRingkasan = orderDivFilter
+    ? rowsPeriode.filter(row => row.departmentIds.includes(orderDivFilter))
+    : rowsPeriode;
+  const piutangOutstanding = rowsRingkasan.reduce((sum, row) => sum + Math.max(0, row.total - row.paid), 0);
   // Ringkasan uang order dalam periode yang dipilih (order dibatalkan tidak ditagih)
-  const totalTagihan = rowsPeriode.reduce((sum, row) => sum + row.total, 0);
-  const totalDibayar = rowsPeriode.reduce((sum, row) => sum + row.paid, 0);
+  const totalTagihan = rowsRingkasan.reduce((sum, row) => sum + row.total, 0);
+  const totalDibayar = rowsRingkasan.reduce((sum, row) => sum + row.paid, 0);
 
   const visibleOrders = orders.filter(ord => {
     if (!dalamPeriode(ord.date)) return false;
@@ -1040,8 +1048,11 @@ export const OrderModule: React.FC = () => {
         </button>
       </div>
 
-      {/* Ringkasan uang — berlaku untuk kedua sub-tab, hitungannya sama dengan buku piutang */}
-      <div className="no-print grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {/* Ringkasan uang Daftar Pesanan (ikut periode + divisi). Di tab Piutang
+          disembunyikan karena panel piutang sudah menampilkan angkanya sendiri
+          dengan filter divisinya sendiri — supaya tidak ada dua angka berbeda
+          untuk hal yang sama di satu layar. */}
+      <div role="group" aria-label="Ringkasan order" className={`no-print grid grid-cols-1 sm:grid-cols-3 gap-3 ${orderView === 'piutang' ? 'hidden' : ''}`}>
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <div className="flex items-center justify-between gap-2">
             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Tagihan</p>
@@ -1050,7 +1061,7 @@ export const OrderModule: React.FC = () => {
             </span>
           </div>
           <p className="text-lg font-black font-mono text-gray-800 mt-1">{formatIDR(totalTagihan)}</p>
-          <p className="text-[10px] text-gray-400 mt-0.5">{rowsPeriode.length} order aktif (tanpa dibatalkan)</p>
+          <p className="text-[10px] text-gray-400 mt-0.5">{rowsRingkasan.length} order aktif (tanpa dibatalkan)</p>
         </div>
         <div className="bg-white border border-emerald-200 rounded-xl p-4">
           <div className="flex items-center justify-between gap-2">
