@@ -8,7 +8,7 @@ const NAMA_HARI = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
 
 type DayKind = 'hadir' | 'catatan' | 'anomali' | 'absen' | 'libur' | 'belum-berlaku' | 'belum-dinilai';
 
-interface DayInfo {
+export interface DayInfo {
   kind: DayKind;
   label: string;                // ringkas untuk tooltip / detail
   masuk?: string;               // 'HH:MM'
@@ -38,7 +38,13 @@ export const AttendanceCalendar: React.FC<{
   joinDate?: string;
   showLocation?: boolean;
   initialMonth?: string;
-}> = ({ logs, joinDate, showLocation = false, initialMonth }) => {
+  /**
+   * Aksi tambahan untuk hari yang sedang dipilih. Sengaja opsional dan hanya
+   * diberikan oleh pemanggil admin (Data Karyawan) — kalender yang sama dipakai
+   * portal karyawan, jadi jangan pernah menaruh aksi koreksi di dalam komponen ini.
+   */
+  renderDayActions?: (date: string, info: DayInfo) => React.ReactNode;
+}> = ({ logs, joinDate, showLocation = false, initialMonth, renderDayActions }) => {
   const today = wibTodayStr();
   const settings = dataStore.getWorkSettings();
   const effectiveFrom = settings.attendance_effective_from;
@@ -154,6 +160,7 @@ export const AttendanceCalendar: React.FC<{
               type="button"
               onClick={() => setSelected(selected === dateStr ? '' : dateStr)}
               title={`${fmtTanggal(dateStr)} — ${info.label}`}
+              aria-label={`${fmtTanggal(dateStr)} — ${info.label}`}
               className={`p-1.5 rounded-lg text-xs font-mono font-semibold border flex flex-col items-center gap-0.5 cursor-pointer transition-all ${KIND_STYLE[info.kind]} ${selected === dateStr ? 'ring-2 ring-[var(--color-evergreen)]' : isToday ? 'ring-1 ring-blue-400' : ''}`}
             >
               <span>{d}</span>
@@ -174,6 +181,7 @@ export const AttendanceCalendar: React.FC<{
               {l.type_scan} {l.timestamp.slice(11, 19)} · {l.verification_method === 'admin_qr' ? `dibantu ${l.assisted_by_name || 'admin'}` : 'GPS mandiri'} · {l.latitude?.toFixed(4)}, {l.longitude?.toFixed(4)}
             </p>
           ))}
+          {renderDayActions?.(selected, selInfo)}
         </div>
       )}
 

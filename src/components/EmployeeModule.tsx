@@ -5,6 +5,7 @@ import { employeeChangeLog, ChangeEntry } from '../employeeChangeLog';
 import { QRCodeSVG } from 'qrcode.react';
 import { EmployeeIdCards, printIdCards } from './EmployeeIdCards';
 import { AttendanceCalendar } from './AttendanceCalendar';
+import { KoreksiHariPanel } from './KoreksiHariPanel';
 import { Users, Plus, ShieldCheck, Key, Lock, LogIn, LogOut, Check, Save, DollarSign, X, Calendar, Clock, Printer, Trash2, History, Calculator, QrCode, Pencil } from 'lucide-react';
 
 // Rapikan nama: tiap kata awalan kapital, sisanya kecil (mis. "BUDI santoso" -> "Budi Santoso")
@@ -1458,6 +1459,14 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
                       logs={employeeAttendance}
                       joinDate={profileModalEmp.join_date}
                       showLocation
+                      renderDayActions={(date, info) => (
+                        <KoreksiHariPanel
+                          employee={profileModalEmp}
+                          date={date}
+                          dayLogs={info.logs}
+                          onDone={() => refreshModalData(profileModalEmp)}
+                        />
+                      )}
                     />
                   )}
 
