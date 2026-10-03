@@ -795,3 +795,104 @@ export const initCloudSync = async (): Promise<void> => {
     setStatus('error');
   }
 };
+
+// ===================== Tarik-ulang saat perangkat "bangun" =====================
+// Realtime kadang putus (tab tidur, sinyal kedip) dan SECARA PASIF tak pernah
+// mengejar ketinggalan; sinkron bertahap hanya jalan saat init (reload penuh).
+// Karyawan yang cukup menutup layar tanpa refresh bisa berhari tidak melihat
+// slip gaji / keputusan ACC / pengumuman baru. Safer berikut menutup itu:
+//   - dipanggil saat halaman kembali terlihat (buka HP / pindah tab ke app),
+//   - plus detak jaring pengaman tiap 5 menit selama app memang terlihat.
+// Tarikannya RINGAN: hanya baris yang berubah sejak watermark terakhir
+// (minus 2 jam keamanan jam perangkat), bukan menarik ulang tabel penuh.
+
+let lastWakeupSync = 0;
+let wakeupBusy = false;
+const WAKEUP_SYNC_MIN_GAP_MS = 30_000;
+
+const resyncDataOnWakeup = async (): Promise<void> => {
+  if (!client || wakeupBusy) return;
+  wakeupBusy = true;
+  let anyFailed = false;
+  try {
+    const since = readSyncSince();
+    if (!since) return; //belum pernah sinkron: initCloudSync yang menarik penuh
+
+    // ---- ari_store (aturan aplikasi, brand, dll.) ----
+    const { data: storeRows, error: storeErr } = await client.from(TABLE).select('key, value').gt('updated_at', since);
+    if (storeErr) throw storeErr;
+    for (const row of storeRows || []) {
+      if (row.key === ATT_KEY || perRowByKey.has(row.key)) continue;
+      applyRemoteValue(row.key, row.value);
+    }
+
+    // ---- Absensi (heal + nisan, sama dengan init inkremental) ----
+    const attRows = await fetchAllRows(ATT_TABLE, { sinceCol: 'created_at', since });
+    const fresh = attRows.map(r => r.value as AttendanceRecordLike).filter(r => r && r.id);
+    const local = readLocalAttendance();
+    if (fresh.length > 0) {
+      const cloudIds = await fetchAllIds(ATT_TABLE);
+      const localIds = new Set(local.map(r => r.id).filter(Boolean) as string[]);
+      const missing = missingLocalIds(localIds, cloudIds);
+      const refilled = missing.length > 0
+        ? (await fetchRowsByIds(ATT_TABLE, missing)).map(r => r.value as AttendanceRecordLike).filter(r => r && r.id)
+        : [];
+      const tomb = readTombstones();
+      const merged = mergeRowsById(
+        [...fresh, ...refilled] as { id: string }[],
+        local as { id: string }[],
+        cloudIds,
+      ) as AttendanceRecordLike[];
+      writeLocalAttendance(sortAttendance(merged.filter(r => !tomb.has(r.id))));
+    }
+    void flushPendingAttendance();
+
+    // ---- Tabel per-baris ----
+    for (const cfg of PER_ROW) {
+      try {
+        const changed = (await fetchAllRows(cfg.table, { sinceCol: 'updated_at', since }))
+          .map(r => r.value as RowLike).filter(r => r && r.id);
+        const localRows = readLocalRows(cfg.key);
+        const cloudIds = cfg.appendOnly ? null : await fetchAllIds(cfg.table);
+        const missing = cloudIds ? missingLocalIds(new Set(localRows.map(r => r?.id).filter(Boolean)), cloudIds) : [];
+        const refilled = missing.length > 0
+          ? (await fetchRowsByIds(cfg.table, missing)).map(r => r.value as RowLike).filter(r => r && r.id)
+          : [];
+        const merged = mergeRowsById([...changed, ...refilled], localRows, cloudIds);
+        if (merged.length !== localRows.length || changed.length > 0 || refilled.length > 0) {
+          writeLocalRows(cfg.key, merged);
+        } else {
+          cloudSnapshot.set(cfg.key, snapshotFrom(localRows));
+        }
+        cfg.ready = true;
+      } catch (e) {
+        anyFailed = true; // watermark jangan maju: rentang sama diulang lagi
+        console.error(`[cloudSync] Wakeup: gagal sinkron tabel "${cfg.table}"`, e);
+      }
+    }
+
+    // Watermark hanya maju bila tarikan ini benar-benar sukses semua.
+    if (!anyFailed) {
+      writeSyncNow();
+      if (status !== 'online') setStatus('online');
+    }
+  } catch (e) {
+    console.error('[cloudSync] Wakeup sinkron gagal:', e);
+  } finally {
+    wakeupBusy = false;
+  }
+};
+
+const tryWakeupSync = (): void => {
+  if (!client) return;
+  if (typeof document === 'undefined' || document.visibilityState !== 'visible') return;
+  const now = Date.now();
+  if (now - lastWakeupSync < WAKEUP_SYNC_MIN_GAP_MS) return;
+  lastWakeupSync = now;
+  void resyncDataOnWakeup();
+};
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', tryWakeupSync);
+  setInterval(tryWakeupSync, 5 * 60 * 1000);
+}
