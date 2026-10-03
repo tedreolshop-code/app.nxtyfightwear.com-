@@ -931,7 +931,7 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
                           {/* Chip bulan selalu terlihat (wajib di HP, kolom Bulannya
                               disembunyikan) supaya nama yang sama untuk beda bulan
                               tidak tampak seperti data dobel */}
-                          <span className="md:hidden ml-1.5 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[9px] font-bold uppercase align-middle whitespace-nowrap">
+                          <span className="md:hidden ml-1 px-1 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[9px] font-bold uppercase align-middle whitespace-nowrap">
                             {monthLabel(p.month)}
                           </span>
                           {p.status === 'gugur' && <span className="ml-1.5 px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 text-[9px] font-bold uppercase align-middle">Gugur</span>}
