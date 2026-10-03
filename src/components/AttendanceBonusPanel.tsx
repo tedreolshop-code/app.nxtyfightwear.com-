@@ -259,7 +259,9 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
   // Buku slip mengikuti format Daftar Slip Gaji: tabel datar + sortir header + paginasi.
   const [previewPayout, setPreviewPayout] = useState<AttendanceBonusPayout | null>(null);
   const [slipPage, setSlipPage] = useState(1);
-  const [slipSort, setSlipSort] = useState<{ key: 'name' | 'month' | 'days' | 'amount'; dir: 'asc' | 'desc' }>({ key: 'name', dir: 'asc' });
+  // Default: bulan terbaru dulu — slip bulan sama berjajaran dan nama yang sama
+  // untuk beda bulan tidak lagi tampak seperti data dobel.
+  const [slipSort, setSlipSort] = useState<{ key: 'name' | 'month' | 'days' | 'amount'; dir: 'asc' | 'desc' }>({ key: 'month', dir: 'desc' });
   const [deletePayoutId, setDeletePayoutId] = useState('');
 
   const load = () => {
@@ -505,7 +507,10 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
       const cmp = typeof va === 'string' || typeof vb === 'string'
         ? String(va).localeCompare(String(vb))
         : va - vb;
-      return slipSort.dir === 'asc' ? cmp : -cmp;
+      if (cmp !== 0) return slipSort.dir === 'asc' ? cmp : -cmp;
+      // Pemecah seri agar baris selalu berkelompok rapi: nama A-Z, lalu bulan terbaru.
+      const byName = a.employee_name.localeCompare(b.employee_name, 'id');
+      return byName !== 0 ? byName : b.month.localeCompare(a.month);
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [filteredPayouts, slipListView, slipSort]);
@@ -923,10 +928,16 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
                       <tr key={p.id} className="hover:bg-emerald-50/40 transition-colors font-medium text-gray-700">
                         <td className="p-1.5 md:p-3 border-r border-emerald-100/70 font-bold text-emerald-950">
                           {p.employee_name}
+                          {/* Chip bulan selalu terlihat (wajib di HP, kolom Bulannya
+                              disembunyikan) supaya nama yang sama untuk beda bulan
+                              tidak tampak seperti data dobel */}
+                          <span className="md:hidden ml-1.5 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[9px] font-bold uppercase align-middle whitespace-nowrap">
+                            {monthLabel(p.month)}
+                          </span>
                           {p.status === 'gugur' && <span className="ml-1.5 px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 text-[9px] font-bold uppercase align-middle">Gugur</span>}
-                          {/* Di HP kolom Bulan/Hadir/Detail jadi sub-baris di bawah nama supaya tabel tetap muat */}
+                          {/* Di HP kolom Hadir/Detail jadi sub-baris di bawah nama supaya tabel tetap muat */}
                           <span className="block md:hidden text-[10px] font-normal text-gray-500 mt-0.5">
-                            {monthLabel(p.month)} · {p.present_days}/{p.working_days} hari
+                            {p.present_days}/{p.working_days} hari
                             {p.late_minutes_net > 0 && ` · telat ${p.late_minutes_net} mnt`}
                             {p.half_days > 0 && ` · setengah ${p.half_days}x`}
                           </span>
@@ -986,26 +997,29 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
                           })()}
                         </td>
                         <td className="p-1.5 md:p-3 text-center bg-gray-50/5">
-                          <div className="flex flex-col sm:flex-row items-center justify-center gap-1.5">
+                          {/* Mengalir horizontal di semua ukuran layar — menumpuk
+                              vertikal membuat baris sangat tinggi di HP */}
+                          <div className="flex flex-wrap items-center justify-center gap-1.5">
                             <button type="button" onClick={() => handlePrintBonusSlip(p)}
                               className="inline-flex items-center gap-1.5 bg-evergreen hover:bg-evergreen-dark text-white px-2 py-1.5 rounded-lg text-[10px] font-bold shadow-xs transition-colors cursor-pointer"
                               title="Pratinjau & Cetak Slip Bonus (A4)">
                               <Printer className="w-3.5 h-3.5" />
-                              <span>{p.payment_status === 'paid' ? 'Cetak Ulang' : 'Cetak Slip'}</span>
+                              <span className="hidden sm:inline">{p.payment_status === 'paid' ? 'Cetak Ulang' : 'Cetak Slip'}</span>
                             </button>
                             {p.status === 'cair' && (
                               <button type="button" onClick={() => handleTogglePaid(p)}
                                 className={`text-[10px] font-bold px-2 py-1.5 rounded-lg cursor-pointer ${p.payment_status === 'paid'
                                   ? 'bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100'
                                   : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}>
-                                {p.payment_status === 'paid' ? 'Batalkan Lunas' : 'Tandai Lunas'}
+                                {p.payment_status === 'paid' ? <><CheckCircle2 className="w-3.5 h-3.5 sm:hidden" /><span className="hidden sm:inline">Batalkan Lunas</span></>
+                                  : <><CheckCircle2 className="w-3.5 h-3.5 sm:hidden" /><span className="hidden sm:inline">Tandai Lunas</span></>}
                               </button>
                             )}
                             <button type="button" onClick={() => openPayoutEdit(p)}
                               className="inline-flex items-center gap-1.5 bg-white border border-emerald-800/20 hover:bg-emerald-50 text-emerald-800 px-2 py-1.5 rounded-lg text-[10px] font-bold transition-colors cursor-pointer"
                               title="Ubah angka slip bonus">
                               <Edit2 className="w-3.5 h-3.5" />
-                              <span>Ubah</span>
+                              <span className="hidden sm:inline">Ubah</span>
                             </button>
                             <button type="button" onClick={() => setDeletePayoutId(p.id)}
                               className="inline-flex items-center justify-center p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors cursor-pointer"
