@@ -447,6 +447,29 @@ const fetchAllRows = async (table: string, opts?: { sinceCol?: string; since?: s
 };
 
 /**
+ * Ambil baris berdasarkan DAFTAR ID — pengisi-ulang untuk daftar lokal yang
+ * bolong. Sinkron bertahap hanya menarik baris yang "berubah"; baris yang
+ * hilang dari perangkat (localStorage dibersihkan browser, dua perangkat
+ * berbeda langkah, dsb.) tak pernah dianggap berubah dan TAK AKAN DITARIK
+ * SELAMANYA — daftar keputusan ACC kelebihan/kekurangan permanen dan menu
+ * "Perlu Review" jadi salah hitung. Tarik baris hilang by-id menutup itu.
+ */
+const fetchRowsByIds = async (table: string, ids: string[]): Promise<{ id: string; value: unknown }[]> => {
+  const CHUNK = 200; // batasi panjang URL query IN
+  const all: { id: string; value: unknown }[] = [];
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const { data, error } = await client!.from(table).select('id, value').in('id', ids.slice(i, i + CHUNK));
+    if (error) throw error;
+    all.push(...((data || []) as { id: string; value: unknown }[]));
+  }
+  return all;
+};
+
+/** Kumpulan baris yang hilang dari daftar lokal: id ada di cloud, tak ada lokal. */
+const missingLocalIds = (localIds: Set<string>, cloudIds: Set<string>): string[] =>
+  [...cloudIds].filter(id => !localIds.has(id));
+
+/**
  * Gabungkan hasil sinkron bertahap ke data lokal, dedup berdasarkan id:
  * - `changed` (baris baru/berubah dari cloud) menang,
  * - baris lokal lain dipertahankan KECUALI (a) sudah tergantikan `changed`, atau
@@ -610,9 +633,22 @@ export const initCloudSync = async (): Promise<void> => {
       const attRows = await fetchAllRows(ATT_TABLE, incremental ? { sinceCol: 'created_at', since: since! } : undefined);
       const freshRecs = attRows.map(r => r.value as AttendanceRecordLike).filter(r => r && r.id);
       const local = readLocalAttendance();
+      const localIds = new Set(local.map(r => r.id).filter(Boolean) as string[]);
       if (incremental) {
         const cloudIds = await fetchAllIds(ATT_TABLE);
-        const merged = mergeRowsById(freshRecs as { id: string }[], local as { id: string }[], cloudIds) as AttendanceRecordLike[];
+        // Heal daftar bolong: baris yang tidak ada di perangkat tak akan pernah
+        // lolos filter "created_at > watermark" — tarik langsung by-id (lihat
+        // komentar fetchRowsByIds). Tanpa ini daftar absensi bisa selamanya kurang.
+        const missing = missingLocalIds(localIds, cloudIds);
+        if (missing.length > 0) console.info(`[cloudSync] Mengisi ulang ${missing.length} baris absensi yang hilang dari perangkat.`);
+        const refilled = missing.length > 0
+          ? (await fetchRowsByIds(ATT_TABLE, missing)).map(r => r.value as AttendanceRecordLike).filter(r => r && r.id)
+          : [];
+        const merged = mergeRowsById(
+          [...freshRecs, ...refilled] as { id: string }[],
+          local as { id: string }[],
+          cloudIds,
+        ) as AttendanceRecordLike[];
         const localOnly = local.filter(r => r.id && !cloudIds.has(r.id));
         writeLocalAttendance(sortAttendance(merged));
         for (const rec of localOnly) pushAttendanceToCloud(rec);
@@ -641,8 +677,15 @@ export const initCloudSync = async (): Promise<void> => {
           const localRows = readLocalRows(cfg.key);
           // Log append-only tidak pernah hapus baris → lewati cek id (hemat egress).
           const cloudIds = cfg.appendOnly ? null : await fetchAllIds(cfg.table);
-          const merged = mergeRowsById(changed, localRows, cloudIds);
-          if (merged.length !== localRows.length || changed.length > 0) writeLocalRows(cfg.key, merged);
+          // Heal daftar bolong (lihat fetchRowsByIds): tanpa ini perangkat yang
+          // kehilangan baris lama tak pernah mendapatkannya kembali.
+          const missing = cloudIds ? missingLocalIds(new Set(localRows.map(r => r?.id).filter(Boolean)), cloudIds) : [];
+          if (missing.length > 0) console.info(`[cloudSync] Mengisi ulang ${missing.length} baris "${cfg.key}" yang hilang dari perangkat.`);
+          const refilled = missing.length > 0
+            ? (await fetchRowsByIds(cfg.table, missing)).map(r => r.value as RowLike).filter(r => r && r.id)
+            : [];
+          const merged = mergeRowsById([...changed, ...refilled], localRows, cloudIds);
+          if (merged.length !== localRows.length || changed.length > 0 || refilled.length > 0) writeLocalRows(cfg.key, merged);
           else cloudSnapshot.set(cfg.key, snapshotFrom(localRows));
           cfg.ready = true;
           continue;
