@@ -529,7 +529,21 @@ const readSyncSince = (): string | null => {
     return new Date(t - CLOCK_SKEW_MS).toISOString();
   } catch { return null; }
 };
-const writeSyncNow = () => { try { localStorage.setItem(SYNC_AT_KEY, String(Date.now())); } catch { /* penuh: abaikan */ } };
+const writeSyncNow = (): void => {
+  try { localStorage.setItem(SYNC_AT_KEY, String(Date.now())); } catch { /* penuh: abaikan */ }
+  markSyncSuccess();
+};
+
+// Penanda waktu "terakhir tarik-ulang penuh dari cloud" untuk tampilan di
+// sidebar (indikator 1-sumber-kebenaran) — walau kolom tombol "Tersinkron ke
+// Cloud" bermakna status KONEKSI realtime, bukan segar-nya data.
+export const SYNC_TIME_EVENT = 'nxty_cloud_sync_time';
+let lastSyncAtMs = 0;
+export const getLastSyncAtMs = (): number => lastSyncAtMs;
+const markSyncSuccess = (): void => {
+  lastSyncAtMs = Date.now();
+  try { window.dispatchEvent(new Event(SYNC_TIME_EVENT)); } catch { /* penuh: abaikan */ }
+};
 
 const sortAttendance = (rows: AttendanceRecordLike[]) =>
   rows.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));

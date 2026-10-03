@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserRole, Employee, ProductionHandoff, ProductionJob, PackingTask } from './types';
 import { dataStore, wibTodayStr } from './dataStore';
-import { isCloudEnabled, getCloudStatus, CloudStatus, loginCloud, logoutCloud } from './cloudSync';
+import { isCloudEnabled, getCloudStatus, CloudStatus, loginCloud, logoutCloud, getLastSyncAtMs, SYNC_TIME_EVENT } from './cloudSync';
 import { MainDashboard } from './components/MainDashboard';
 import { EmployeeDashboard } from './components/EmployeeDashboard';
 import { AttendanceModule } from './components/AttendanceModule';
@@ -266,6 +266,8 @@ export default function App() {
   };
   const [formattedTime, setFormattedTime] = useState('');
   const [cloudStatus, setCloudStatus] = useState<CloudStatus>(getCloudStatus());
+  // Waktu tarik-ulang terakhir dari cloud (indikator data segar, bukan status koneksi)
+  const [lastSyncAt, setLastSyncAt] = useState<number>(getLastSyncAtMs());
   const [toast, setToast] = useState<string | null>(null);
   const [handoffPopup, setHandoffPopup] = useState<ProductionHandoff | null>(null);
   const [productionTaskPopup, setProductionTaskPopup] = useState<ProductionJob | null>(null);
@@ -336,6 +338,13 @@ export default function App() {
     const handler = (e: Event) => setCloudStatus((e as CustomEvent<CloudStatus>).detail);
     window.addEventListener('nxty_cloud_status', handler);
     return () => window.removeEventListener('nxty_cloud_status', handler);
+  }, []);
+
+  // Pantau waktu tarik-ulang terakhir (dipicu cloudSync saat tarikan berhasil)
+  useEffect(() => {
+    const handler = () => setLastSyncAt(getLastSyncAtMs());
+    window.addEventListener(SYNC_TIME_EVENT, handler);
+    return () => window.removeEventListener(SYNC_TIME_EVENT, handler);
   }, []);
 
   // Cloud menolak penghapusan (pengaman anti-hapus massal) → beri tahu pengguna,
@@ -685,6 +694,11 @@ export default function App() {
               : cloudStatus === 'connecting' ? 'Menghubungkan…'
               : cloudStatus === 'error' ? 'Cloud error — data lokal'
               : isCloudEnabled ? 'Offline' : 'Data lokal (offline)'}
+              {cloudStatus === 'online' && lastSyncAt > 0 && (
+                <span className="block text-[10px] text-emerald-200/60">
+                  tarik-ulang {new Date(lastSyncAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
             </span>
           </div>
 
