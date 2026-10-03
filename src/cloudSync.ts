@@ -25,6 +25,12 @@ const TABLE = 'ari_store';
 const ATT_TABLE = 'ari_attendance';
 const ATT_KEY = 'attendance';
 const ATT_PENDING_KEY = 'nxty_attendance_pending';
+// Tombol "nisan": id absensi yang sengaja DIBERSIHKAN dari cloud (peleburan
+// data dobel via SQL). Tanpa nisan, perangkat yang masih memegang cache lama
+// mengirim ulang baris-baris itu saat sinkron (dianggap "hilang dari cloud")
+// sehingga data dobel kembali. Nisan disimpan sebagai baris ari_store
+// (key 'nxty_attendance_tombstones', array id) — ikut tarik penuh & realtime.
+const ATT_TOMBSTONE_KEY = 'nxty_attendance_tombstones';
 export const isCloudEnabled = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 
 // Data master/transaksi yang RAWAN HILANG bila disimpan sebagai satu array besar
@@ -342,6 +348,14 @@ const readLocalAttendance = (): AttendanceRecordLike[] => {
   try { return JSON.parse(localStorage.getItem(`nxty_${ATT_KEY}`) || '[]'); } catch { return []; }
 };
 
+/** Daftar id absensi yang telah dihapus dengan sengaja dari cloud (tombstone). */
+const readTombstones = (): Set<string> => {
+  try {
+    const arr = JSON.parse(localStorage.getItem(ATT_TOMBSTONE_KEY) || '[]');
+    return new Set((Array.isArray(arr) ? arr : []).filter(v => typeof v === 'string'));
+  } catch { return new Set(); }
+};
+
 const writeLocalAttendance = (rows: AttendanceRecordLike[]) => {
   applyingRemote = true;
   try {
@@ -400,7 +414,8 @@ export const deleteAttendanceRowsInCloud = (ids: string[]): void => {
 
 /** Kirim ulang scan absensi yang tertunda (mis. saat sinyal hilang). */
 const flushPendingAttendance = async (): Promise<void> => {
-  const pending = readPendingAttendance();
+  const tomb = readTombstones();
+  const pending = readPendingAttendance().filter(r => !tomb.has(r.id));
   if (pending.length === 0) return;
   const stillPending: AttendanceRecordLike[] = [];
   for (const rec of pending) {
@@ -634,6 +649,8 @@ export const initCloudSync = async (): Promise<void> => {
       const freshRecs = attRows.map(r => r.value as AttendanceRecordLike).filter(r => r && r.id);
       const local = readLocalAttendance();
       const localIds = new Set(local.map(r => r.id).filter(Boolean) as string[]);
+      const tomb = readTombstones();
+      if (tomb.size > 0) console.info(`[cloudSync] Nisan aktif: ${tomb.size} id absensi sudah dibersihkan dari cloud.`);
       if (incremental) {
         const cloudIds = await fetchAllIds(ATT_TABLE);
         // Heal daftar bolong: baris yang tidak ada di perangkat tak akan pernah
@@ -649,14 +666,18 @@ export const initCloudSync = async (): Promise<void> => {
           local as { id: string }[],
           cloudIds,
         ) as AttendanceRecordLike[];
-        const localOnly = local.filter(r => r.id && !cloudIds.has(r.id));
-        writeLocalAttendance(sortAttendance(merged));
+        // Nisan: baris yang sengaja dihapus dari cloud tidak boleh menetap di
+        // daftar lokal — buang, dan LARANG dikirim ulang di bawah.
+        const tombTouched = merged.length !== merged.filter(r => !tomb.has(r.id)).length;
+        const cleanMerged = merged.filter(r => !tomb.has(r.id));
+        const localOnly = local.filter(r => r.id && !cloudIds.has(r.id) && !tomb.has(r.id));
+        if (tombTouched) console.info(`[cloudSync] ${merged.length - cleanMerged.length} baris absensi nisan dibuang dari perangkat.`);
+        writeLocalAttendance(sortAttendance(cleanMerged));
         for (const rec of localOnly) pushAttendanceToCloud(rec);
       } else {
         const cloudIds = new Set(freshRecs.map(r => r.id));
-        const localOnly = local.filter(r => r.id && !cloudIds.has(r.id));
-        writeLocalAttendance(sortAttendance([...freshRecs, ...localOnly]));
-        for (const rec of localOnly) pushAttendanceToCloud(rec);
+        const localOnly = local.filter(r => r.id && !cloudIds.has(r.id) && !tomb.has(r.id));
+        writeLocalAttendance(sortAttendance([...freshRecs.filter(r => !tomb.has(r.id)), ...localOnly]));
       }
       void flushPendingAttendance();
     } catch (e) {
@@ -749,7 +770,7 @@ export const initCloudSync = async (): Promise<void> => {
     channel
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: ATT_TABLE }, (payload) => {
         const rec = (payload.new as { value?: AttendanceRecordLike } | null)?.value;
-        if (!rec?.id) return;
+        if (!rec?.id || readTombstones().has(rec.id)) return;
         const local = readLocalAttendance();
         if (!local.some(r => r.id === rec.id)) {
           writeLocalAttendance(sortAttendance([rec, ...local]));
@@ -757,7 +778,7 @@ export const initCloudSync = async (): Promise<void> => {
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: ATT_TABLE }, (payload) => {
         const rec = (payload.new as { value?: AttendanceRecordLike } | null)?.value;
-        if (!rec?.id) return;
+        if (!rec?.id || readTombstones().has(rec.id)) return;
         const local = readLocalAttendance();
         writeLocalAttendance(sortAttendance([rec, ...local.filter(r => r.id !== rec.id)]));
       })
