@@ -991,7 +991,11 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
 
   if (!isAdmin) {
     if (loggedEmployee) {
-      const myPayrolls = payrolls.filter(p => p.employee_id === loggedEmployee.id);
+      // Terbaru dulu — urutan penyimpanan/jalan sinkron tak terjamin rapi
+      const myPayrolls = payrolls
+        .filter(p => p.employee_id === loggedEmployee.id)
+        .sort((a, b) => b.period_start.localeCompare(a.period_start)
+          || weeklyPeriodEnd(b.period_end).localeCompare(weeklyPeriodEnd(a.period_end)));
       const myAdvances = cashAdvances.filter(c => c.employee_id === loggedEmployee.id);
       const myCashAdvanceTransactions = cashAdvanceTransactions.filter(transaction => transaction.employee_id === loggedEmployee.id).slice(0, 20);
       const totalSisaKasbon = myAdvances.reduce((sum, item) => sum + item.remaining_balance, 0);
