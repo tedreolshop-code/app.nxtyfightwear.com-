@@ -492,7 +492,29 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
   const allPendingReviewLogs = attendance
     .filter(needsReview)
     .filter(log => !adjustments.some(item => item.attendance_id === log.id));
-  const pendingAdjustmentLogs = allPendingReviewLogs
+
+  // Pecah dua: pengajuan yang MASIH bisa mengubah gaji vs yang sudah tertutup slip.
+  // Pertimbangannya tanggal: slip gaji karyawan berjalan sampai period_end
+  // tertingginya; recordPayroll menolak periode beririsan, jadi pengajuan pada
+  // / sebelum gajian terakhir itu tidak lagi bisa ke mana-mana melainkan
+  // membebani angka "Perlu Review". Karyawan yang belum pernah punya slip pakai
+  // batas gajian terakhir GLOBAL (karyawan contoh/lama, dsb).
+  const globalLastPayEnd = payrolls.reduce(
+    (max, p) => (weeklyPeriodEnd(p.period_end) > max ? weeklyPeriodEnd(p.period_end) : max), '');
+  const lastPayEndByEmp = new Map<string, string>();
+  for (const p of payrolls) {
+    const end = weeklyPeriodEnd(p.period_end);
+    if (end > (lastPayEndByEmp.get(p.employee_id) || '')) lastPayEndByEmp.set(p.employee_id, end);
+  }
+  const batasGajian = (log: Attendance): string => lastPayEndByEmp.get(log.employee_id) || globalLastPayEnd;
+  const pendingReviewOpen = allPendingReviewLogs.filter(log => log.timestamp.slice(0, 10) > batasGajian(log));
+  const pendingReviewBacklog = allPendingReviewLogs.filter(log => log.timestamp.slice(0, 10) <= batasGajian(log));
+
+  const pendingAdjustmentLogs = pendingReviewOpen
+    .filter(log => !reviewFilterEmpId || log.employee_id === reviewFilterEmpId)
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+    .slice(0, 30);
+  const backlogAdjustmentLogs = pendingReviewBacklog
     .filter(log => !reviewFilterEmpId || log.employee_id === reviewFilterEmpId)
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
     .slice(0, 30);
@@ -537,13 +559,15 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
 
   const saveReview = (log: Attendance) => saveReviewValues(log, draftFor(log));
 
-  // ACC massal: putuskan SEMUA pengajuan menunggu memakai usulan sistem
+  // ACC massal: putuskan SEMUA pengajuan TERBUKA memakai usulan sistem
   // (overtime = log.overtime_minutes; live TikTok = bonus default karyawan).
+  // Pengajuan yang sudah tertutup slip (backlog) tak masuk daftar ini — mereka
+  // ditutup lewat tombol terpisah "Abaikan semua backlog".
   // Ringkasan + konfirmasi dulu; tiap keputusan tetap lewat approveAttendanceAdjustment
   // sehingga tercatat sama seperti ACC satuan.
   const approveAllWithSystemProposal = () => {
-    if (allPendingReviewLogs.length === 0) return;
-    const ringkas = allPendingReviewLogs.map(log => {
+    if (pendingReviewOpen.length === 0) return;
+    const ringkas = pendingReviewOpen.map(log => {
       const liveDefault = log.live_tiktok_request ? (employees.find(e => e.id === log.employee_id)?.default_live_tiktok_bonus ?? 20000) : 0;
       const parts = [
         (log.late_compensation_minutes || 0) > 0 && `telat ${log.late_compensation_minutes}m`,
@@ -553,12 +577,12 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
       return `${log.employee_name} (${log.timestamp.slice(0, 10)}): ${parts.join(' + ') || 'tanpa tambahan'}`;
     });
     const ok = window.confirm(
-      `Terima usulan sistem untuk SEMUA ${allPendingReviewLogs.length} pengajuan yang menunggu?\n\n` +
+      `Terima usulan sistem untuk SEMUA ${pendingReviewOpen.length} pengajuan yang menunggu?\n\n` +
       ringkas.join('\n') +
       `\n\nKeputusan tersimpan permanen dan otomatis masuk slip gaji saat Generate. Lanjutkan?`
     );
     if (!ok) return;
-    for (const log of allPendingReviewLogs) {
+    for (const log of pendingReviewOpen) {
       const liveDefault = log.live_tiktok_request ? (employees.find(e => e.id === log.employee_id)?.default_live_tiktok_bonus ?? 20000) : 0;
       saveReviewValues(log, {
         lateComp: log.late_compensation_minutes || 0,
@@ -568,7 +592,26 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
     }
   };
 
-  const rejectReview = (log: Attendance, presetReason?: string) => {
+  // Tutup SEMUA backlog yang sudah tertutup slip gaji dengan keputusan "Abaikan —
+  // periode sudah digajikan". Tanpa ini angka Perlu Review terbebani pengajuan
+  // lampau yang tidak bisa mengubah gaji lagi (recordPayroll menolak periode
+  // beririsan). Loop ini TIDAK dipanggil loadData per item — sekali di akhir.
+  const closeBacklogAsIgnored = () => {
+    if (pendingReviewBacklog.length === 0) return;
+    const ringkas = pendingReviewBacklog.map(log => `${log.employee_name} (${log.timestamp.slice(0, 10)})`);
+    const ok = window.confirm(
+      `Tandai ${pendingReviewBacklog.length} pengajuan LAMAU (sampai periode gajian terakhir) sebagai "Abaikan — periode sudah digajikan"?\n\n` +
+      ringkas.slice(0, 25).join('\n') + (pendingReviewBacklog.length > 25 ? `\n... dan ${pendingReviewBacklog.length - 25} lainnya` : '') +
+      `\n\nPerlu tahu: kalau slip periode itu nanti dihapus dan digenerate ulang, pengajuan ini TIDAK masuk otomatis lagi. Lanjutkan?`
+    );
+    if (!ok) return;
+    for (const log of pendingReviewBacklog) {
+      rejectReview(log, `Periode ${log.timestamp.slice(0, 10)} sudah digajikan`, { silent: true });
+    }
+    loadData();
+  };
+
+  const rejectReview = (log: Attendance, presetReason?: string, opts?: { silent?: boolean }) => {
     const reason = presetReason ?? window.prompt(`Alasan menolak pengajuan ${log.employee_name} (${log.timestamp.slice(0, 10)}):`);
     if (reason === null) return;
     const actor = JSON.parse(localStorage.getItem('nxty_session') || 'null');
@@ -591,7 +634,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
       approved_at: wibNowISO()
     });
     clearDraft(log.id);
-    loadData();
+    if (!opts?.silent) loadData();
   };
 
   // Kompatibilitas untuk blok review ringkas di modal generate satuan.
@@ -1362,9 +1405,9 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
             }`}
           >
             Perlu Review
-            {allPendingReviewLogs.length > 0 && (
+            {pendingReviewOpen.length > 0 && (
               <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${payrollDetailView === 'review' ? 'bg-white/20' : 'bg-amber-100 text-amber-800'}`}>
-                {allPendingReviewLogs.length}
+                {pendingReviewOpen.length}
               </span>
             )}
           </button>
@@ -1404,13 +1447,13 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                 <h3 className="font-black text-sm text-gray-800">Perlu Diputuskan</h3>
                 <p className="text-xs text-gray-500">Jam tambahan menutup telat dulu, sisanya baru masuk lembur. Nilai bisa dikoreksi sebelum disimpan. Pengajuan dari karyawan ditandai biru. <b>Keputusan tersimpan permanen dan otomatis terisi di slip gaji periode terkait saat Generate.</b></p>
               </div>
-              {allPendingReviewLogs.length > 1 && (
+              {pendingReviewOpen.length > 1 && (
                 <button
                   type="button"
                   onClick={approveAllWithSystemProposal}
                   className="shrink-0 bg-[var(--color-evergreen)] hover:bg-[#122d20] text-white rounded-lg px-3 py-2 text-[11px] font-bold cursor-pointer flex items-center gap-1.5 transition-colors"
                 >
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Terima Usulan Semua ({allPendingReviewLogs.length})
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Terima Usulan Semua ({pendingReviewOpen.length})
                 </button>
               )}
             </div>
@@ -1467,7 +1510,47 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
             )}
           </div>
 
-          {/* Ubah keputusan yang sudah tersimpan */}
+          {/* Backlog lampau: pengajuan pada / sebelum gajian terakhir yang belum
+              diputuskan — tidak bisa mengubah gaji lagi (periode slip beririsan
+              ditolak recordPayroll). Card hanya muncul bila ada isinya; ditutup
+              massal lewat tombol "Abaikan semua" berales periode tergajikan. */}
+          {pendingReviewBacklog.length > 0 && (
+            <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <h3 className="font-black text-sm text-gray-700">Lampau — Periode Sudah Digajikan ({pendingReviewBacklog.length})</h3>
+                  <p className="text-xs text-gray-500">Pengajuan ini jatuh pada periode yang slipnya sudah dibuat, jadi hanya penutup administrasi: tidak mengubah gaji. Tutup dengan "Abaikan semua", atau putuskan satu-satu bila memang butuh catatan.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeBacklogAsIgnored}
+                  className="shrink-0 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg px-3 py-2 text-[11px] font-bold cursor-pointer flex items-center gap-1.5 transition-colors"
+                >
+                  Abaikan semua ({pendingReviewBacklog.length})
+                </button>
+              </div>
+              <div className="space-y-1.5">
+                {backlogAdjustmentLogs.map(log => {
+                  const diajukan = !!log.overtime_request || !!log.live_tiktok_request;
+                  const parts = [
+                    (log.late_compensation_minutes || 0) > 0 && `komp telat ${log.late_compensation_minutes}m`,
+                    (log.overtime_minutes || 0) > 0 && `lembur jika usulan ${log.overtime_minutes}m`,
+                    log.live_tiktok_request ? 'live TikTok' : '',
+                  ].filter(Boolean).join(' + ') || 'tanpa tambahan';
+                  return (
+                    <div key={log.id} className="flex flex-wrap items-center justify-between gap-2 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 text-xs">
+                      <div className="min-w-0">
+                        <b className="text-gray-700">{log.employee_name}</b>
+                        <span className="text-gray-400"> · {log.timestamp.slice(0, 10)} · {parts}</span>
+                      </div>
+                      {diajukan && <span className="rounded-full bg-sky-50 text-sky-700 border border-sky-100 px-2 py-0.5 text-[10px] font-black">Diajukan</span>}
+                      <button type="button" onClick={() => rejectReview(log)} className="text-[11px] font-bold text-rose-600 hover:text-rose-800 cursor-pointer">Abaikan</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           {editAdjustmentId && (() => {
             const adj = adjustments.find(a => a.id === editAdjustmentId);
             if (!adj) return null;
