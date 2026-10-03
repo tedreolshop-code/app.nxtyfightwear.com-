@@ -676,9 +676,10 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
     group.total += item.amount;
   });
 
-  // Totals for KPIs
-  const totalPurchaseCost = purchases.reduce((sum, p) => sum + p.total_price, 0);
-  const totalExpenseCost = expenses.reduce((sum, e) => sum + e.amount, 0);
+  // Totals for KPIs — ikut filter aktif (bulan/kategori/supplier/pencarian/divisi)
+  // supaya kartu ringkasan konsisten dengan daftar yang tampil di bawahnya.
+  const totalPurchaseCost = filteredPurchases.reduce((sum, p) => sum + p.total_price, 0);
+  const totalExpenseCost = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
   const activeSelectedPo = purchases.find(p => p.id === selectedPoId) || purchases[0];
 
   // Gabungkan master kategori dengan kategori historis agar data impor/lama tetap dapat difilter dan diedit.
@@ -837,7 +838,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
             <span className="text-xl font-black text-emerald-800 font-mono tracking-tight">{formatIDR(totalPurchaseCost)}</span>
           </div>
           <p className="text-[10px] text-emerald-800/50 mt-2 flex items-center gap-1">
-            <CheckCircle2 className="w-3 h-3 text-emerald-600 inline" /> {purchases.length} Dokumen PO diterbitkan
+            <CheckCircle2 className="w-3 h-3 text-emerald-600 inline" /> {filteredPurchases.length} Dokumen PO diterbitkan
           </p>
         </div>
         )}
@@ -850,7 +851,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
             <span className="text-xl font-black text-rose-700 font-mono tracking-tight">{formatIDR(totalExpenseCost)}</span>
           </div>
           <p className="text-[10px] text-emerald-800/50 mt-2 flex items-center gap-1">
-            <TrendingDown className="w-3 h-3 text-rose-500 inline" /> {expenses.length} Transaksi operasional tercatat
+            <TrendingDown className="w-3 h-3 text-rose-500 inline" /> {filteredExpenses.length} Transaksi operasional tercatat
           </p>
         </div>
         )}
