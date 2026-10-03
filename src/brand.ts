@@ -25,6 +25,64 @@ export const applyBrandTheme = (brand: BrandSettings): void => {
   root.style.setProperty('--color-evergreen-tint', shiftColor(brand.primary_color, 0.88));
   // Judul tab browser ikut nama brand (nama file PDF cetakan juga dari sini)
   document.title = brand.company_name;
+  applyBrandIcons(brand);
+};
+
+// ===================== Ikon website mengikuti logo brand =====================
+// Favicon tab browser & ikon PWA mengikuti logo yang diupload Owner lewat
+// Pengaturan Brand; tanpa logo, kembali ke ikon bawaan aplikasi.
+const DEFAULT_ICON = '/icons/app-icon.svg';
+
+let brandManifestUrl: string | null = null;
+
+const setLink = (rel: string, href: string, type?: string): void => {
+  let link = document.querySelector<HTMLLinkElement>(`head link[rel="${rel}"]`);
+  if (!link) {
+    link = document.createElement('link');
+    link.rel = rel;
+    document.head.appendChild(link);
+  }
+  if (type) link.type = type;
+  if (link.getAttribute('href') !== href) link.setAttribute('href', href);
+};
+
+const applyBrandIcons = (brand: BrandSettings): void => {
+  const hasLogo = Boolean(brand.logo_data_url);
+  const icon = hasLogo ? brand.logo_data_url : DEFAULT_ICON;
+
+  setLink('icon', icon, hasLogo ? 'image/png' : 'image/svg+xml');
+  setLink('apple-touch-icon', icon);
+
+  // Manifest PWA dinamis: ikon (dan warna tema) mengikuti brand. Chrome/Edge
+  // membaca ulang manifest saat aplikasi dibuka, jadi ikon ter-install ikut berubah.
+  if (brandManifestUrl) {
+    URL.revokeObjectURL(brandManifestUrl);
+    brandManifestUrl = null;
+  }
+  if (hasLogo) {
+    const manifest = {
+      id: '/',
+      name: brand.company_name,
+      short_name: brand.company_name,
+      start_url: '/',
+      scope: '/',
+      display: 'standalone',
+      background_color: '#F3F4F6',
+      theme_color: brand.primary_color,
+      icons: [
+        { src: brand.logo_data_url, sizes: 'any', type: 'image/png', purpose: 'any' },
+        { src: brand.logo_data_url, sizes: 'any', type: 'image/png', purpose: 'maskable' },
+      ],
+    };
+    brandManifestUrl = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' }));
+    setLink('manifest', brandManifestUrl);
+  } else {
+    setLink('manifest', '/manifest.webmanifest');
+  }
+
+  // Warna bar judul PWA/browser ikut warna tema brand
+  document.querySelector<HTMLMetaElement>('head meta[name="theme-color"]')
+    ?.setAttribute('content', brand.primary_color);
 };
 
 // Inisial brand untuk chip kecil (mis. "ARI" dari "ARI SPORTINDO")
