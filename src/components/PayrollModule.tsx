@@ -49,6 +49,8 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
   // Filter tab "Perlu Review" per karyawan ('' = semua). Diisi otomatis saat
   // datang dari modal generate lewat tombol "Buka Perlu Review" / "Lihat Riwayat".
   const [reviewFilterEmpId, setReviewFilterEmpId] = useState('');
+  // Daftar backlog lampau sengaja DISERET: tak memenuhi layar — dibuka lewat toggle.
+  const [backlogOpen, setBacklogOpen] = useState(false);
 
   // Calibration settings modal state
 
@@ -1512,10 +1514,20 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
 
           {/* Backlog lampau: pengajuan pada / sebelum gajian terakhir yang belum
               diputuskan — tidak bisa mengubah gaji lagi (periode slip beririsan
-              ditolak recordPayroll). Card hanya muncul bila ada isinya; ditutup
-              massal lewat tombol "Abaikan semua" berales periode tergajikan. */}
+              ditolak recordPayroll). Saat ini disembunyikan di balik toggle:
+              tidak mengganggu tampilan kecuali dibuka. */}
           {pendingReviewBacklog.length > 0 && (
-            <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+            <div>
+              <button
+                type="button"
+                onClick={() => setBacklogOpen(o => !o)}
+                className="w-full flex items-center justify-between gap-2 bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-gray-500 hover:text-gray-800 cursor-pointer"
+              >
+                <span>Lampau — Periode Sudah Digajikan ({pendingReviewBacklog.length}){backlogOpen ? ' ▲' : ' ▼'}</span>
+                <span className="text-[10px] font-semibold text-gray-400">{backlogOpen ? 'sembunyikan' : 'buka rincian'}</span>
+              </button>
+              {backlogOpen && (
+            <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3 mt-2">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
                   <h3 className="font-black text-sm text-gray-700">Lampau — Periode Sudah Digajikan ({pendingReviewBacklog.length})</h3>
@@ -1549,6 +1561,8 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
                   );
                 })}
               </div>
+            </div>
+              )}
             </div>
           )}
           {editAdjustmentId && (() => {

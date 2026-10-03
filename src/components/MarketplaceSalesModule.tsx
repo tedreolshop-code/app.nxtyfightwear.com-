@@ -981,6 +981,26 @@ export const MarketplaceSalesModule: React.FC = () => {
                       </div>
                     </div>
 
+                    {/* Biaya potongan admin per pesanan — ditaruh DI ATAS daftar barang
+                        supaya tidak terlewat (belum juga saat scroll) di layar HP.
+                        Semua peran admin melihat input ini. */}
+                    <div>
+                      <label className="block text-[10px] text-gray-400 font-bold uppercase mb-0.5 flex items-center gap-1">
+                        <Percent className="w-3 h-3 text-amber-500" /> Biaya Potongan Admin — 1 Pesanan (IDR)
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={orderAdminFee || ''}
+                        onChange={(e) => setOrderAdminFee(Number(e.target.value))}
+                        className="w-full bg-gray-50 border border-gray-200 rounded px-3 py-2 text-xs font-bold font-mono text-amber-600 focus:outline-none focus:ring-1 focus:ring-evergreen"
+                        placeholder="Contoh: 25000"
+                      />
+                      {draftRows.length > 1 && (
+                        <p className="text-[10px] text-gray-400 mt-1">Dibebankan ke {draftRows.length} barang dalam pesanan, disebar otomatis.</p>
+                      )}
+                    </div>
+
                     {/* Custom Marketplace input if Custom is selected */}
                     {marketplaceRef === 'Custom' && (
                       <div>
@@ -1172,47 +1192,28 @@ export const MarketplaceSalesModule: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Biaya admin & foto resi sejajar — merapatkan modal ala form order */}
-                    <div className="grid sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[10px] text-gray-400 font-bold uppercase mb-0.5 flex items-center gap-1">
-                          <Percent className="w-3 h-3 text-amber-500" /> Biaya Potongan Admin — 1 Pesanan (IDR)
-                        </label>
-                        <input
-                          type="number"
-                          min={0}
-                          value={orderAdminFee || ''}
-                          onChange={(e) => setOrderAdminFee(Number(e.target.value))}
-                          className="w-full bg-gray-50 border border-gray-200 rounded px-3 py-1.5 text-xs font-bold font-mono text-amber-600 focus:outline-none focus:ring-1 focus:ring-evergreen"
-                          placeholder="Contoh: 25000"
-                        />
-                        {draftRows.length > 1 && (
-                          <p className="text-[10px] text-gray-400 mt-1">Dibebankan ke {draftRows.length} barang dalam pesanan, disebar otomatis.</p>
-                        )}
-                      </div>
-
-                      {/* Foto resi — diunggah setelah tombol simpan ditekan */}
-                      <div>
-                        <label className="block text-gray-500 font-semibold mb-1">Foto Resi / Bukti Pengiriman (opsional)</label>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) => setProofFile(e.target.files?.[0] || null)}
-                          className="w-full text-[11px] text-gray-600 file:mr-2 file:rounded file:border-0 file:bg-evergreen file:px-3 file:py-1.5 file:text-white file:font-bold"
-                        />
-                        {proofFile && <p className="text-[10px] text-emerald-600 mt-1 font-semibold">{proofFile.name} akan diunggah setelah disimpan.</p>}
-                        {uploadingPhoto && <p className="text-[10px] text-gray-400 mt-1">Mengunggah foto...</p>}
-                        {(() => {
-                          const proof = editingOrderNumber && itemSales.find(i => i.order_number === editingOrderNumber)?.shipping_proof_url;
-                          if (!proof || proofFile) return null;
-                          return (
-                            <div className="flex items-center gap-2 mt-2">
-                              <img src={proof} alt="Bukti pengiriman" onClick={() => setPreviewPhoto(proof)} className="w-16 h-16 object-cover rounded-lg border border-gray-200 cursor-pointer" />
-                              <button type="button" onClick={() => handleDeleteShippingProof(editingOrderNumber, proof)} className="text-[10px] text-rose-600 font-bold cursor-pointer">Hapus Foto</button>
-                            </div>
-                          );
-                        })()}
-                      </div>
+                    {/* Foto resi — diunggah setelah tombol simpan ditekan.
+                        (Input biaya admin pindah ke atas form supaya pasti terlihat.) */}
+                    <div>
+                      <label className="block text-gray-500 font-semibold mb-1">Foto Resi / Bukti Pengiriman (opsional)</label>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => setProofFile(e.target.files?.[0] || null)}
+                        className="w-full text-[11px] text-gray-600 file:mr-2 file:rounded file:border-0 file:bg-evergreen file:px-3 file:py-1.5 file:text-white file:font-bold"
+                      />
+                      {proofFile && <p className="text-[10px] text-emerald-600 mt-1 font-semibold">{proofFile.name} akan diunggah setelah disimpan.</p>}
+                      {uploadingPhoto && <p className="text-[10px] text-gray-400 mt-1">Mengunggah foto...</p>}
+                      {(() => {
+                        const proof = editingOrderNumber && itemSales.find(i => i.order_number === editingOrderNumber)?.shipping_proof_url;
+                        if (!proof || proofFile) return null;
+                        return (
+                          <div className="flex items-center gap-2 mt-2">
+                            <img src={proof} alt="Bukti pengiriman" onClick={() => setPreviewPhoto(proof)} className="w-16 h-16 object-cover rounded-lg border border-gray-200 cursor-pointer" />
+                            <button type="button" onClick={() => handleDeleteShippingProof(editingOrderNumber, proof)} className="text-[10px] text-rose-600 font-bold cursor-pointer">Hapus Foto</button>
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     {/* Submit Button */}
