@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserRole, Employee, ProductionHandoff, ProductionJob, PackingTask } from './types';
 import { dataStore, wibTodayStr } from './dataStore';
-import { isCloudEnabled, getCloudStatus, CloudStatus, loginCloud, logoutCloud, getLastSyncAtMs, SYNC_TIME_EVENT } from './cloudSync';
+import { isCloudEnabled, getCloudStatus, CloudStatus, loginCloud, logoutCloud, getLastSyncAtMs, SYNC_TIME_EVENT, resyncDataNow, getLocalUsageRatio } from './cloudSync';
 import { MainDashboard } from './components/MainDashboard';
 import { EmployeeDashboard } from './components/EmployeeDashboard';
 import { AttendanceModule } from './components/AttendanceModule';
@@ -318,6 +318,32 @@ export default function App() {
       window.removeEventListener('nxty_storage_change', checkProductionTasks);
     };
   }, [loggedEmployee, currentRole]);
+
+  // Kesehatan storage perangkat + tarik ulang manual
+  const [storagePct, setStoragePct] = useState<number>(() => Math.round(getLocalUsageRatio() * 100));
+  const [resyncing, setResyncing] = useState(false);
+  useEffect(() => {
+    const refresh = () => setStoragePct(Math.round(getLocalUsageRatio() * 100));
+    refresh();
+    window.addEventListener('nxty_storage_change', refresh);
+    window.addEventListener('nxty_storage_critical', refresh);
+    window.addEventListener(SYNC_TIME_EVENT, refresh);
+    return () => {
+      window.removeEventListener('nxty_storage_change', refresh);
+      window.removeEventListener('nxty_storage_critical', refresh);
+      window.removeEventListener(SYNC_TIME_EVENT, refresh);
+    };
+  }, []);
+  const handleResyncNow = async () => {
+    setResyncing(true);
+    try {
+      await resyncDataNow();
+      setToast('Sinkron ulang selesai — data terbaru sudah ditarik dari cloud.');
+    } finally {
+      setResyncing(false);
+      setStoragePct(Math.round(getLocalUsageRatio() * 100));
+    }
+  };
 
   // Ganti popup alert() browser dengan notifikasi halus di dalam aplikasi.
   // Berlaku untuk semua modul tanpa perlu mengubah satu per satu.
@@ -659,11 +685,20 @@ export default function App() {
     </div>
   );
 
+  const storageBannerEl = storagePct >= 90 ? (
+    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[90] max-w-md w-[calc(100%-2rem)] no-print">
+      <div className="bg-rose-700 border border-rose-500 text-white text-[11px] font-semibold px-4 py-2.5 rounded-xl shadow-lg">
+        Ruang penyimpanan perangkat menipis ({storagePct}%). Data tetap aman di cloud — riwayat lama diringkas otomatis dari perangkat ini.
+      </div>
+    </div>
+  ) : null;
+
   // Belum login: tampilkan halaman login penuh
   if (!session) {
     return (
       <>
         {toastEl}
+        {storageBannerEl}
         <LoginPage onLogin={handleLogin} />
       </>
     );
@@ -675,6 +710,7 @@ export default function App() {
     // untuk menyusut, dan area scroll memanjang lalu terpotong — tidak bisa di-scroll.
     <div className="flex flex-col md:flex-row h-dvh w-full bg-white font-sans text-gray-800 text-sm overflow-hidden">
       {toastEl}
+      {storageBannerEl}
       {handoffPopup && <div className="fixed inset-0 z-[90] bg-black/55 p-4 flex items-center justify-center no-print"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-4"><div><span className="text-[10px] font-black uppercase tracking-wider text-amber-700 bg-amber-50 px-2 py-1 rounded">Tugas Produksi Baru</span><h3 className="font-black text-gray-900 mt-3">{handoffPopup.product_name}</h3>{(handoffPopup.variant || dataStore.getProductionJobs().find(job => job.id === handoffPopup.job_id)?.variant) && <p className="text-xs font-black text-amber-800 mt-0.5">Varian: {handoffPopup.variant || dataStore.getProductionJobs().find(job => job.id === handoffPopup.job_id)?.variant}</p>}<p className="text-xs text-gray-500 mt-1">{handoffPopup.from_stage} → {handoffPopup.to_stage}</p></div><div className="bg-gray-50 border border-gray-100 rounded-xl p-3 text-xs"><p>Dari: <b>{handoffPopup.from_employee_name}</b></p><p>Jumlah diterima: <b>{handoffPopup.qty_sent} pcs</b></p>{handoffPopup.notes && <p className="mt-1 text-gray-500">{handoffPopup.notes}</p>}</div><p className="text-[11px] text-amber-700">Periksa barang fisik sebelum menekan Terima pada menu Produksi.</p><div className="grid grid-cols-2 gap-2"><button onClick={() => { localStorage.setItem(`nxty_handoff_seen_${handoffPopup.id}`, '1'); setHandoffPopup(null); }} className="py-2.5 rounded-xl bg-gray-100 text-gray-700 text-xs font-bold cursor-pointer">Nanti</button><button onClick={() => { localStorage.setItem(`nxty_handoff_seen_${handoffPopup.id}`, '1'); setHandoffPopup(null); setActiveTab('produksi'); }} className="py-2.5 rounded-xl bg-[var(--color-evergreen)] text-white text-xs font-bold cursor-pointer">Lihat & Konfirmasi</button></div></div></div>}
       {productionTaskPopup && <div className="fixed inset-0 z-[91] bg-black/55 p-4 flex items-center justify-center no-print"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-4"><div><span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-1 rounded">Ada Kerjaan Baru</span><h3 className="font-black text-gray-900 mt-3">{productionTaskPopup.product_name}</h3><p className="text-xs text-gray-500 mt-1">{productionTaskPopup.order_number || productionTaskPopup.id} · tahap {productionTaskPopup.current_stage}</p></div><div className="bg-gray-50 border border-gray-100 rounded-xl p-3 text-xs"><p>Target: <b>{productionTaskPopup.qty} pcs</b></p>{productionTaskPopup.notes && <p className="mt-1 text-gray-500">{productionTaskPopup.notes}</p>}</div><p className="text-[11px] text-emerald-700">Buka Daftar Kerjaan untuk input hasil kerja atau reject jika ada.</p><div className="grid grid-cols-2 gap-2"><button onClick={() => { if (loggedEmployee) localStorage.setItem(productionTaskSeenKey(loggedEmployee.id, productionTaskPopup.id), '1'); setProductionTaskPopup(null); }} className="py-2.5 rounded-xl bg-gray-100 text-gray-700 text-xs font-bold cursor-pointer">Nanti</button><button onClick={() => { if (loggedEmployee) localStorage.setItem(productionTaskSeenKey(loggedEmployee.id, productionTaskPopup.id), '1'); setProductionTaskPopup(null); setActiveTab('produksi'); }} className="py-2.5 rounded-xl bg-[var(--color-evergreen)] text-white text-xs font-bold cursor-pointer">Lihat Kerjaan</button></div></div></div>}
       {packingTaskPopup && !productionTaskPopup && <div className="fixed inset-0 z-[91] bg-black/55 p-4 flex items-center justify-center no-print"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-4"><div><span className="text-[10px] font-black uppercase tracking-wider text-sky-700 bg-sky-50 px-2 py-1 rounded">Ada Kerjaan Packing</span><h3 className="font-black text-gray-900 mt-3">{packingTaskPopup.order_number}</h3><p className="text-xs text-gray-500 mt-1">{packingTaskPopup.customer_name}</p></div><div className="bg-gray-50 border border-gray-100 rounded-xl p-3 text-xs"><p>Total barang: <b>{packingTaskPopup.items.reduce((sum, item) => sum + item.qty, 0)} pcs</b></p><p className="mt-1 text-gray-500">{packingTaskPopup.items.map(item => `${item.qty}x ${item.product_name}`).join(', ')}</p></div><p className="text-[11px] text-sky-700">Buka Daftar Kerjaan untuk menyelesaikan packing.</p><div className="grid grid-cols-2 gap-2"><button onClick={() => { if (loggedEmployee) localStorage.setItem(packingTaskSeenKey(loggedEmployee.id, packingTaskPopup.id), '1'); setPackingTaskPopup(null); }} className="py-2.5 rounded-xl bg-gray-100 text-gray-700 text-xs font-bold cursor-pointer">Nanti</button><button onClick={() => { if (loggedEmployee) localStorage.setItem(packingTaskSeenKey(loggedEmployee.id, packingTaskPopup.id), '1'); setPackingTaskPopup(null); setActiveTab('produksi'); }} className="py-2.5 rounded-xl bg-[var(--color-evergreen)] text-white text-xs font-bold cursor-pointer">Lihat Kerjaan</button></div></div></div>}
@@ -735,6 +771,19 @@ export default function App() {
               )}
             </span>
           </div>
+          <div className="flex items-center justify-between gap-2 text-[10px]">
+            <span className={`font-semibold ${storagePct >= 90 ? 'text-rose-300' : storagePct >= 85 ? 'text-amber-300' : 'text-emerald-200/60'}`}>
+              Penyimpanan {storagePct}%
+            </span>
+            <button
+              onClick={handleResyncNow}
+              disabled={resyncing}
+              className="text-emerald-200/70 hover:text-white underline underline-offset-2 disabled:opacity-50 cursor-pointer"
+            >
+              {resyncing ? 'Menarik…' : 'Tarik ulang'}
+            </button>
+          </div>
+          <span className="block text-[9px] text-emerald-200/40">versi v{__BUILD_ID__}</span>
 
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center font-bold text-amber-800 shrink-0 overflow-hidden">

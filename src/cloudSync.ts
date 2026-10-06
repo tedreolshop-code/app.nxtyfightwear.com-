@@ -461,6 +461,19 @@ const fetchAllRows = async (table: string, opts?: { sinceCol?: string; since?: s
   return all;
 };
 
+/** Semua id + waktu dibuat (ari_attendance punya created_at) — untuk watermark pemangkasan lokal. */
+const fetchAllIdsWithCreatedAt = async (table: string): Promise<Map<string, string>> => {
+  const PAGE = 1000;
+  const map = new Map<string, string>();
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await client!.from(table).select('id, created_at').range(from, from + PAGE - 1);
+    if (error) throw error;
+    for (const r of (data || []) as { id: string; created_at?: string }[]) if (r.id) map.set(r.id, r.created_at || '');
+    if (!data || data.length < PAGE) break;
+  }
+  return map;
+};
+
 /**
  * Ambil baris berdasarkan DAFTAR ID — pengisi-ulang untuk daftar lokal yang
  * bolong. Sinkron bertahap hanya menarik baris yang "berubah"; baris yang
@@ -483,6 +496,15 @@ const fetchRowsByIds = async (table: string, ids: string[]): Promise<{ id: strin
 /** Kumpulan baris yang hilang dari daftar lokal: id ada di cloud, tak ada lokal. */
 const missingLocalIds = (localIds: Set<string>, cloudIds: Set<string>): string[] =>
   [...cloudIds].filter(id => !localIds.has(id));
+
+/** Sama seperti di atas, tapi baris lebih tua dari watermark pemangkasan dianggap sengaja dilepas dari perangkat. */
+export const missingLocalIdsWithAge = (localIds: Set<string>, idCreatedAt: Map<string, string>, watermarkMs: number): string[] =>
+  [...idCreatedAt.keys()].filter(id => {
+    if (localIds.has(id)) return false;
+    if (watermarkMs <= 0) return true;
+    const t = Date.parse(idCreatedAt.get(id) || '');
+    return !Number.isFinite(t) || t > watermarkMs;
+  });
 
 /**
  * Gabungkan hasil sinkron bertahap ke data lokal, dedup berdasarkan id:
@@ -616,6 +638,7 @@ const setItemQuotaSafe = (storageKey: string, value: string): boolean => {
       return true;
     } catch {
       console.error(`[cloudSync] Gagal menulis "${storageKey}" ke localStorage (storage penuh?) — dilewati.`, e);
+      try { window.dispatchEvent(new Event('nxty_storage_critical')); } catch { /* abaikan */ }
       return false;
     }
   }
@@ -633,6 +656,7 @@ const setItemQuotaSafe = (storageKey: string, value: string): boolean => {
 export const initCloudSync = async (): Promise<void> => {
   if (!client) return;
   setStatus('connecting');
+  pruneLocalHeavyData('awal');
   const since = readSyncSince();
   const incremental = since !== null;
   try {
@@ -666,11 +690,14 @@ export const initCloudSync = async (): Promise<void> => {
       const tomb = readTombstones();
       if (tomb.size > 0) console.info(`[cloudSync] Nisan aktif: ${tomb.size} id absensi sudah dibersihkan dari cloud.`);
       if (incremental) {
-        const cloudIds = await fetchAllIds(ATT_TABLE);
+        const cloudIdAge = await fetchAllIdsWithCreatedAt(ATT_TABLE);
+        const cloudIds = new Set(cloudIdAge.keys());
         // Heal daftar bolong: baris yang tidak ada di perangkat tak akan pernah
         // lolos filter "created_at > watermark" — tarik langsung by-id (lihat
         // komentar fetchRowsByIds). Tanpa ini daftar absensi bisa selamanya kurang.
-        const missing = missingLocalIds(localIds, cloudIds);
+        // Baris yang sengaja dilepas dari perangkat (watermark pemangkasan) tidak
+        // dianggap hilang supaya tidak ditarik ulang.
+        const missing = missingLocalIdsWithAge(localIds, cloudIdAge, readAttendancePruneUntil());
         if (missing.length > 0) console.info(`[cloudSync] Mengisi ulang ${missing.length} baris absensi yang hilang dari perangkat.`);
         const refilled = missing.length > 0
           ? (await fetchRowsByIds(ATT_TABLE, missing)).map(r => r.value as AttendanceRecordLike).filter(r => r && r.id)
@@ -749,6 +776,7 @@ export const initCloudSync = async (): Promise<void> => {
     // Watermark hanya maju bila semua tabel tersinkron — kalau ada yang gagal,
     // pemakaian berikutnya mengulang rentang yang sama, bukan melewatinya.
     if (!anyTableFailed) writeSyncNow();
+    pruneLocalHeavyData('pasca-tarik');
 
     // Realtime: perubahan dari perangkat lain langsung masuk
     const channel = client.channel('ari_store_changes');
@@ -845,9 +873,10 @@ const resyncDataOnWakeup = async (): Promise<void> => {
     const fresh = attRows.map(r => r.value as AttendanceRecordLike).filter(r => r && r.id);
     const local = readLocalAttendance();
     if (fresh.length > 0) {
-      const cloudIds = await fetchAllIds(ATT_TABLE);
+      const cloudIdAge = await fetchAllIdsWithCreatedAt(ATT_TABLE);
+      const cloudIds = new Set(cloudIdAge.keys());
       const localIds = new Set(local.map(r => r.id).filter(Boolean) as string[]);
-      const missing = missingLocalIds(localIds, cloudIds);
+      const missing = missingLocalIdsWithAge(localIds, cloudIdAge, readAttendancePruneUntil());
       const refilled = missing.length > 0
         ? (await fetchRowsByIds(ATT_TABLE, missing)).map(r => r.value as AttendanceRecordLike).filter(r => r && r.id)
         : [];
@@ -890,11 +919,145 @@ const resyncDataOnWakeup = async (): Promise<void> => {
       writeSyncNow();
       if (status !== 'online') setStatus('online');
     }
+    pruneLocalHeavyData('wakeup');
   } catch (e) {
     console.error('[cloudSync] Wakeup sinkron gagal:', e);
   } finally {
     wakeupBusy = false;
   }
+};
+
+// ==== Perawatan storage perangkat ====
+// localStorage hanya ±5 MB per perangkat sementara seluruh dataset tinggal di sana.
+// Perawatan ini HANYA menulis ulang cache lokal — cloud tidak pernah disentuh:
+// - baris absensi lama dikompaksi (GPS/verifikasi/foto dilepas, inti data tetap),
+// - catatan append-only tua (mutasi stok, scan gagal, log produksi) dilepas,
+// - saat kritis (>=95%), absensi >180 hari dilepas dari perangkat dan dicatat
+//   watermark-nya supaya heal tidak menariknya ulang (data tetap utuh di cloud).
+const PRUNE_THRESHOLD = 0.6;
+const PRUNE_CRITICAL = 0.95;
+const COMPACT_ATTENDANCE_DAYS = 30;
+const TRIM_MOVEMENTS_DAYS = 90;
+const TRIM_FAILURES_DAYS = 30;
+const TRIM_PRODLOGS_DAYS = 60;
+const EMERGENCY_ATTENDANCE_DAYS = 180;
+const ATT_PRUNE_KEY = 'nxty_att_prune_until';
+const PRUNE_MIN_GAP_MS = 5 * 60 * 1000;
+const DROP_FIELDS_COMPACT = new Set([
+  'latitude', 'longitude', 'distance_meters', 'accuracy',
+  'device_token', 'verification_method', 'selfie_url',
+  'overtime_request', 'is_mock_location_flag',
+]);
+
+/** Kompaksi baris absensi yang sudah lama: inti data dipertahankan, baris koreksi tidak disentuh. */
+export const compactAttendanceRows = (
+  rows: Array<Record<string, unknown>>, cutoffMs: number
+): { rows: Array<Record<string, unknown>>; compacted: number } => {
+  let compacted = 0;
+  const out = rows.map(row => {
+    const ts = Date.parse(String(row.timestamp || ''));
+    if (!Number.isFinite(ts) || ts > cutoffMs) return row;
+    if (row.device_token === 'koreksi-admin') return row;
+    let kena = false;
+    const ringkas: Record<string, unknown> = {};
+    for (const k of Object.keys(row)) {
+      if (DROP_FIELDS_COMPACT.has(k)) { kena = true; continue; }
+      ringkas[k] = row[k];
+    }
+    if (kena) compacted++;
+    return ringkas;
+  });
+  return { rows: out, compacted };
+};
+
+/** Lepas baris lebih tua dari cutoff; baris tanpa tanggal disimpan (konservatif). */
+export const trimRowsByAge = <T extends Record<string, unknown>>(rows: T[], ageField: string, cutoffMs: number): T[] =>
+  rows.filter(row => {
+    const ts = Date.parse(String(row[ageField] ?? ''));
+    return !Number.isFinite(ts) || ts > cutoffMs;
+  });
+
+export const getLocalUsageRatio = (): number => {
+  let total = 0;
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith('nxty_')) total += (localStorage.getItem(k) || '').length;
+  }
+  return total / (5 * 1024 * 1024);
+};
+const readAttendancePruneUntil = (): number => {
+  try { return Number(localStorage.getItem(ATT_PRUNE_KEY)) || 0; } catch { return 0; }
+};
+const writeAttendancePruneUntil = (ms: number): void => {
+  try {
+    localStorage.setItem(ATT_PRUNE_KEY, String(Math.max(readAttendancePruneUntil(), ms)));
+  } catch { /* penuh: abaikan */ }
+};
+
+let lastLocalPruneAt = 0;
+export const pruneLocalHeavyData = (sumber: string): void => {
+  try {
+    const usage = getLocalUsageRatio();
+    if (usage <= PRUNE_THRESHOLD) return;
+    if (sumber !== 'awal' && Date.now() - lastLocalPruneAt < PRUNE_MIN_GAP_MS) return;
+    lastLocalPruneAt = Date.now();
+    const now = Date.now();
+    const HARI = 86_400_000;
+    let berubah = false;
+
+    const att = readLocalAttendance();
+    const { rows: attRingkas, compacted } = compactAttendanceRows(
+      att as unknown as Array<Record<string, unknown>>, now - COMPACT_ATTENDANCE_DAYS * HARI
+    );
+    if (compacted > 0) {
+      writeLocalAttendance(attRingkas as unknown as AttendanceRecordLike[]);
+      berubah = true;
+      console.info(`[cloudSync] Kompaksi ${compacted} baris absensi lama (GPS/verifikasi dilepas dari cache, data tetap utuh di cloud).`);
+    }
+
+    const targets: Array<{ key: string; field: string; hari: number; label: string }> = [
+      { key: 'stock_movements', field: 'created_at', hari: TRIM_MOVEMENTS_DAYS, label: 'mutasi stok' },
+      { key: 'attendance_failures', field: 'timestamp', hari: TRIM_FAILURES_DAYS, label: 'scan gagal' },
+      { key: 'production_logs', field: 'created_at', hari: TRIM_PRODLOGS_DAYS, label: 'log produksi' },
+    ];
+    for (const t of targets) {
+      const rows = readLocalRows(t.key);
+      if (!rows.length) continue;
+      const kept = trimRowsByAge(rows as unknown as Array<Record<string, unknown>>, t.field, now - t.hari * HARI);
+      if (kept.length !== rows.length) {
+        writeLocalRows(t.key, kept as { id: string }[]);
+        berubah = true;
+        console.info(`[cloudSync] Melepas ${rows.length - kept.length} ${t.label} >${t.hari} hari dari cache (aman di cloud).`);
+      }
+    }
+
+    const usageAkhir = getLocalUsageRatio();
+    if (usageAkhir >= PRUNE_CRITICAL) {
+      const cutoff = now - EMERGENCY_ATTENDANCE_DAYS * HARI;
+      writeAttendancePruneUntil(cutoff);
+      const attKini = readLocalAttendance();
+      const kept = trimRowsByAge(attKini as unknown as Array<Record<string, unknown>>, 'timestamp', cutoff);
+      if (kept.length !== attKini.length) {
+        writeLocalAttendance(kept as unknown as AttendanceRecordLike[]);
+        berubah = true;
+        console.warn(`[cloudSync] Storage kritis — ${attKini.length - kept.length} absensi >${EMERGENCY_ATTENDANCE_DAYS} hari dilepas dari perangkat (aman di cloud).`);
+      }
+    }
+    if (berubah) console.info(`[cloudSync] Perawatan storage (${sumber}): ${Math.round(usage * 100)}% -> ${Math.round(getLocalUsageRatio() * 100)}%.`);
+  } catch (e) {
+    console.error('[cloudSync] Perawatan storage gagal (dilewati):', e);
+  }
+};
+
+/** Tarik ulang manual dari UI; bila belum pernah sinkron, jalankan tarik penuh. */
+export const resyncDataNow = async (): Promise<void> => {
+  if (!client) return;
+  lastWakeupSync = Date.now();
+  if (readSyncSince() === null) {
+    await initCloudSync();
+    return;
+  }
+  await resyncDataOnWakeup();
 };
 
 const tryWakeupSync = (): void => {
