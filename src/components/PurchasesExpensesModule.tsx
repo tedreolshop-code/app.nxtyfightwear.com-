@@ -103,6 +103,12 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
   const [poSortOrder, setPoSortOrder] = useState<'asc' | 'desc'>('desc');
   const [poDivFilter, setPoDivFilter] = useState('');
 
+  // Nama catatan bila tanggal simpan jatuh di luar bulan filter aktif — barisnya tersimpan tapi tak tampak di daftar
+  const outsideMonthNote = (date: string, monthFilter: string) =>
+    monthFilter !== 'All' && !date.startsWith(monthFilter)
+      ? ` Catatan: tanggal ${date} di luar bulan filter aktif (${monthFilter}), jadi belum tampak di daftar — ubah filter bulan untuk melihatnya.`
+      : '';
+
   const [expenseSearch, setExpenseSearch] = useState('');
   const [expenseCategoryFilter, setExpenseCategoryFilter] = useState('All');
   const [expenseMonthFilter, setExpenseMonthFilter] = useState('All');
@@ -325,7 +331,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
       dataStore.setPurchases(updatedPurchases);
       setPurchases(updatedPurchases);
       setEditingPurchaseId(null);
-      alert('Purchase Order berhasil diperbarui! Stok inventory telah disesuaikan.');
+      alert(`Purchase Order berhasil diperbarui! Stok inventory telah disesuaikan.${outsideMonthNote(poDate, poMonthFilter)}`);
     } else {
       // Create new Purchase Order
       // Tunai = langsung tercatat lunas; hutang = catat pembayaran awal bila ada
@@ -366,8 +372,8 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
       // Apply stock levels
       adjustStockForPO(newPo, 'add');
       alert(newPo.status === 'completed'
-        ? 'Purchase Order berhasil diterbitkan! Barang diterima — stok gudang bertambah otomatis untuk bahan baku terlink.'
-        : 'Purchase Order berhasil diterbitkan! Stok gudang akan bertambah otomatis saat status PO diubah menjadi Selesai/Diterima.');
+        ? `Purchase Order berhasil diterbitkan! Barang diterima — stok gudang bertambah otomatis untuk bahan baku terlink.${outsideMonthNote(newPo.date, poMonthFilter)}`
+        : `Purchase Order berhasil diterbitkan! Stok gudang akan bertambah otomatis saat status PO diubah menjadi Selesai/Diterima.${outsideMonthNote(newPo.date, poMonthFilter)}`);
     }
 
     // Reset Form Fields
@@ -469,7 +475,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
       });
       dataStore.setDailyExpenses(updated);
       setEditingExpenseId(null);
-      alert('Catatan pengeluaran harian berhasil diperbarui!');
+      alert(`Catatan pengeluaran harian berhasil diperbarui!${outsideMonthNote(expenseDate, expenseMonthFilter)}`);
     } else {
       const newExpense: DailyExpense = {
         id: Math.random().toString(36).substring(2, 9),
@@ -484,7 +490,7 @@ export const PurchasesExpensesModule: React.FC<{ mode?: 'purchases' | 'expenses'
       };
       currentExpenses.unshift(newExpense);
       dataStore.setDailyExpenses(currentExpenses);
-      alert('Pengeluaran harian berhasil dicatatkan!');
+      alert(`Pengeluaran harian berhasil dicatatkan!${outsideMonthNote(expenseDate, expenseMonthFilter)}`);
     }
 
     setExpenseDesc('');

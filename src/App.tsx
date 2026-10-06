@@ -374,6 +374,40 @@ export default function App() {
     currentRole === 'karyawan' && menu.id === 'produksi' ? 'Daftar Kerjaan' : menu.label;
 
   useEffect(() => {
+    const refreshEmployeeAccess = () => {
+      let s: Session | null = null;
+      try {
+        s = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+      } catch {
+        return;
+      }
+      if (!s?.employeeId) return;
+      const fresh = dataStore.getEmployees().find(e => e.id === s.employeeId);
+      if (!fresh) return;
+      setLoggedEmployee(prev => {
+        if (!prev || prev.id !== fresh.id) return prev;
+        const same = prev.access_role === fresh.access_role && prev.name === fresh.name
+          && JSON.stringify(prev.allowed_tabs ?? []) === JSON.stringify(fresh.allowed_tabs ?? []);
+        return same ? prev : fresh;
+      });
+      setSession(prev => {
+        if (!prev?.employeeId) return prev;
+        const nextRole: UserRole = fresh.access_role || 'karyawan';
+        if (prev.role === nextRole && prev.name === fresh.name) return prev;
+        const next: Session = { ...prev, role: nextRole, name: fresh.name };
+        try {
+          localStorage.setItem(SESSION_KEY, JSON.stringify(next));
+        } catch {
+          console.warn('Storage penuh — pembaruan sesi tidak tersimpan; sesi tetap aktif sampai tab ditutup.');
+        }
+        return next;
+      });
+    };
+    refreshEmployeeAccess();
+    window.addEventListener('nxty_storage_change', refreshEmployeeAccess);
+    return () => window.removeEventListener('nxty_storage_change', refreshEmployeeAccess);
+  }, []);
+  useEffect(() => {
     const updateTime = () => {
       const now = new Date();
       const options: Intl.DateTimeFormatOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
@@ -744,6 +778,45 @@ export default function App() {
             <h2 className="text-base font-semibold text-gray-800 truncate">{activeMenu?.label || 'Dashboard'}</h2>
           </div>
           <p className="hidden md:block text-xs text-gray-500 shrink-0">{formattedTime}</p>
+          {/* Indikator sinkron cloud versi HP — sidebar tidak terlihat di layar kecil,
+              jadi status dipindah ke header: titik warna + jam tarik-ulang. Di-tap
+              menampilkan penjelasan lengkap lewat toast (bukan menu baru). */}
+          {session && (
+            <button
+              onClick={() => {
+                const waktu = lastSyncAt > 0
+                  ? new Date(lastSyncAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+                  : '';
+                setToast(
+                  cloudStatus === 'online'
+                    ? `Tersinkron ke Cloud${waktu ? ` — tarik-ulang terakhir ${waktu}` : ''}.\nData perangkat ini sama dengan data semua perangkat lain.`
+                    : cloudStatus === 'connecting'
+                      ? 'Menghubungkan ke Cloud…'
+                      : cloudStatus === 'error'
+                        ? 'Cloud error — data tersimpan di perangkat ini dan akan diantar begitu koneksi pulih.'
+                        : 'Mode offline — data tersimpan di perangkat ini.'
+                );
+              }}
+              className="md:hidden flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-full px-2 py-1 cursor-pointer shrink-0"
+              aria-label="Status sinkronisasi cloud"
+            >
+              <span className={`w-2 h-2 rounded-full shrink-0 ${
+                cloudStatus === 'online' ? 'bg-emerald-500'
+                : cloudStatus === 'connecting' ? 'bg-amber-400'
+                : cloudStatus === 'error' ? 'bg-rose-500'
+                : 'bg-gray-400'
+              }`} />
+              <span className="text-[10px] font-semibold text-gray-600 tabular-nums">
+                {cloudStatus === 'online'
+                  ? lastSyncAt > 0
+                    ? new Date(lastSyncAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+                    : 'Cloud'
+                  : cloudStatus === 'connecting' ? '…'
+                  : cloudStatus === 'error' ? '!'
+                  : 'off'}
+              </span>
+            </button>
+          )}
           {/* Logout mobile */}
           <button
             onClick={handleLogout}

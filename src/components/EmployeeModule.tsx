@@ -606,7 +606,7 @@ export const EmployeeModule: React.FC<EmployeeModuleProps> = ({
 
   const startEditingRLS = (emp: Employee) => {
     setEditingEmpId(emp.id);
-    setEditingTabs(emp.allowed_tabs || ['attendance', 'production', 'warehouse']);
+    setEditingTabs(emp.allowed_tabs?.length ? emp.allowed_tabs : defaultTabsForAccessRole(emp.access_role || ''));
   };
 
   const handleSimulateLogin = (e: React.FormEvent) => {

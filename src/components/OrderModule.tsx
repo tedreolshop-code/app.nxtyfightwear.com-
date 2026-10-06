@@ -253,7 +253,7 @@ export const OrderModule: React.FC = () => {
       } : o);
       dataStore.setOrders(updatedOrders);
       if (proofFile) uploadOrderProof(existing.id, existing.order_number, proofFile);
-      alert(`Perubahan order ${existing.order_number} berhasil disimpan.`);
+      alert(`Perubahan order ${existing.order_number} berhasil disimpan.${outsidePeriodNote(existing.date)}`);
     } else {
       const orderNumber = generateOrderNumber();
       const newOrder: Order = {
@@ -276,12 +276,20 @@ export const OrderModule: React.FC = () => {
       dataStore.setOrders([newOrder, ...dataStore.getOrders()]);
       if (proofFile) uploadOrderProof(newOrder.id, orderNumber, proofFile);
       alert(isPreorder
-        ? `Pre-order ${orderNumber} tercatat, dijanjikan siap ${readyDate}. Stok gudang baru dipotong saat order diselesaikan.`
-        : `Order ${orderNumber} berhasil dicatat! Selesaikan order untuk memotong stok gudang.`);
+        ? `Pre-order ${orderNumber} tercatat, dijanjikan siap ${readyDate}. Stok gudang baru dipotong saat order diselesaikan.${outsidePeriodNote(newOrder.date)}`
+        : `Order ${orderNumber} berhasil dicatat! Selesaikan order untuk memotong stok gudang.${outsidePeriodNote(newOrder.date)}`);
     }
 
     resetOrderForm();
     loadData();
+  };
+
+  const outsidePeriodNote = (date: string) => {
+    const after = Boolean(startDate) && date < startDate;
+    const before = Boolean(endDate) && date > endDate;
+    return after || before
+      ? ` Catatan: tanggal order ${date} di luar periode filter (${startDate || '...'} s.d. ${endDate || '...'}), jadi belum tampak di daftar — ubah periode untuk melihatnya.`
+      : '';
   };
 
   const handleCancelOrder = (orderId: string) => {
