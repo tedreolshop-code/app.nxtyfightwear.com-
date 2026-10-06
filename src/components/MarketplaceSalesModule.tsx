@@ -70,6 +70,7 @@ export const MarketplaceSalesModule: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<'newest' | 'oldest'>('newest');
   const [divFilter, setDivFilter] = useState('');
+  const [exportMonth, setExportMonth] = useState('');
 
   // Pop-up ubah status (baris yang sedang diubah + pilihan retur)
   const [statusModalItem, setStatusModalItem] = useState<MarketplaceItemSale | null>(null);
@@ -568,7 +569,7 @@ export const MarketplaceSalesModule: React.FC = () => {
       : departmentId === 'dept-konveksi' ? 'bg-sky-100 text-sky-800'
       : 'bg-gray-100 text-gray-500';
 
-  const filteredItemSales = itemSales.filter(item => {
+  const matchesSaleFilters = (item: MarketplaceItemSale, startDate: string, endDate: string) => {
     // Date filter
     const itemDate = item.date;
     const isWithinDate = (!startDate || itemDate >= startDate) && (!endDate || itemDate <= endDate);
@@ -590,7 +591,9 @@ export const MarketplaceSalesModule: React.FC = () => {
 
     return isWithinDate && isMarketplaceMatch && isStatusMatch && matchesSearch
       && matchesDivision(item.department_id, divFilter);
-  }).sort((a, b) => {
+  };
+
+  const filteredItemSales = itemSales.filter(item => matchesSaleFilters(item, startDate, endDate)).sort((a, b) => {
     // Urut sesuai tanggal transaksi — edit biaya/status menyusul tidak menggeser posisi baris.
     // Tanggal sama dipisah nomor pesanan lalu waktu input agar urutannya tetap stabil.
     return sortBy === 'newest'
@@ -649,9 +652,9 @@ export const MarketplaceSalesModule: React.FC = () => {
   const topSellingItemName = sortedPopularItems[0]?.name || '-';
   const topSellingItemQty = sortedPopularItems[0]?.qty || 0;
 
-  // Export laporan penjualan marketplace ke Excel (.xlsx)
-  const handleExportToExcel = () => {
-    if (filteredItemSales.length === 0) {
+  // Susun & unduh laporan .xlsx dari daftar penjualan yang sudah difilter
+  const exportSalesReport = (items: MarketplaceItemSale[], start: string, end: string) => {
+    if (items.length === 0) {
       alert('Tidak ada data penjualan untuk diexport!');
       return;
     }
@@ -659,8 +662,18 @@ export const MarketplaceSalesModule: React.FC = () => {
     type Baris = Record<string, string | number>;
     const rows: Baris[] = [];
     // Dikelompokkan per pesanan: No & biaya admin hanya di baris pertama tiap pesanan
-    orderGroups.forEach((group, groupIdx) => {
-      group.items.forEach((item, itemIdx) => {
+    const groups = (() => {
+      const map = new Map<string, MarketplaceItemSale[]>();
+      for (const item of items) {
+        const arr = map.get(item.order_number);
+        if (arr) arr.push(item); else map.set(item.order_number, [item]);
+      }
+      return Array.from(map.values()).map(raw => [...raw].sort((a, b) => a.description.localeCompare(b.description)));
+    })();
+    groups.forEach((groupItems, groupIdx) => {
+      const fee = groupItems.reduce((s, i) => s + i.admin_fee, 0);
+      const total = groupItems.filter(isCounted).reduce((s, i) => s + i.total, 0);
+      groupItems.forEach((item, itemIdx) => {
         const isFirst = itemIdx === 0;
         rows.push({
           TGL: isFirst ? item.date : '',
@@ -673,13 +686,15 @@ export const MarketplaceSalesModule: React.FC = () => {
           QTY: item.qty,
           Harga: item.price,
           Subtotal: item.subtotal,
-          Biaya: isFirst ? (group.fee > 0 ? -group.fee : 0) : '',
-          Total: isFirst ? group.total : '',
+          Biaya: isFirst ? (fee > 0 ? -fee : 0) : '',
+          Total: isFirst ? total : '',
           'Input Oleh': item.admin_staff,
         });
       });
     });
 
+    const counted = items.filter(isCounted);
+    const lost = items.filter(i => !isCounted(i));
     const kosong = (isi: Partial<Baris>): Baris => ({
       TGL: '', No: '', 'No Pesanan': '', Ref: '', Status: '', Deskripsi: '', Varian: '',
       QTY: '', Harga: '', Subtotal: '', Biaya: '', Total: '', 'Input Oleh': '', ...isi,
@@ -688,23 +703,36 @@ export const MarketplaceSalesModule: React.FC = () => {
     rows.push(kosong({}));
     rows.push(kosong({
       Deskripsi: 'TOTAL EFEKTIF (tanpa cancel/retur)',
-      QTY: totalItemQty,
-      Biaya: totalItemAdminFee > 0 ? -totalItemAdminFee : 0,
-      Total: totalItemNetOmset,
+      QTY: counted.reduce((acc, curr) => acc + curr.qty, 0),
+      Biaya: counted.reduce((acc, curr) => acc + curr.admin_fee, 0) > 0 ? -counted.reduce((acc, curr) => acc + curr.admin_fee, 0) : 0,
+      Total: counted.reduce((acc, curr) => acc + curr.total, 0),
     }));
-    if (lostSales.length > 0) {
+    if (lost.length > 0) {
       rows.push(kosong({
         Deskripsi: 'CANCEL/RETUR',
-        QTY: lostSales.reduce((s, i) => s + i.qty, 0),
-        Total: -lostNet,
+        QTY: lost.reduce((s, i) => s + i.qty, 0),
+        Total: -lost.reduce((s, i) => s + i.total, 0),
       }));
     }
 
-    void exportExcel(`Laporan_Penjualan_Marketplace_${startDate}_sd_${endDate}`, [{
+    void exportExcel(`Laporan_Penjualan_Marketplace_${start}_sd_${end}`, [{
       name: 'Penjualan Marketplace',
       rows,
       currencyColumns: ['Harga', 'Subtotal', 'Biaya', 'Total'],
     }]);
+  };
+
+  const handleExportToExcel = () => exportSalesReport(filteredItemSales, startDate, endDate);
+
+  // Pilih bulan → tabel ikut dikunci ke bulan itu + laporan bulan tersebut langsung diunduh
+  const handleExportByMonth = (month: string) => {
+    if (!month) return;
+    const start = `${month}-01`;
+    const end = lastDayOfMonth(start);
+    setStartDate(start);
+    setEndDate(end);
+    setExportMonth(month);
+    exportSalesReport(itemSales.filter(item => matchesSaleFilters(item, start, end)), start, end);
   };
 
   return (
@@ -1240,6 +1268,14 @@ export const MarketplaceSalesModule: React.FC = () => {
                     Pencarian & Shortir Hari Tanggal
                   </h4>
                   
+                  <input
+                    type="month"
+                    aria-label="Export laporan per bulan"
+                    value={exportMonth}
+                    onChange={(e) => { setExportMonth(e.target.value); handleExportByMonth(e.target.value); }}
+                    className="border border-gray-200 rounded px-1.5 py-1 text-[11px] text-gray-700 focus:outline-none focus:border-emerald-600 cursor-pointer"
+                    title="Pilih bulan untuk langsung mengunduh laporan bulan tersebut"
+                  />
                   {/* Export button */}
                   <button
                     onClick={handleExportToExcel}
