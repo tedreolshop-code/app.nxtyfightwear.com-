@@ -242,7 +242,7 @@ export const MarketplaceSalesModule: React.FC = () => {
         const item: MarketplaceItemSale = {
           ...old,
           id: old?.id || Math.random().toString(36).substring(2, 11),
-          created_at: old?.created_at || wibNowISO(),
+          created_at: old?.created_at,
           // Barang baru yang ditambahkan saat edit ikut status pesanannya
           status: old?.status || oldItems[0]?.status || inputStatus,
           product_id: linkedProductId,
@@ -591,10 +591,11 @@ export const MarketplaceSalesModule: React.FC = () => {
     return isWithinDate && isMarketplaceMatch && isStatusMatch && matchesSearch
       && matchesDivision(item.department_id, divFilter);
   }).sort((a, b) => {
-    // Urut waktu input; data lama tanpa created_at pakai tanggal transaksi
-    const ka = a.created_at || a.date;
-    const kb = b.created_at || b.date;
-    return sortBy === 'newest' ? kb.localeCompare(ka) : ka.localeCompare(kb);
+    // Urut sesuai tanggal transaksi — edit biaya/status menyusul tidak menggeser posisi baris.
+    // Tanggal sama dipisah nomor pesanan lalu waktu input agar urutannya tetap stabil.
+    return sortBy === 'newest'
+      ? b.date.localeCompare(a.date) || b.order_number.localeCompare(a.order_number) || (b.created_at || '').localeCompare(a.created_at || '')
+      : a.date.localeCompare(b.date) || a.order_number.localeCompare(b.order_number) || (a.created_at || '').localeCompare(b.created_at || '');
   });
 
   // Kelompokkan baris per No Pesanan agar 1 pesanan multi-barang tampil menyatu (bukan terpisah)
