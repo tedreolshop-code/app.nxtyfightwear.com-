@@ -1,3 +1,4 @@
+import { ensureAttendanceHistory } from '../cloudSync';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Attendance, AttendanceBonusPayout, bonusHariLayakTarif, Employee, isEligibleForAttendanceBonus, workingDaysInMonth, divisionLabel } from '../types';
 import { dataStore, wibNowISO, wibTodayStr } from '../dataStore';
@@ -246,6 +247,11 @@ export const AttendanceBonusHistoryList: React.FC<{ employeeId: string }> = ({ e
 export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy }) => {
   const currentMonth = wibTodayStr().slice(0, 7);
   const [month, setMonth] = useState(previousMonth(currentMonth)); // default: bulan yang jatuh tempo dibayar
+
+  // Riwayat >90 hari tidak tersimpan di perangkat — ambil dari cloud saat bulan dibuka
+  useEffect(() => {
+    void ensureAttendanceHistory(`${month}-01`, `${month}-31`);
+  }, [month]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [payouts, setPayouts] = useState<AttendanceBonusPayout[]>([]);
   // Sortir: cari nama karyawan dan batasi per divisi

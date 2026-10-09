@@ -1,3 +1,4 @@
+import { ensureAttendanceHistory } from '../cloudSync';
 import React, { useState, useEffect } from 'react';
 import { Employee, PayrollWeekly, CashAdvance, Attendance, AttendanceAdjustment, CashAdvanceTransaction, divisionLabel, terbilang } from '../types';
 import { dataStore, wibNowISO, wibTodayStr, dayFraction } from '../dataStore';
@@ -92,6 +93,11 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({ isAdmin, loggedEmp
   const defaultWeeklyPeriod = lastCompletedWeeklyPayrollPeriod();
   const [periodStart, setPeriodStart] = useState(defaultWeeklyPeriod.start);
   const [periodEnd, setPeriodEnd] = useState(defaultWeeklyPeriod.end);
+
+  // Regenerasi slip minggu lama butuh absensi minggu tsb — ambil dari cloud bila sudah dilepas
+  useEffect(() => {
+    if (periodStart && periodEnd) void ensureAttendanceHistory(periodStart, periodEnd);
+  }, [periodStart, periodEnd]);
   const [daysWorked, setDaysWorked] = useState(6);
   const [overtimeHours, setOvertimeHours] = useState(0);
   const [bonus, setBonus] = useState(0);

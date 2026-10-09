@@ -932,16 +932,17 @@ const resyncDataOnWakeup = async (): Promise<void> => {
 // Perawatan ini HANYA menulis ulang cache lokal — cloud tidak pernah disentuh:
 // - baris absensi lama dikompaksi (GPS/verifikasi/foto dilepas, inti data tetap),
 // - catatan append-only tua (mutasi stok, scan gagal, log produksi) dilepas,
-// - saat kritis (>=95%), absensi >180 hari dilepas dari perangkat dan dicatat
-//   watermark-nya supaya heal tidak menariknya ulang (data tetap utuh di cloud).
+// - riwayat absensi >90 hari dilepas dari perangkat (bulan yang sedang dibuka
+//   di-pin) dan dicatat watermark-nya supaya heal tidak menariknya ulang;
+//   saat dibuka lagi, riwayat itu diambil dari cloud (ensureAttendanceHistory).
 const PRUNE_THRESHOLD = 0.6;
-const PRUNE_CRITICAL = 0.95;
 const COMPACT_ATTENDANCE_DAYS = 30;
 const TRIM_MOVEMENTS_DAYS = 90;
 const TRIM_FAILURES_DAYS = 30;
 const TRIM_PRODLOGS_DAYS = 60;
-const EMERGENCY_ATTENDANCE_DAYS = 180;
+const ATTENDANCE_TRIM_DAYS = 90;
 const ATT_PRUNE_KEY = 'nxty_att_prune_until';
+const ATT_PIN_KEY = 'nxty_att_pinned_months';
 const PRUNE_MIN_GAP_MS = 5 * 60 * 1000;
 const DROP_FIELDS_COMPACT = new Set([
   'latitude', 'longitude', 'distance_meters', 'accuracy',
@@ -976,6 +977,73 @@ export const trimRowsByAge = <T extends Record<string, unknown>>(rows: T[], ageF
     const ts = Date.parse(String(row[ageField] ?? ''));
     return !Number.isFinite(ts) || ts > cutoffMs;
   });
+
+/** Lepas absensi lebih tua dari cutoff; baris koreksi & bulan yang dibuka user tetap disimpan. */
+export const trimAttendanceRows = <T extends Record<string, unknown>>(rows: T[], cutoffMs: number, pinnedMonths: Set<string>): T[] =>
+  rows.filter(row => {
+    if (row.device_token === 'koreksi-admin') return true;
+    const ts = Date.parse(String(row.timestamp ?? ''));
+    if (!Number.isFinite(ts) || ts > cutoffMs) return true;
+    const bulan = String(row.timestamp ?? '').slice(0, 7);
+    return Boolean(bulan) && pinnedMonths.has(bulan);
+  });
+
+const readPinnedAttendanceMonths = (): Set<string> => {
+  try {
+    const raw = localStorage.getItem(ATT_PIN_KEY);
+    return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+  } catch { return new Set(); }
+};
+const pinAttendanceMonthsForRange = (start: string, end: string): void => {
+  try {
+    const months = new Set<string>();
+    const kursor = new Date(`${start.slice(0, 10)}T00:00:00+07:00`);
+    const bulanAkhir = end.slice(0, 7);
+    for (let jaga = 0; jaga < 60; jaga++) {
+      const bulan = `${kursor.getFullYear()}-${String(kursor.getMonth() + 1).padStart(2, '0')}`;
+      months.add(bulan);
+      if (bulan === bulanAkhir) break;
+      kursor.setMonth(kursor.getMonth() + 1);
+    }
+    months.add(end.slice(0, 7));
+    localStorage.setItem(ATT_PIN_KEY, JSON.stringify([...months]));
+  } catch { /* penuh: abaikan */ }
+};
+
+/**
+ * Pastikan riwayat absensi untuk rentang tanggal ada di cache lokal: rentang yang
+ * sudah dilepas dari perangkat (>90 hari) diambil dari cloud lalu digabung dedup
+ * by-id. Bulan yang diminta di-pin supaya tidak terpangkas selagi dilihat user.
+ * Hanya MEMBACA cloud — tidak pernah mengubah data di sana.
+ */
+export const ensureAttendanceHistory = async (start: string, end: string): Promise<number> => {
+  if (!client) return 0;
+  const HARI = 86_400_000;
+  const batasJendela = Date.now() - ATTENDANCE_TRIM_DAYS * HARI;
+  if (Date.parse(start) >= batasJendela) return 0;
+  const { data, error } = await client.from(ATT_TABLE).select('id, value')
+    .filter('value->>timestamp', 'gte', start)
+    .filter('value->>timestamp', 'lte', end);
+  if (error) {
+    console.error('[cloudSync] Gagal mengambil riwayat absensi dari cloud:', error);
+    return 0;
+  }
+  const tomb = readTombstones();
+  const remote = (data || []).map(r => r.value as AttendanceRecordLike)
+    .filter(r => r && r.id && !tomb.has(r.id));
+  pinAttendanceMonthsForRange(start, end);
+  if (!remote.length) return 0;
+  const local = readLocalAttendance();
+  const localIds = new Set(local.map(r => r.id).filter(Boolean) as string[]);
+  const baru = remote.filter(r => !localIds.has(r.id));
+  if (!baru.length) return 0;
+  const ringkas = compactAttendanceRows(
+    baru as unknown as Array<Record<string, unknown>>, Date.now() - COMPACT_ATTENDANCE_DAYS * HARI
+  ).rows;
+  writeLocalAttendance(sortAttendance([...(ringkas as unknown as AttendanceRecordLike[]), ...local]));
+  console.info(`[cloudSync] Menarik ${baru.length} riwayat absensi dari cloud (${start} s.d. ${end}).`);
+  return baru.length;
+};
 
 export const getLocalUsageRatio = (): number => {
   let total = 0;
@@ -1031,17 +1099,17 @@ export const pruneLocalHeavyData = (sumber: string): void => {
       }
     }
 
-    const usageAkhir = getLocalUsageRatio();
-    if (usageAkhir >= PRUNE_CRITICAL) {
-      const cutoff = now - EMERGENCY_ATTENDANCE_DAYS * HARI;
-      writeAttendancePruneUntil(cutoff);
-      const attKini = readLocalAttendance();
-      const kept = trimRowsByAge(attKini as unknown as Array<Record<string, unknown>>, 'timestamp', cutoff);
-      if (kept.length !== attKini.length) {
-        writeLocalAttendance(kept as unknown as AttendanceRecordLike[]);
-        berubah = true;
-        console.warn(`[cloudSync] Storage kritis — ${attKini.length - kept.length} absensi >${EMERGENCY_ATTENDANCE_DAYS} hari dilepas dari perangkat (aman di cloud).`);
-      }
+    // Riwayat absensi >90 hari dilepas dari perangkat (bulan yang dibuka user di-pin).
+    const attKini = readLocalAttendance();
+    const cutoffAbsen = now - ATTENDANCE_TRIM_DAYS * HARI;
+    const keptAtt = trimAttendanceRows(
+      attKini as unknown as Array<Record<string, unknown>>, cutoffAbsen, readPinnedAttendanceMonths()
+    );
+    if (keptAtt.length !== attKini.length) {
+      writeAttendancePruneUntil(cutoffAbsen);
+      writeLocalAttendance(keptAtt as unknown as AttendanceRecordLike[]);
+      berubah = true;
+      console.info(`[cloudSync] Melepas ${attKini.length - keptAtt.length} absensi >${ATTENDANCE_TRIM_DAYS} hari dari cache (aman di cloud; bulan yang dibuka ditarik ulang otomatis).`);
     }
     if (berubah) console.info(`[cloudSync] Perawatan storage (${sumber}): ${Math.round(usage * 100)}% -> ${Math.round(getLocalUsageRatio() * 100)}%.`);
   } catch (e) {

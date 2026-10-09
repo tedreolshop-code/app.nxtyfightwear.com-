@@ -3,7 +3,7 @@ import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { QRCodeSVG } from 'qrcode.react';
 import { Employee, Attendance, AttendanceType, AttendanceFailure, WorkSettings } from '../types';
 import { dataStore, wibNowISO } from '../dataStore';
-import { resyncAttendanceFromCloud, isCloudEnabled } from '../cloudSync';
+import { resyncAttendanceFromCloud, isCloudEnabled, ensureAttendanceHistory } from '../cloudSync';
 import { brandName, brandLegalName } from '../brand';
 import { exportExcel } from '../exportExcel';
 import { 
@@ -216,6 +216,12 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
   const [historyType, setHistoryType] = useState<'all' | AttendanceType>('all');
   const [historyStatus, setHistoryStatus] = useState<'all' | 'normal' | 'late' | 'anomaly'>('all');
   const [historyMethod, setHistoryMethod] = useState<'all' | 'gps_self' | 'admin_qr'>('all');
+
+  // Rentang kustom yang menyentuh riwayat lama diambil dari cloud
+  useEffect(() => {
+    if (historyPeriod !== 'custom') return;
+    void ensureAttendanceHistory(historyStart, historyEnd);
+  }, [historyPeriod, historyStart, historyEnd]);
   const [historyPage, setHistoryPage] = useState(1);
   // Draft koreksi absensi: { 'empId|tanggal': { masuk, pulang, reason } }
   const [correctionDraft, setCorrectionDraft] = useState<Record<string, { masuk: string; pulang: string; reason: string }>>({});

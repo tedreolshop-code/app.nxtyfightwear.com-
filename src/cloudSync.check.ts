@@ -1,6 +1,6 @@
 // Self-check gabung sinkron bertahap. Jalankan: npx tsx src/cloudSync.check.ts
 import assert from 'node:assert/strict';
-import { mergeRowsById, compactAttendanceRows, trimRowsByAge, missingLocalIdsWithAge } from './cloudSync';
+import { mergeRowsById, compactAttendanceRows, trimRowsByAge, missingLocalIdsWithAge, trimAttendanceRows } from './cloudSync';
 
 type R = { id: string; v: number };
 const ids = (rows: R[]) => rows.map(r => r.id).sort().join(',');
@@ -81,6 +81,21 @@ const ids = (rows: R[]) => rows.map(r => r.id).sort().join(',');
   const missing = missingLocalIdsWithAge(new Set(['ada']), map, Date.now() - 180 * 86400000);
   assert.deepEqual(missing.sort(), ['baru', 'rusak'], 'id dalam watermark dilewati, id baru/tak-dikenal tetap ditarik');
   assert.equal(missingLocalIdsWithAge(new Set(), map, 0).length, 3, 'tanpa watermark semua dianggap hilang');
+}
+
+// Trim absensi 90 hari: bulan yang di-pin & baris koreksi tetap disimpan.
+{
+  const HARI = 86400000;
+  const pinned = new Set(['2026-04']);
+  const rows = [
+    { id: 'lama', timestamp: new Date(Date.now() - 200 * HARI).toISOString() },
+    { id: 'pin', timestamp: '2026-04-10T07:00:00+07:00' },
+    { id: 'koreksi', timestamp: new Date(Date.now() - 200 * HARI).toISOString(), device_token: 'koreksi-admin' },
+    { id: 'baru', timestamp: new Date(Date.now() - HARI).toISOString() },
+    { id: 'rusak', timestamp: 'bukan-tanggal' },
+  ];
+  const kept = trimAttendanceRows(rows, Date.now() - 90 * HARI, pinned);
+  assert.deepEqual(kept.map(r => r.id), ['pin', 'koreksi', 'baru', 'rusak'], 'hanya yang tua & tidak dipin dilepas');
 }
 
 console.log('cloudSync.check.ts: OK');

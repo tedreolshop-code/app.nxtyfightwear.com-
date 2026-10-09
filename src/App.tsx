@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserRole, Employee, ProductionHandoff, ProductionJob, PackingTask } from './types';
 import { dataStore, wibTodayStr } from './dataStore';
-import { isCloudEnabled, getCloudStatus, CloudStatus, loginCloud, logoutCloud, getLastSyncAtMs, SYNC_TIME_EVENT, resyncDataNow, getLocalUsageRatio } from './cloudSync';
+import { isCloudEnabled, getCloudStatus, CloudStatus, loginCloud, logoutCloud, getLastSyncAtMs, SYNC_TIME_EVENT, resyncDataNow, getLocalUsageRatio, ensureAttendanceHistory } from './cloudSync';
 import { MainDashboard } from './components/MainDashboard';
 import { EmployeeDashboard } from './components/EmployeeDashboard';
 import { AttendanceModule } from './components/AttendanceModule';
@@ -388,6 +388,11 @@ export default function App() {
   const now = new Date();
   const [reportMonth, setReportMonth] = useState(String(now.getMonth() + 1).padStart(2, '0'));
   const [reportYear, setReportYear] = useState(String(now.getFullYear()));
+
+  // Riwayat absensi lama diambil dari cloud saat laporan bulan lampau dibuka
+  useEffect(() => {
+    void ensureAttendanceHistory(`${reportYear}-${reportMonth}-01`, `${reportYear}-${reportMonth}-31`);
+  }, [reportMonth, reportYear]);
 
   const permittedMenus = MENUS.filter(m => {
     if (!m.roles.includes(currentRole)) return false;
