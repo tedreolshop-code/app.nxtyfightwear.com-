@@ -159,12 +159,27 @@ const cloudSnapshot = new Map<string, Map<string, string>>();
 const snapshotFrom = (rows: RowLike[]): Map<string, string> =>
   new Map(rows.filter(r => r && r.id).map(r => [r.id, JSON.stringify(r)]));
 
+// Kunci catatan yang terus tumbuh — dilepas dari cache saat sudah tua (cloud tetap utuh).
+const localTrimRule = (key: string): { field: string; hari: number } | null => {
+  if (key === 'stock_movements') return { field: 'created_at', hari: TRIM_MOVEMENTS_DAYS };
+  if (key === 'attendance_failures') return { field: 'timestamp', hari: TRIM_FAILURES_DAYS };
+  if (key === 'production_logs') return { field: 'created_at', hari: TRIM_PRODLOGS_DAYS };
+  return null;
+};
+
 const writeLocalRows = (key: string, rows: RowLike[]) => {
   applyingRemote = true;
   try {
-    setItemQuotaSafe(`nxty_${key}`, JSON.stringify(rows));
+    const rule = localTrimRule(key);
+    const aman = rule
+      ? trimRowsByAge(rows as unknown as Array<Record<string, unknown>>,
+          rule.field, Date.now() - rule.hari * 86_400_000) as unknown as RowLike[]
+      : rows;
+    // Gagal tulis = storage penuh: JANGAN perbarui snapshot (mencegah deteksi
+    // removal palsu) dan JANGAN banjir event (memicu reload seluruh modul).
+    if (!setItemQuotaSafe(`nxty_${key}`, JSON.stringify(aman))) return;
     // Data dari cloud = baseline baru; simpan lokal berikutnya membandingkan ke sini.
-    cloudSnapshot.set(key, snapshotFrom(rows));
+    cloudSnapshot.set(key, snapshotFrom(aman));
     window.dispatchEvent(new Event('nxty_storage_change'));
   } finally {
     applyingRemote = false;
@@ -359,7 +374,12 @@ const readTombstones = (): Set<string> => {
 const writeLocalAttendance = (rows: AttendanceRecordLike[]) => {
   applyingRemote = true;
   try {
-    setItemQuotaSafe(`nxty_${ATT_KEY}`, JSON.stringify(rows));
+    const cutoff = Date.now() - ATTENDANCE_TRIM_DAYS * 86_400_000;
+    const aman = trimAttendanceRows(
+      rows as unknown as Array<Record<string, unknown>>, cutoff, readPinnedAttendanceMonths()
+    ) as unknown as AttendanceRecordLike[];
+    writeAttendancePruneUntil(cutoff);
+    if (!setItemQuotaSafe(`nxty_${ATT_KEY}`, JSON.stringify(aman))) return;
     window.dispatchEvent(new Event('nxty_storage_change'));
   } finally {
     applyingRemote = false;
@@ -928,10 +948,10 @@ const resyncDataOnWakeup = async (): Promise<void> => {
 };
 
 // ==== Perawatan storage perangkat ====
-// localStorage hanya ±5 MB per perangkat sementara seluruh dataset tinggal di sana.
-// Perawatan ini HANYA menulis ulang cache lokal — cloud tidak pernah disentuh:
-// - baris absensi lama dikompaksi (GPS/verifikasi/foto dilepas, inti data tetap),
-// - catatan append-only tua (mutasi stok, scan gagal, log produksi) dilepas,
+// localStorage hanya ±5 MB per perangkat sementara dataset tumbuh tiap hari.
+// Semuanya HANYA menulis ulang cache lokal — cloud tidak pernah disentuh:
+// - penulis lokal (writeLocalRows/writeLocalAttendance) memangkas & mengompaksi
+//   saat menulis, jadi puncak pemakaian saat tarikan pun sudah kecil,
 // - riwayat absensi >90 hari dilepas dari perangkat (bulan yang sedang dibuka
 //   di-pin) dan dicatat watermark-nya supaya heal tidak menariknya ulang;
 //   saat dibuka lagi, riwayat itu diambil dari cloud (ensureAttendanceHistory).
