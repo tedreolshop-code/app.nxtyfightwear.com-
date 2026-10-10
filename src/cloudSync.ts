@@ -167,6 +167,18 @@ const localTrimRule = (key: string): { field: string; hari: number } | null => {
   return null;
 };
 
+// Event perubahan storage di-coalesce: tulisan beruntun (generate massal,
+// tarikan cloud) cukup memicu SATU gelombang reload modul, bukan satu per
+// tulisan — tanpa ini UI membeku selama gelombang parse beruntun.
+let storageChangeTimer: ReturnType<typeof setTimeout> | null = null;
+export const dispatchStorageChangeCoalesced = (delayMs = 100): void => {
+  if (storageChangeTimer !== null) return;
+  storageChangeTimer = setTimeout(() => {
+    storageChangeTimer = null;
+    dispatchStorageChangeCoalesced();
+  }, delayMs);
+};
+
 const writeLocalRows = (key: string, rows: RowLike[]) => {
   applyingRemote = true;
   try {
@@ -180,7 +192,7 @@ const writeLocalRows = (key: string, rows: RowLike[]) => {
     if (!setItemQuotaSafe(`nxty_${key}`, JSON.stringify(aman))) return;
     // Data dari cloud = baseline baru; simpan lokal berikutnya membandingkan ke sini.
     cloudSnapshot.set(key, snapshotFrom(aman));
-    window.dispatchEvent(new Event('nxty_storage_change'));
+    dispatchStorageChangeCoalesced();
   } finally {
     applyingRemote = false;
   }
@@ -383,7 +395,7 @@ const writeLocalAttendance = (rows: AttendanceRecordLike[]) => {
     ).rows as unknown as AttendanceRecordLike[];
     writeAttendancePruneUntil(cutoff);
     if (!setItemQuotaSafe(`nxty_${ATT_KEY}`, JSON.stringify(aman))) return;
-    window.dispatchEvent(new Event('nxty_storage_change'));
+    dispatchStorageChangeCoalesced();
   } finally {
     applyingRemote = false;
   }
@@ -634,7 +646,7 @@ const applyRemoteValue = (key: string, value: unknown) => {
   applyingRemote = true;
   try {
     setItemQuotaSafe(`nxty_${key}`, JSON.stringify(value));
-    window.dispatchEvent(new Event('nxty_storage_change'));
+    dispatchStorageChangeCoalesced();
   } finally {
     applyingRemote = false;
   }

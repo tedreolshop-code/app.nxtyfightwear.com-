@@ -33,7 +33,7 @@ import {
   ,AttendanceAdjustment
   ,CashAdvanceTransaction
   ,AttendanceBonusPayout, isEligibleForAttendanceBonus, PaymentEntry, purchaseRemaining, orderRemaining, clockMinutes, checkoutMetrics, AttendanceFailure } from './types';
-import { pushKeyToCloud, pushAttendanceToCloud, deleteAttendanceRowsInCloud } from './cloudSync';
+import { pushKeyToCloud, pushAttendanceToCloud, deleteAttendanceRowsInCloud, dispatchStorageChangeCoalesced } from './cloudSync';
 
 // Helper to generate UUIDs
 const uuid = () => Math.random().toString(36).substring(2, 11);
@@ -526,13 +526,14 @@ class DataStore {
   /**
    * Umumkan perubahan storage ke komponen.
    *
-   * Dikirim lewat microtask, bukan langsung: sebagian tulisan terjadi SAAT render
-   * (migrasi akun owner di getEmployees, pemangkasan recycle bin). Listener di App
-   * memanggil setState, dan setState saat komponen lain sedang render memicu
-   * "Cannot update a component while rendering a different component".
+   * Dikirim lewat dispatcher coalesced (jeda pendek), bukan langsung: sebagian
+   * tulisan terjadi SAAT render (migrasi akun owner di getEmployees, pemangkasan
+   * recycle bin) — setState saat komponen lain render memicu error React — dan
+   * tulisan beruntun (generate massal ~100+ set) cukup satu gelombang reload;
+   * listener selalu membaca ulang data terbaru sehingga tidak ada yang berubah.
    */
   private notifyStorageChange = (): void => {
-    queueMicrotask(() => window.dispatchEvent(new Event('nxty_storage_change')));
+    dispatchStorageChangeCoalesced();
   };
 
   getAuditLogs = (): AuditEntry[] => this.get(this.auditKey, []);
