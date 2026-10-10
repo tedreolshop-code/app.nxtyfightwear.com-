@@ -70,9 +70,7 @@ before insert on public.ari_marketplace_item_sales
 for each row execute function public.ari_tolak_penjualan_ganda();
 
 -- LANGKAH 3 — verifikasi: daftar tabel yang sudah realtime
-select c.relname as tabel
-from pg_publication_tables p
-join pg_class c on c.oid = p.objid
-join pg_namespace n on n.oid = c.relnamespace
-where p.pubname = 'supabase_realtime' and n.nspname = 'public'
-order by 1;
+select schemaname, tablename
+from pg_publication_tables
+where pubname = 'supabase_realtime' and schemaname = 'public'
+order by tablename;
