@@ -375,9 +375,12 @@ const writeLocalAttendance = (rows: AttendanceRecordLike[]) => {
   applyingRemote = true;
   try {
     const cutoff = Date.now() - ATTENDANCE_TRIM_DAYS * 86_400_000;
-    const aman = trimAttendanceRows(
+    const dipangkas = trimAttendanceRows(
       rows as unknown as Array<Record<string, unknown>>, cutoff, readPinnedAttendanceMonths()
-    ) as unknown as AttendanceRecordLike[];
+    );
+    const aman = compactAttendanceRows(
+      dipangkas, Date.now() - COMPACT_ATTENDANCE_DAYS * 86_400_000
+    ).rows as unknown as AttendanceRecordLike[];
     writeAttendancePruneUntil(cutoff);
     if (!setItemQuotaSafe(`nxty_${ATT_KEY}`, JSON.stringify(aman))) return;
     window.dispatchEvent(new Event('nxty_storage_change'));
