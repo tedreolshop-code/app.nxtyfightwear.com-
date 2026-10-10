@@ -971,11 +971,11 @@ const resyncDataOnWakeup = async (): Promise<void> => {
 //   di-pin) dan dicatat watermark-nya supaya heal tidak menariknya ulang;
 //   saat dibuka lagi, riwayat itu diambil dari cloud (ensureAttendanceHistory).
 const PRUNE_THRESHOLD = 0.6;
-const COMPACT_ATTENDANCE_DAYS = 30;
-const TRIM_MOVEMENTS_DAYS = 90;
-const TRIM_FAILURES_DAYS = 30;
-const TRIM_PRODLOGS_DAYS = 60;
-const ATTENDANCE_TRIM_DAYS = 90;
+const COMPACT_ATTENDANCE_DAYS = 14;
+const TRIM_MOVEMENTS_DAYS = 45;
+const TRIM_FAILURES_DAYS = 21;
+const TRIM_PRODLOGS_DAYS = 30;
+const ATTENDANCE_TRIM_DAYS = 60;
 const ATT_PRUNE_KEY = 'nxty_att_prune_until';
 const ATT_PIN_KEY = 'nxty_att_pinned_months';
 const PRUNE_MIN_GAP_MS = 5 * 60 * 1000;
