@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { MarketplaceSale, MarketplaceItemSale, MarketplaceSaleStatus, Product, divisionLabel, DIVISIONS, lastDayOfMonth } from '../types';
 import { DivisionFilter, matchesDivision } from './DivisionFilter';
 import { dataStore, wibNowISO, wibTodayStr } from '../dataStore';
@@ -70,6 +70,7 @@ export const MarketplaceSalesModule: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<'newest' | 'oldest'>('newest');
   const [divFilter, setDivFilter] = useState('');
+  const addGuardRef = useRef({ kunci: '', waktu: 0 });
   const [exportMonth, setExportMonth] = useState('');
 
   // Pop-up ubah status (baris yang sedang diubah + pilihan retur)
@@ -117,6 +118,13 @@ export const MarketplaceSalesModule: React.FC = () => {
       alert('Qty dan harga satuan harus lebih dari 0.');
       return;
     }
+    // Anti klik-ganda: baris yang persis sama baru saja ditambahkan? abaikan.
+    const kunci = JSON.stringify([desc, variantOfRow(itemRow) ?? '', Math.max(1, Math.round(itemRow.qty)), itemRow.price, itemRow.departmentId ?? '']);
+    if (addGuardRef.current.kunci === kunci && Date.now() - addGuardRef.current.waktu < 1200) {
+      addGuardRef.current.waktu = Date.now();
+      return;
+    }
+    addGuardRef.current = { kunci, waktu: Date.now() };
     setDraftRows(prev => [...prev, { ...itemRow, qty: Math.max(1, Math.round(itemRow.qty)), price: itemRow.price }]);
     resetItemInput();
   };
@@ -214,6 +222,19 @@ export const MarketplaceSalesModule: React.FC = () => {
       }
     }
 
+    // Baris draft identik (produk/deskripsi + varian + harga sama) digabung —
+    // klik ganda "Tambah" tidak lagi melahirkan dua baris kembar di cloud.
+    const draftFinal = (() => {
+      const byKey = new Map<string, number>();
+      const out: typeof draftRows = [];
+      for (const row of draftRows) {
+        const kunci = JSON.stringify([resolveDescription(row), variantOfRow(row) ?? '', row.price, row.departmentId ?? '']);
+        const idx = byKey.get(kunci);
+        if (idx === undefined) { byKey.set(kunci, out.length); out.push({ ...row }); }
+        else out[idx] = { ...out[idx], qty: out[idx].qty + row.qty };
+      }
+      return out;
+    })();
     const finalMarketplaceRef = marketplaceRef === 'Custom' ? customMarketplaceRef.trim() || 'Other' : marketplaceRef;
     const updatedItemSales = dataStore.getMarketplaceItemSales();
     let savedOrderNumber = '';
@@ -234,8 +255,8 @@ export const MarketplaceSalesModule: React.FC = () => {
 
       const finalOrderNumber = orderNumber.trim() || editingOrderNumber;
       savedOrderNumber = finalOrderNumber;
-      const rowFees = distributeFee(draftRows, computeOrderFee(draftRows));
-      const rebuilt: MarketplaceItemSale[] = draftRows.map((row, rowIdx) => {
+      const rowFees = distributeFee(draftFinal, computeOrderFee(draftFinal));
+      const rebuilt: MarketplaceItemSale[] = draftFinal.map((row, rowIdx) => {
         const old = oldItems.find(item => item.id === row.key); // key baris = id barang lama
         const linkedProductId = row.selectedProductId && row.selectedProductId !== 'custom' ? row.selectedProductId : undefined;
         const calculatedSubtotal = row.qty * row.price;
@@ -282,8 +303,8 @@ export const MarketplaceSalesModule: React.FC = () => {
       const sharedOrderNumber = orderNumber.trim() || 'NP-' + Math.floor(100000 + Math.random() * 900000);
       savedOrderNumber = sharedOrderNumber;
       // Biaya admin diinput sekali per pesanan, lalu disebar proporsional ke tiap barang
-      const rowFees = distributeFee(draftRows, computeOrderFee(draftRows));
-      draftRows.forEach((row, rowIdx) => {
+      const rowFees = distributeFee(draftFinal, computeOrderFee(draftFinal));
+      draftFinal.forEach((row, rowIdx) => {
         const finalDescription = resolveDescription(row);
         const linkedProductId = row.selectedProductId && row.selectedProductId !== 'custom' ? row.selectedProductId : undefined;
         const calculatedSubtotal = row.qty * row.price;
@@ -319,7 +340,7 @@ export const MarketplaceSalesModule: React.FC = () => {
       // Konfirmasi non-blocking via strip di atas tabel (menggantikan alert) —
       // pesanan langsung bisa dicari dari sana.
       const outsideFilter = (Boolean(startDate) && inputDate < startDate) || (Boolean(endDate) && inputDate > endDate);
-      setLastSavedInfo({ orderNumber: sharedOrderNumber, count: draftRows.length, date: inputDate, outsideFilter });
+      setLastSavedInfo({ orderNumber: sharedOrderNumber, count: draftFinal.length, date: inputDate, outsideFilter });
     }
 
     // Foto resi diunggah setelah pesanan tersimpan, supaya nomor pesanannya sudah pasti
