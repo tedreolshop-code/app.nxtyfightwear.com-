@@ -248,7 +248,7 @@ export const AttendanceBonusPanel: React.FC<{ issuedBy?: string }> = ({ issuedBy
   const currentMonth = wibTodayStr().slice(0, 7);
   const [month, setMonth] = useState(previousMonth(currentMonth)); // default: bulan yang jatuh tempo dibayar
 
-  // Riwayat >90 hari tidak tersimpan di perangkat — ambil dari cloud saat bulan dibuka
+  // Riwayat >30 hari tidak tersimpan di perangkat — ambil dari cloud saat bulan dibuka
   useEffect(() => {
     void ensureAttendanceHistory(`${month}-01`, `${month}-31`);
   }, [month]);

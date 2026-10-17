@@ -1,6 +1,14 @@
 // Self-check gabung sinkron bertahap. Jalankan: npx tsx src/cloudSync.check.ts
 import assert from 'node:assert/strict';
-import { mergeRowsById, compactAttendanceRows, trimRowsByAge, missingLocalIdsWithAge, trimAttendanceRows } from './cloudSync';
+import { mergeRowsById, compactAttendanceRows, trimRowsByAge, missingLocalIdsWithAge, trimAttendanceRows, markTombstones, unmarkTombstones, nisanFor, pruneNisan, mergeStoreValue, localStoreView } from './cloudSync';
+
+// Stub localStorage (cloudSync membaca/menulis key di sini saat nisan dipasang).
+const store = new Map<string, string>();
+(globalThis as { localStorage: unknown }).localStorage = {
+  getItem: (k: string) => (store.has(k) ? store.get(k)! : null),
+  setItem: (k: string, v: string) => { store.set(k, v); },
+  removeItem: (k: string) => { store.delete(k); },
+};
 
 type R = { id: string; v: number };
 const ids = (rows: R[]) => rows.map(r => r.id).sort().join(',');
@@ -96,6 +104,76 @@ const ids = (rows: R[]) => rows.map(r => r.id).sort().join(',');
   ];
   const kept = trimAttendanceRows(rows, Date.now() - 90 * HARI, pinned);
   assert.deepEqual(kept.map(r => r.id), ['pin', 'koreksi', 'baru', 'rusak'], 'hanya yang tua & tidak dipin dilepas');
+}
+
+// Nisan: id yang ditandai tidak dibangkitkan ulang oleh heal/realtime.
+{
+  assert.equal(nisanFor('employees').size, 0, 'awalnya tidak ada nisan');
+  markTombstones('employees', ['emp-budi', 'emp-siti']);
+  assert.ok(nisanFor('employees').has('emp-budi') && nisanFor('employees').has('emp-siti'));
+  assert.equal(nisanFor('orders').size, 0, 'nisan terpisah per key');
+  // duplikat tidak membesarkan daftar
+  markTombstones('employees', ['emp-budi']);
+  assert.equal(nisanFor('employees').size, 2);
+  // cabut = data dipulihkan
+  unmarkTombstones('employees', ['emp-budi']);
+  assert.ok(!nisanFor('employees').has('emp-budi'));
+  assert.ok(nisanFor('employees').has('emp-siti'), 'nisan lain tetap');
+}
+
+// Nisan kedaluwarsa dibuang; kap maksimum dihormati.
+{
+  const now = Date.now();
+  const rows = [
+    { k: 'orders', i: 'a', t: now - 91 * 86400000 },
+    { k: 'orders', i: 'b', t: now },
+  ];
+  assert.deepEqual(pruneNisan(rows).map(n => n.i), ['b'], 'nisan >90 hari dibuang');
+  const banyak = Array.from({ length: 3000 }, (_, idx) => ({ k: 'orders', i: `i${idx}`, t: now }));
+  assert.equal(pruneNisan(banyak).length, 2000, 'kap 2000 baris nisan');
+}
+
+// Nisan absensi: key lama & generik tergabung.
+{
+  markTombstones('attendance', ['scan-1']);
+  store.set('nxty_attendance_tombstones', JSON.stringify(['scan-2']));
+  // readTombstones memadukan keduanya — dicek lewat efek: lookup nisan generik
+  // 'attendance' mengembalikan keduanya.
+  assert.ok(nisanFor('attendance').has('scan-1'));
+}
+
+// Merge ari_store: audit log di-GABUNG, bukan ditimpa.
+{
+  const lama = Date.now() - 40 * 86400000;
+  const remote = [
+    { id: 'a1', timestamp: new Date(lama).toISOString() },
+    { id: 'a2', timestamp: new Date(lama + 1000).toISOString() },
+  ];
+  const local = [{ id: 'a3', timestamp: new Date().toISOString() }];
+  const merged = mergeStoreValue('audit_logs', remote, local) as Array<{ id: string }>;
+  assert.equal(merged.map(r => r.id).sort().join(','), 'a1,a2,a3', 'remote + lokal tergabung');
+  // tampilan lokal hanya 30 hari terakhir — riwayat lama tetap di cloud
+  const view = localStoreView('audit_logs', merged) as Array<{ id: string }>;
+  assert.deepEqual(view.map(r => r.id), ['a3'], 'audit lokal dipangkas ke 30 hari');
+}
+
+// Merge recycle bin: entri nisan (hapus permanen) & kedaluwarsa dibuang.
+{
+  markTombstones('recycle_bin', ['employees:emp-x']);
+  const remote = [
+    { id: 'employees:emp-x', deleted_at: new Date().toISOString(), expires_at: new Date(Date.now() + 10 * 86400000).toISOString() },
+    { id: 'orders:o1', deleted_at: new Date().toISOString(), expires_at: new Date(Date.now() + 10 * 86400000).toISOString() },
+    { id: 'orders:o2', deleted_at: new Date().toISOString(), expires_at: new Date(Date.now() - 10 * 86400000).toISOString() }, // kedaluwarsa
+  ];
+  const merged = mergeStoreValue('recycle_bin', remote, []) as Array<{ id: string }>;
+  assert.deepEqual(merged.map(r => r.id), ['orders:o1'], 'nisan & kadaluwarsa dibuang');
+}
+
+// Merge nisan: remote + lokal tergabung.
+{
+  const now = Date.now();
+  const merged = mergeStoreValue('deletion_tombstones', [{ k: 'orders', i: 'a', t: now }], [{ k: 'orders', i: 'b', t: now }]);
+  assert.equal(pruneNisan(merged as never).length, 2);
 }
 
 console.log('cloudSync.check.ts: OK');

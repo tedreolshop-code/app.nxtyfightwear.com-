@@ -33,7 +33,7 @@ import {
   ,AttendanceAdjustment
   ,CashAdvanceTransaction
   ,AttendanceBonusPayout, isEligibleForAttendanceBonus, PaymentEntry, purchaseRemaining, orderRemaining, clockMinutes, checkoutMetrics, AttendanceFailure } from './types';
-import { pushKeyToCloud, pushAttendanceToCloud, deleteAttendanceRowsInCloud, dispatchStorageChangeCoalesced } from './cloudSync';
+import { pushKeyToCloud, pushAttendanceToCloud, deleteAttendanceRowsInCloud, dispatchStorageChangeCoalesced, markTombstones, unmarkTombstones } from './cloudSync';
 
 // Helper to generate UUIDs
 const uuid = () => Math.random().toString(36).substring(2, 11);
@@ -561,6 +561,9 @@ class DataStore {
     const records = this.get<Array<Record<string, unknown>>>(entry.entity_type, []);
     if (records.some(item => String(item.id) === entry.entity_id)) throw new Error('Data dengan ID yang sama sudah aktif.');
     const restored = [entry.data, ...records];
+    // Pemulihan = cabut nisan supaya sinkron tidak menolak baris ini kembali
+    // (nisan dipasang saat penghapusan baris di cloud).
+    unmarkTombstones(entry.entity_type, [entry.entity_id]);
     this.setItemWithQuotaGuard(entry.entity_type, JSON.stringify(restored));
     pushKeyToCloud(entry.entity_type, restored);
     if (entry.entity_type === 'attendance') pushAttendanceToCloud(entry.data as unknown as Attendance);
@@ -604,7 +607,11 @@ class DataStore {
   emptyRecycleBin = (): number => {
     // Baca dulu jumlahnya, lalu removeItem — benar-benar membebaskan ruang,
     // bukan sekadar menimpa dengan array kosong (penting saat storage penuh).
-    const count = this.get<RecycleEntry[]>(this.recycleKey, []).length;
+    const items = this.get<RecycleEntry[]>(this.recycleKey, []);
+    // Nisan supaya hapus permanen menyebar ke semua perangkat: tanpa ini entri
+    // itu kembali direpotkan oleh perangkat lain yang recycle bin-nya belum sync.
+    if (items.length > 0) markTombstones(this.recycleKey, items.map(e => e.id));
+    const count = items.length;
     localStorage.removeItem(`nxty_${this.recycleKey}`);
     pushKeyToCloud(this.recycleKey, []);
     this.appendAudit({ action: 'permanent_delete', entity_type: 'recycle_bin', description: `Mengosongkan recycle bin: ${count} entri dihapus permanen` });
@@ -616,6 +623,8 @@ class DataStore {
     const recycle = this.getRecycleBin();
     const entry = recycle.find(item => item.id === recycleId);
     if (!entry) return false;
+    // Nisan satu entri: hapus permanen tidak boleh dibatalkan oleh perangkat lain.
+    markTombstones(this.recycleKey, [recycleId]);
     const next = recycle.filter(item => item.id !== recycleId);
     localStorage.setItem(`nxty_${this.recycleKey}`, JSON.stringify(next));
     pushKeyToCloud(this.recycleKey, next);
