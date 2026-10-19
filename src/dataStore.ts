@@ -33,7 +33,7 @@ import {
   ,AttendanceAdjustment
   ,CashAdvanceTransaction
   ,AttendanceBonusPayout, isEligibleForAttendanceBonus, PaymentEntry, purchaseRemaining, orderRemaining, clockMinutes, checkoutMetrics, AttendanceFailure } from './types';
-import { pushKeyToCloud, pushAttendanceToCloud, deleteAttendanceRowsInCloud, dispatchStorageChangeCoalesced, markTombstones, unmarkTombstones } from './cloudSync';
+import { pushKeyToCloud, pushAttendanceToCloud, deleteAttendanceRowsInCloud, dispatchStorageChangeCoalesced, markTombstones, unmarkTombstones, trimLocalCache } from './cloudSync';
 
 // Helper to generate UUIDs
 const uuid = () => Math.random().toString(36).substring(2, 11);
@@ -511,9 +511,17 @@ class DataStore {
       console.error('Gagal mencatat riwayat perubahan', e);
     }
 
+    // Cache lokal: pangkas baris tua sesuai kebijakan cache sebelum menulis —
+    // tanpa ini key yang terus tumbuh (mis. marketplace_item_sales ±1 MB)
+    // ditulis utuh tiap input baru, memenuhi kuota 5 MB perangkat sampai
+    // tulisan berikutnya gagal dan input baru menghilang dari layar.
+    const untukCache = Array.isArray(data) ? trimLocalCache<T>(key, data) : data;
+    let serializedCache: string;
+    try { serializedCache = JSON.stringify(untukCache); } catch { serializedCache = serialized; }
+
     // Cache lokal boleh gagal saat storage penuh — tetapi cloud WAJIB tetap
     // menerima datanya, supaya input pengguna tidak hilang tanpa jejak.
-    if (!this.setItemWithQuotaGuard(key, serialized)) {
+    if (!this.setItemWithQuotaGuard(key, serializedCache)) {
       console.warn(`Storage penuh — "nxty_${key}" tidak bisa di-cache lokal; data tetap dikirim ke cloud.`);
     }
     // Beri tahu komponen bahwa storage berubah

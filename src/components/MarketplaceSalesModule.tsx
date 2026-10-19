@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { MarketplaceSale, MarketplaceItemSale, MarketplaceSaleStatus, Product, divisionLabel, DIVISIONS, lastDayOfMonth } from '../types';
 import { DivisionFilter, matchesDivision } from './DivisionFilter';
 import { dataStore, wibNowISO, wibTodayStr } from '../dataStore';
+import { ensureMarketplaceHistory } from '../cloudSync';
 import { uploadPackingPhoto, deletePackingPhoto } from '../packingPhoto';
 import { exportExcel } from '../exportExcel';
 import { brandName, brandLegalName } from '../brand';
@@ -172,6 +173,19 @@ export const MarketplaceSalesModule: React.FC = () => {
     window.addEventListener('nxty_storage_change', handleStorageChange);
     return () => window.removeEventListener('nxty_storage_change', handleStorageChange);
   }, []);
+
+  // Riwayat >30 hari dipangkas dari cache untuk menjaga storage. Saat user
+  // memilih rentang di luar jendela itu (mis. export bulan lalu), tarik ulang
+  // baris tersebut dari cloud — modul tidak boleh tampil kosong hanya karena
+  // penyimpanan perangkat sudah dipangkas (data tetap utuh di cloud).
+  useEffect(() => {
+    if (!startDate || !endDate) return;
+    let wajar = true;
+    void ensureMarketplaceHistory(startDate, endDate).then(() => {
+      if (wajar) loadAllData();
+    });
+    return () => { wajar = false; };
+  }, [startDate, endDate]);
 
   const loadAllData = () => {
     setDailySales(dataStore.getMarketplaceSales());

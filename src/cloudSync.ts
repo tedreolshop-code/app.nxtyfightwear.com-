@@ -313,7 +313,33 @@ const localTrimRule = (key: string): { field: string; hari: number } | null => {
   if (key === 'stock_movements') return { field: 'created_at', hari: TRIM_MOVEMENTS_DAYS };
   if (key === 'attendance_failures') return { field: 'timestamp', hari: TRIM_FAILURES_DAYS };
   if (key === 'production_logs') return { field: 'created_at', hari: TRIM_PRODLOGS_DAYS };
+  if (key === 'marketplace_item_sales') return { field: 'date', hari: TRIM_SALES_DAYS };
   return null;
+};
+
+/**
+ * Pangkas baris tua dari daftar sesuai aturan cache — dipakai baik saat menarik
+ * data cloud (writeLocalRows) MAUPUN saat dataStore.set menulis ke localStorage.
+ * Tanpa pemangkasan di jalur set, key seperti marketplace_item_sales (±1 MB)
+ * ditulis utuh setiap kali input baru dibuat: storage perangkat cepat penuh,
+ * tulisan berikutnya gagal (QuotaExceededError) dan baris baru menghilang dari
+ * layar setelah module reload dari cache lama. Cloud tidak pernah disentuh —
+ * baris yang dipangkas tetap utuh di sana dan ditarik ulang saat dibutuhkan.
+ */
+export const trimLocalCache = <T>(key: string, rows: T): T => {
+  const rule = localTrimRule(key);
+  if (!rule || !Array.isArray(rows)) return rows;
+  const aman = trimRowsByAge(rows as unknown as Array<Record<string, unknown>>,
+    rule.field, Date.now() - rule.hari * 86_400_000) as unknown as T;
+  if (rule.field !== 'date') return aman;
+  // Baris penjualan dalam rentang yang sedang dilihat/dieksport dipertahankan,
+  // walau di luar jendela — sama seperti pinning bulan pada absensi.
+  const dipertahankan = (rows as unknown as Array<Record<string, unknown>>).filter(row =>
+    row && typeof row.date === 'string' && inPinnedSalesRange(row.date));
+  if (!dipertahankan.length) return aman;
+  const ids = new Set(dipertahankan.map(r => String(r.id)));
+  return [...(aman as unknown as Array<unknown>).filter(r => !ids.has(String((r as Record<string, unknown>).id))),
+    ...dipertahankan] as unknown as T;
 };
 
 // Event perubahan storage di-coalesce: tulisan beruntun (generate massal,
@@ -332,10 +358,7 @@ const writeLocalRows = (key: string, rows: RowLike[]): boolean => {
   applyingRemote = true;
   try {
     const rule = localTrimRule(key);
-    const aman = rule
-      ? trimRowsByAge(rows as unknown as Array<Record<string, unknown>>,
-          rule.field, Date.now() - rule.hari * 86_400_000) as unknown as RowLike[]
-      : rows;
+    const aman = rule ? trimLocalCache<RowLike[]>(key, rows) : rows;
     // Gagal tulis = storage penuh: JANGAN perbarui snapshot (mencegah deteksi
     // removal palsu) dan JANGAN banjir event (memicu reload seluruh modul).
     if (!setItemQuotaSafe(`nxty_${key}`, JSON.stringify(aman))) return false;
@@ -1349,6 +1372,12 @@ const COMPACT_ATTENDANCE_DAYS = 14;
 const TRIM_MOVEMENTS_DAYS = 30;
 const TRIM_FAILURES_DAYS = 30;
 const TRIM_PRODLOGS_DAYS = 30;
+// Penjualan marketplace tidak pernah dipangkas dulu — keynya membengkak ke ±1 MB
+// dan menjadi penyebab utama "input baru tidak muncul": di perangkat yang storage-
+// nya sudah 95%+, tulisan ulang 1 MB ini gagal (QuotaExceededError) lalu module
+// reload dari cache lama menimpa baris yang baru diinput. Dipangkas 30 hari,
+// sesuai jendela aktif modul dan laporan (data tetap utuh di cloud).
+const TRIM_SALES_DAYS = 30;
 const ATTENDANCE_TRIM_DAYS = 30;
 const AUDIT_TRIM_DAYS = 30;
 const ATT_PRUNE_KEY = 'nxty_att_prune_until';
@@ -1452,6 +1481,62 @@ export const ensureAttendanceHistory = async (start: string, end: string): Promi
   ).rows;
   writeLocalAttendance(sortAttendance([...(ringkas as unknown as AttendanceRecordLike[]), ...local]));
   console.info(`[cloudSync] Menarik ${baru.length} riwayat absensi dari cloud (${start} s.d. ${end}).`);
+  return baru.length;
+};
+
+/** Rentang tanggal marketplace yang sedang dipakai modul — dicatat supaya
+ *  writeLocalRows tidak memangkas baris yang sedang dilihat/dieksport user. */
+const SALES_RANGE_KEY = 'nxty_sales_ranges';
+const readSalesRanges = (): Array<{ start: string; end: string }> => {
+  try {
+    const raw = localStorage.getItem(SALES_RANGE_KEY);
+    const arr = raw ? JSON.parse(raw) as unknown : [];
+    return Array.isArray(arr) ? arr.filter(r => r && typeof r.start === 'string' && typeof r.end === 'string') : [];
+  } catch { return []; }
+};
+const pinSalesRange = (start: string, end: string): void => {
+  try {
+    const ranges = readSalesRanges();
+    if (ranges.some(r => r.start === start && r.end === end)) return;
+    ranges.push({ start, end });
+    // Paling banyak 3 rentang terakhir — cukup untuk filter modul + export bulanan.
+    localStorage.setItem(SALES_RANGE_KEY, JSON.stringify(ranges.slice(-3)));
+  } catch { /* penuh: abaikan */ }
+};
+const inPinnedSalesRange = (date: string): boolean =>
+  readSalesRanges().some(r => date >= r.start && date <= r.end);
+
+const SALES_KEY = 'marketplace_item_sales';
+const SALES_TABLE = 'ari_marketplace_item_sales';
+
+/**
+ * Pastikan riwayat penjualan marketplace untuk rentang tanggal ada di cache
+ * lokal: baris yang sudah dipangkas (>30 hari) diambil dari cloud lalu
+ * digabung dedup by-id. Hanya MEMBACA cloud — tidak mengubah data di sana.
+ */
+export const ensureMarketplaceHistory = async (start: string, end: string): Promise<number> => {
+  if (!client) return 0;
+  const HARI = 86_400_000;
+  const batasJendela = Date.now() - TRIM_SALES_DAYS * HARI;
+  if (Date.parse(start) >= batasJendela) { pinSalesRange(start, end); return 0; }
+  pinSalesRange(start, end);
+  const { data, error } = await client.from(SALES_TABLE).select('id, value')
+    .filter('value->>date', 'gte', start)
+    .filter('value->>date', 'lte', end);
+  if (error) {
+    console.error('[cloudSync] Gagal mengambil riwayat penjualan dari cloud:', error);
+    return 0;
+  }
+  const nisan = nisanFor(SALES_KEY);
+  const remote = (data || []).map(r => r.value as RowLike)
+    .filter(r => r && r.id && !nisan.has(r.id));
+  if (!remote.length) return 0;
+  const local = readLocalRows(SALES_KEY);
+  const localIds = new Set(local.map(r => r?.id).filter(Boolean) as string[]);
+  const baru = remote.filter(r => !localIds.has(r.id));
+  if (!baru.length) return 0;
+  writeLocalRows(SALES_KEY, [...baru, ...local]);
+  console.info(`[cloudSync] Menarik ${baru.length} riwayat penjualan dari cloud (${start} s.d. ${end}).`);
   return baru.length;
 };
 
