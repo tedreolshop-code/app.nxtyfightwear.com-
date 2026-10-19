@@ -314,6 +314,7 @@ const localTrimRule = (key: string): { field: string; hari: number } | null => {
   if (key === 'attendance_failures') return { field: 'timestamp', hari: TRIM_FAILURES_DAYS };
   if (key === 'production_logs') return { field: 'created_at', hari: TRIM_PRODLOGS_DAYS };
   if (key === 'marketplace_item_sales') return { field: 'date', hari: TRIM_SALES_DAYS };
+  if (key === 'attendance_adjustments') return { field: 'date', hari: TRIM_ADJUSTMENTS_DAYS };
   return null;
 };
 
@@ -1378,6 +1379,11 @@ const TRIM_PRODLOGS_DAYS = 30;
 // reload dari cache lama menimpa baris yang baru diinput. Dipangkas 30 hari,
 // sesuai jendela aktif modul dan laporan (data tetap utuh di cloud).
 const TRIM_SALES_DAYS = 30;
+// Koreksi absensi (lembur/telat/koreksi admin): 548 KB / 1419 baris dan terus
+// tumbuh. Gaji mingguan cuma butuh koreksi periode berjalan; arsip slip gaji
+// membaca koreksi dari cloud. 90 hari cukup untuk 3 bulan arsip + pengajuan
+// koreksi (KOREKSI_MAX_HARI = 30 hari ke belakang).
+const TRIM_ADJUSTMENTS_DAYS = 90;
 const ATTENDANCE_TRIM_DAYS = 30;
 const AUDIT_TRIM_DAYS = 30;
 const ATT_PRUNE_KEY = 'nxty_att_prune_until';
