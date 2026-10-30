@@ -23,7 +23,7 @@ bucket_name = "ari-delivery-photos"
 
 [vars]
 # Origin app produksi + localhost untuk pengembangan. Pisah dengan koma.
-ALLOWED_ORIGINS = "https://app.nxtyfightwear.com,http://localhost:3000,http://localhost:3002"
+ALLOWED_ORIGINS = "https://app.anxietyfightwear.com,https://app.nxtyfightwear.com,http://localhost:3000,http://localhost:3002"
 # Domain publik bucket R2 (mis. https://cdn.nxtyfightwear.com atau pub-xxx.r2.dev).
 # Kosong → foto diserve lewat Worker /api/photo/<key> (tetap gratis, sedikit request).
 R2_PUBLIC_URL = ""
