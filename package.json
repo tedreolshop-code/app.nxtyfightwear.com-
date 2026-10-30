@@ -9,7 +9,11 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test:mobile": "playwright test"
+    "test:mobile": "playwright test",
+    "worker:dev": "npm --prefix server run dev",
+    "worker:deploy": "npm --prefix server run deploy",
+    "d1:schema": "npm --prefix server run d1:schema",
+    "d1:schema:local": "npm --prefix server run d1:schema:local"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

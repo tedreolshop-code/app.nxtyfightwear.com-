@@ -31,7 +31,7 @@ export const PackingPhotoDocsPanel: React.FC<PackingPhotoDocsPanelProps> = ({ us
     try {
       const url = await uploadPackingPhoto(task.order_number || task.id, file);
       if (!url) {
-        alert('Penyimpanan foto tidak aktif. Isi VITE_SUPABASE_* di .env lalu muat ulang halaman.');
+        alert('Penyimpanan foto tidak aktif. Isi VITE_API_BASE_URL di .env lalu muat ulang halaman.');
         return;
       }
       dataStore.setPackingTaskPhoto(task.id, { url, uploaded_by: currentEmployee?.name || dataStore.getCurrentActor().name });

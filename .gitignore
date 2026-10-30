@@ -15,3 +15,6 @@ playwright-report/
 backup/
 *.dump
 restore-employees.sql
+
+# State lokal Cloudflare wrangler (D1 dev / cache)
+.wrangler/

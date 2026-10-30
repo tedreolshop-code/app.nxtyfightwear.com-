@@ -1,0 +1,29 @@
+# Worker API ARI SPORTINDO — D1 (data) + R2 (foto), pengganti Supabase.
+name = "ari-cloud-api"
+main = "src/worker.ts"
+compatibility_date = "2026-10-01"
+
+# Langkah pemasangan (sekali):
+#   npm install -D wrangler && npx wrangler login
+#   npx wrangler d1 create ari-store            → isi database_id di bawah
+#   npx wrangler r2 bucket create ari-delivery-photos
+#   npx wrangler d1 execute ari-store --remote --file schema.sql
+#   (opsional) aktifkan domain publik bucket R2 di dashboard, lalu set R2_PUBLIC_URL
+#   npx wrangler deploy
+#   npx wrangler d1 execute ari-store --remote --command "SELECT count(*) FROM ari_employees"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "ari-store"
+database_id = "33c82bc8-8f3d-48d3-ae7d-39cfd65320bb"
+
+[[r2_buckets]]
+binding = "PHOTOS"
+bucket_name = "ari-delivery-photos"
+
+[vars]
+# Origin app produksi + localhost untuk pengembangan. Pisah dengan koma.
+ALLOWED_ORIGINS = "https://app.nxtyfightwear.com,http://localhost:3000,http://localhost:3002"
+# Domain publik bucket R2 (mis. https://cdn.nxtyfightwear.com atau pub-xxx.r2.dev).
+# Kosong → foto diserve lewat Worker /api/photo/<key> (tetap gratis, sedikit request).
+R2_PUBLIC_URL = ""

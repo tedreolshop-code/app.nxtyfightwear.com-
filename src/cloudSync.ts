@@ -1,28 +1,28 @@
 /**
- * Sinkronisasi data ARI SPORTINDO ke Supabase.
+ * Sinkronisasi data ARI SPORTINDO ke cloud (Cloudflare Worker + D1).
  *
  * Cara kerja:
  * - localStorage tetap menjadi sumber baca sinkron untuk seluruh modul (dataStore tidak berubah API-nya).
- * - Saat aplikasi dibuka: semua baris tabel `ari_store` di Supabase ditarik ke localStorage.
- * - Setiap dataStore.set(): data ditulis ke localStorage lalu di-push (debounced) ke Supabase.
- * - Perubahan dari perangkat lain diterima lewat Supabase Realtime dan langsung memperbarui localStorage.
+ * - Saat aplikasi dibuka: semua baris tabel `ari_store` di cloud ditarik ke localStorage.
+ * - Setiap dataStore.set(): data ditulis ke localStorage lalu di-push (debounced) ke cloud.
+ * - Perubahan dari perangkat lain diterima lewat sinkron wake-up berkala (tab terlihat,
+ *   tiap 30 detik) dan langsung memperbarui localStorage.
  * - Id yang sengaja dihapus ditandai dengan "nisan" (lihat bawah) supaya tidak dibangkitkan
  *   ulang oleh perangkat lain yang masih memegang daftar lama.
  * - Key yang isinya menumpuk (audit log, recycle bin, nisan) disinkronkan dengan MENGGABUNGKAN,
  *   bukan menimpa — last-writer-wins membuat riwayat cloud hilang dicegat oleh perangkat
  *   yang daftarnya lebih pendek.
  *
- * Jika VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY tidak diisi, aplikasi berjalan offline
- * (hanya localStorage) persis seperti sebelumnya.
+ * Jika VITE_API_BASE_URL tidak diisi, aplikasi berjalan offline (hanya localStorage)
+ * persis seperti sebelumnya.
  *
- * Setup database: jalankan supabase/setup.sql di SQL Editor project Supabase Anda.
+ * Setup backend: server/wrangler.toml + server/schema.sql (lihat server/README.md).
  */
 
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient, CloudClient } from './cloudApi';
 import { getCloudToken, setCloudToken, clearCloudToken } from './cloudAuth';
 
-const SUPABASE_URL = import.meta.env?.VITE_SUPABASE_URL as string | undefined;
-const SUPABASE_ANON_KEY = import.meta.env?.VITE_SUPABASE_ANON_KEY as string | undefined;
+const API_BASE_URL = import.meta.env?.VITE_API_BASE_URL as string | undefined;
 
 const TABLE = 'ari_store';
 // Absensi disimpan SATU BARIS PER SCAN di tabel terpisah, agar absen bersamaan
@@ -40,7 +40,7 @@ const ATT_TOMBSTONE_KEY = 'nxty_attendance_tombstones';
 // (di bawah) memakai key baru supaya perangkat dengan bundle lama tetap
 // membaca nisan absensi yang sudah tersimpan.
 const ATT_TOMBSTONE_STORE_KEY = 'attendance_tombstones';
-export const isCloudEnabled = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+export const isCloudEnabled = Boolean(API_BASE_URL);
 
 // Data master/transaksi yang RAWAN HILANG bila disimpan sebagai satu array besar
 // (last-writer-wins) kini disimpan SATU BARIS PER RECORD di tabel per-key, dengan
@@ -104,11 +104,10 @@ const setStatus = (s: CloudStatus) => {
   window.dispatchEvent(new CustomEvent('nxty_cloud_status', { detail: s }));
 };
 
-let client: SupabaseClient | null = null;
+let client: CloudClient | null = null;
 if (isCloudEnabled) {
-  client = createClient(SUPABASE_URL!, SUPABASE_ANON_KEY!);
+  client = createClient(API_BASE_URL!);
 }
-export const getSupabaseClient = () => client;
 
 /**
  * Verifikasi PIN di SERVER lalu simpan token sesinya.
@@ -740,8 +739,11 @@ const upsertAttendanceRow = async (record: AttendanceRecordLike): Promise<boolea
     const { error } = await client
       .from(ATT_TABLE)
       // ignoreDuplicates: id absensi bersifat deterministik (karyawan+tanggal+jenis scan),
-      // jadi baris pertama yang masuk yang menang — scan ganda dari perangkat lain ditolak DB.
-      .upsert({ id: record.id, value: record }, { onConflict: 'id', ignoreDuplicates: true });
+      // jadi baris pertama yang masuk yang menang — scan ganda dari perangkat lain ditolak server.
+      // created_at diberi klien (bukan default DB): watermark tarik bertahap memakai kolom ini,
+      // dan DO NOTHING memastikan created_at asli tidak berubah saat upsert ulang.
+      .upsert({ id: record.id, value: record, created_at: new Date().toISOString() },
+        { onConflict: 'id', ignoreDuplicates: true });
     if (error) throw error;
     if (status !== 'online') setStatus('online');
     return true;
@@ -907,7 +909,10 @@ const fetchAllIds = async (table: string): Promise<Set<string>> => {
 };
 
 // Watermark sinkron bertahap: waktu sinkron cloud terakhir yang berhasil.
-const SYNC_AT_KEY = 'nxty_cloud_synced_at';
+// Key dibedakan PER BACKEND ('_cf' = Cloudflare Worker): saat perangkat pindah
+// backend (cutover dari Supabase), watermark lama tidak dipakai — tarikan penuh
+// berjalan dulu supaya baseline tersanding dengan cloud baru.
+const SYNC_AT_KEY = 'nxty_cloud_synced_at_cf';
 // updated_at diisi jam perangkat penulis (bukan server). Mundurkan watermark
 // jauh (2 jam) supaya beda jam antar-tablet tidak membuat perubahan terlewat —
 // tetap murah, biasanya cuma menambah beberapa baris.
@@ -1103,7 +1108,7 @@ export const initCloudSync = async (): Promise<void> => {
       }
       void flushPendingAttendance();
     } catch (e) {
-      console.error('[cloudSync] Gagal sinkron tabel absensi (sudah jalankan supabase/setup.sql terbaru?):', e);
+      console.error(`[cloudSync] Gagal sinkron tabel absensi (schema server/schema.sql sudah diterapkan?):`, e);
     }
 
     // ---- Tabel per-baris ----
@@ -1173,7 +1178,7 @@ export const initCloudSync = async (): Promise<void> => {
         }
       } catch (e) {
         anyTableFailed = true;
-        console.error(`[cloudSync] Gagal sinkron tabel "${cfg.table}" (sudah jalankan supabase/setup.sql terbaru?):`, e);
+        console.error(`[cloudSync] Gagal sinkron tabel "${cfg.table}" (schema server/schema.sql sudah diterapkan?):`, e);
       }
     }
 
@@ -1187,62 +1192,10 @@ export const initCloudSync = async (): Promise<void> => {
     if (!anyTableFailed) writeSyncNow();
     pruneLocalHeavyData('pasca-tarik');
 
-    // Realtime: perubahan dari perangkat lain langsung masuk
-    const channel = client.channel('ari_store_changes');
-    channel.on('postgres_changes', { event: '*', schema: 'public', table: TABLE }, (payload) => {
-      const row = payload.new as { key?: string; value?: unknown } | null;
-      if (row && row.key !== undefined && row.key !== ATT_KEY && !perRowByKey.has(row.key)) {
-        // Key menumpuk (audit, recycle, nisan) → gabung, jangan timpa.
-        if (MERGE_KEYS.has(row.key)) applyMergedStoreKey(row.key, row.value);
-        else applyRemoteValue(row.key, row.value);
-      }
-    });
-    // Handler realtime per-baris untuk tiap key (upsert/hapus berdasarkan id).
-    // INSERT/UPDATE id yang bernisan DITOLAK: data itu sengaja dihapus dan ditulis
-    // ulang oleh perangkat lain yang masih memegang daftar lama.
-    for (const cfg of PER_ROW) {
-      channel
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: cfg.table }, (payload) => {
-          const rec = (payload.new as { value?: RowLike } | null)?.value;
-          if (!rec?.id || nisanFor(cfg.key).has(rec.id)) return;
-          const local = readLocalRows(cfg.key);
-          if (!local.some(r => r.id === rec.id)) writeLocalRows(cfg.key, [...local, rec]);
-        })
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: cfg.table }, (payload) => {
-          const rec = (payload.new as { value?: RowLike } | null)?.value;
-          if (!rec?.id || nisanFor(cfg.key).has(rec.id)) return;
-          const local = readLocalRows(cfg.key);
-          writeLocalRows(cfg.key, local.some(r => r.id === rec.id)
-            ? local.map(r => r.id === rec.id ? rec : r)
-            : [...local, rec]);
-        })
-        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: cfg.table }, (payload) => {
-          const oldId = (payload.old as { id?: string } | null)?.id;
-          if (!oldId) return;
-          writeLocalRows(cfg.key, readLocalRows(cfg.key).filter(r => r.id !== oldId));
-        });
-    }
-    channel
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: ATT_TABLE }, (payload) => {
-        const rec = (payload.new as { value?: AttendanceRecordLike } | null)?.value;
-        if (!rec?.id || readTombstones().has(rec.id)) return;
-        const local = readLocalAttendance();
-        if (!local.some(r => r.id === rec.id)) {
-          writeLocalAttendance(sortAttendance([rec, ...local]));
-        }
-      })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: ATT_TABLE }, (payload) => {
-        const rec = (payload.new as { value?: AttendanceRecordLike } | null)?.value;
-        if (!rec?.id || readTombstones().has(rec.id)) return;
-        const local = readLocalAttendance();
-        writeLocalAttendance(sortAttendance([rec, ...local.filter(r => r.id !== rec.id)]));
-      })
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: ATT_TABLE }, (payload) => {
-        const oldId = (payload.old as { id?: string } | null)?.id;
-        if (!oldId) return;
-        writeLocalAttendance(readLocalAttendance().filter(r => r.id !== oldId));
-      })
-      .subscribe();
+// Realtime Supabase tidak lagi dipakai — perubahan dari perangkat lain kini
+// ditarik oleh detak wake-up di bawah (tiap 30 detik saat halaman terlihat),
+// yang memakai tarik bertahap murah (`updated_at > watermark`) sehingga latensi
+// lintas perangkat ≈ ≤30 detik tanpa biaya terus-menerus channel WebSocket.
 
     setStatus('online');
   } catch (e) {
@@ -1638,7 +1591,9 @@ const tryWakeupSync = (): void => {
   void resyncDataOnWakeup();
 };
 
+// Detak jaring pengaman jadi SATU jalur pembaru lintas perangkat (30s) — setelah
+// Supabase Realtime dilepas. Tarikannya ringan (bertahap), aman diulang tiap 30s.
 if (typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', tryWakeupSync);
-  setInterval(tryWakeupSync, 5 * 60 * 1000);
+  setInterval(tryWakeupSync, 30 * 1000);
 }

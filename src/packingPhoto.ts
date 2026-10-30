@@ -1,28 +1,30 @@
 // Foto dokumentasi barang keluar, diambil karyawan packing saat menyelesaikan tugas
-// packing (bukti fisik terakhir sebelum barang dikirim). Disimpan di Supabase Storage.
-// Kalau cloud tidak aktif (VITE_SUPABASE_* kosong), upload dilewati (tidak ada tempat aman
-// menyimpan file besar di localStorage).
-import { getSupabaseClient, isCloudEnabled } from './cloudSync';
+// packing (bukti fisik terakhir sebelum barang dikirim). Disimpan di R2 Cloudflare
+// lewat Worker API (server/src/photos.ts).
+// Kalau cloud tidak aktif (VITE_API_BASE_URL kosong), upload dilewati (tidak ada tempat
+// aman menyimpan file besar di localStorage).
+import { photoApi } from './cloudApi';
+import { isCloudEnabled } from './cloudSync';
 
-const BUCKET = 'delivery-photos';
 export const PHOTO_DELETE_WINDOW_DAYS = 14;
 
 export const uploadPackingPhoto = async (orderNumber: string, file: File): Promise<string | null> => {
-  const client = getSupabaseClient();
-  if (!client || !isCloudEnabled) return null;
+  if (!isCloudEnabled) return null;
   const ext = file.name.split('.').pop() || 'jpg';
   const path = `${orderNumber.replace(/\//g, '-')}-${Date.now()}.${ext}`;
-  const { error } = await client.storage.from(BUCKET).upload(path, file, { upsert: false });
-  if (error) throw error;
-  return client.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+  const { url, error } = await photoApi.upload(path, file);
+  if (error) throw new Error(error);
+  return url;
 };
 
 export const deletePackingPhoto = async (photoUrl: string): Promise<void> => {
-  const client = getSupabaseClient();
-  if (!client) return;
-  const path = photoUrl.split(`/${BUCKET}/`)[1];
-  if (!path) return;
-  await client.storage.from(BUCKET).remove([path]);
+  if (!isCloudEnabled) return;
+  // URL foto bisa dua bentuk: domain publik R2 (https://cdn/<key>) atau lewat
+  // Worker (/api/photo/<key>). Keduanya: kunci = segmen path terakhir.
+  const key = decodeURIComponent(photoUrl.split('?')[0].split('/').pop() || '');
+  if (!key) return;
+  const error = await photoApi.remove(key);
+  if (error) throw new Error(error);
 };
 
 export const canDeletePhoto = (uploadedAt: string | undefined): boolean => {

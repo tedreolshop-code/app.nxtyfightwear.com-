@@ -5,7 +5,7 @@ import { PaymentLedger, LedgerRow } from './PaymentLedger';
 import { ContactAutocompleteInput } from './ContactAutocompleteInput';
 import { dataStore, wibTodayStr } from '../dataStore';
 import { withA4PageSize } from '../printA4';
-import { uploadPackingPhoto } from '../packingPhoto';
+import { uploadPackingPhoto, deletePackingPhoto } from '../packingPhoto';
 import { ShoppingBag, Plus, User, Phone, CheckCircle2, Trash2, PackageCheck, Truck, Printer, X, Pencil, Ban, RotateCcw, Camera } from 'lucide-react';
 
 // Tombol aksi ikon 24x24 — dipakai berulang di kolom Aksi
@@ -160,7 +160,7 @@ export const OrderModule: React.FC = () => {
     try {
       const url = await uploadPackingPhoto(orderNumber, file);
       if (!url) {
-        alert('Penyimpanan foto tidak aktif. Isi VITE_SUPABASE_* di .env lalu muat ulang halaman.');
+        alert('Penyimpanan foto tidak aktif. Isi VITE_API_BASE_URL di .env lalu muat ulang halaman.');
         return;
       }
       dataStore.updateOrderShipping(orderId, { shipping_proof_url: url });
@@ -424,8 +424,14 @@ export const OrderModule: React.FC = () => {
 
   const handleDeleteProof = (order: Order) => {
     if (!window.confirm('Hapus bukti foto pengiriman ini?')) return;
+    const oldUrl = order.shipping_proof_url;
     dataStore.updateOrderShipping(order.id, { shipping_proof_url: undefined });
     setShipProof('');
+    // Berkas lama ikut dihapus di penyimpanan cloud — tanpa ini bukti lama jadi
+    // yatim dan terus memakan penyimpanan (dulu di Supabase, sekarang R2).
+    if (oldUrl && oldUrl.startsWith('http')) {
+      void deletePackingPhoto(oldUrl).catch(() => undefined);
+    }
     loadData();
   };
 

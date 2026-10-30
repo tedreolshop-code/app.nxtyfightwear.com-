@@ -377,7 +377,7 @@ export const MarketplaceSalesModule: React.FC = () => {
     try {
       const url = await uploadPackingPhoto(orderNumber, file);
       if (!url) {
-        alert('Penyimpanan foto tidak aktif. Isi VITE_SUPABASE_* di .env lalu muat ulang halaman.');
+        alert('Penyimpanan foto tidak aktif. Isi VITE_API_BASE_URL di .env lalu muat ulang halaman.');
         return;
       }
       dataStore.setMarketplaceShippingProof(orderNumber, url);
