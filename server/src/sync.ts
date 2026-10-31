@@ -83,8 +83,16 @@ export const handleQuery = async (env: Env, body: QueryBody): Promise<ApiResult>
   const parts = [`SELECT ${columns.join(', ')} FROM ${table}`];
   if (where.length > 0) parts.push(`WHERE ${where.join(' AND ')}`);
   // Urutan stabil antar halaman pagination (rowid baris yang di-upsert tetap).
-  if (limit !== null) parts.push('ORDER BY rowid');
-  parts.push(`LIMIT ${limit ?? 1}${limit !== null ? ` OFFSET ${offset}` : ''}`);
+  if (limit !== null) {
+    parts.push('ORDER BY rowid');
+    parts.push(`LIMIT ${limit} OFFSET ${offset}`);
+  } else if (!body.single) {
+    // Tanpa .range() → kembalikan SEMUA hasil yang lolos filter (paritas
+    // PostgREST), dengan ceiling pengaman saja.
+    parts.push('LIMIT 10000');
+  } else {
+    parts.push('LIMIT 1');
+  }
 
   const rows = await env.DB.prepare(parts.join(' ')).bind(...params).all<Record<string, unknown>>();
   // Paritas JSONB PostgREST: kolom value dikirim kembali sebagai OBJEK (bukan teks
@@ -97,6 +105,25 @@ export const handleQuery = async (env: Env, body: QueryBody): Promise<ApiResult>
   });
   if (body.single) return ok(parsed.length > 0 ? parsed[0] : null);
   return ok(parsed);
+};
+
+// ===================== /api/version =====================
+
+/** Stamp per tabel — klien bandingkan supaya tarik ringan bisa dilewati total. */
+export const handleVersion = async (env: Env): Promise<ApiResult> => {
+  const rows = await env.DB.prepare('SELECT table_name, stamp FROM ari_sync_state').all<{ table_name: string; stamp: string }>();
+  const map: Record<string, string> = {};
+  for (const r of rows.results ?? []) map[String(r.table_name)] = String(r.stamp);
+  return ok(map);
+};
+
+/** Tandai tabel berubah (dipanggil setelah upsert/delete/clear sukses). */
+export const bumpStamp = async (env: Env, table: string): Promise<void> => {
+  try {
+    await env.DB.prepare(
+      'INSERT INTO ari_sync_state (table_name, stamp) VALUES (?, ?) ON CONFLICT(table_name) DO UPDATE SET stamp=excluded.stamp'
+    ).bind(table, new Date().toISOString()).run();
+  } catch { /* stamp gagal = tarik berikutnya tetap jalan, aman */ }
 };
 
 // ===================== /api/upsert =====================
@@ -207,5 +234,6 @@ export const handleUpsert = async (env: Env, body: UpsertBody): Promise<ApiResul
       return fail(e instanceof Error ? e.message : String(e));
     }
   }
+  await bumpStamp(env, table);
   return ok(changes);
 };

@@ -257,6 +257,26 @@ export const createClient = (_url?: string, _key?: string): CloudClient => ({
   },
 });
 
+// ===================== Versi per-tabel (hemat kuota baca) =====================
+
+/**
+ * Peta stamp per tabel dari /api/version (1 request kecil). Klien (cloudSync)
+ * membandingkan: kalau identik dengan yang terakhir diketahui → tarik ringan
+ * dilewati total — menghemat ribuan baris baca D1 per polling.
+ */
+export const getCloudVersion = async (): Promise<Record<string, string> | null> => {
+  if (!API_BASE || !isCloudApiEnabled) return null;
+  try {
+    const res = await fetch(`${API_BASE}/api/version`);
+    if (!res.ok) return null;
+    const json = await res.json() as { data?: unknown; error?: unknown };
+    if (typeof json.error === 'string' && json.error) return null;
+    return (json.data ?? null) as Record<string, string> | null;
+  } catch {
+    return null;
+  }
+};
+
 // ===================== Foto (R2 via Worker) =====================
 
 export const photoApi = {

@@ -13,6 +13,7 @@
 
 import { Env, ApiResult, ok, fail } from './cf';
 import { DELETABLE_TABLES } from './tables';
+import { bumpStamp } from './sync';
 
 const SESSION_DAYS = 30;
 const LOGIN_MAX_FAILS = 8;
@@ -148,6 +149,7 @@ export const handleDeleteRows = async (env: Env, body: Record<string, unknown>):
       .run();
     jumlah += Number(res.meta?.changes ?? 0);
   }
+  await bumpStamp(env, table);
   return ok(jumlah);
 };
 
@@ -156,5 +158,6 @@ export const handleClearTable = async (env: Env, body: Record<string, unknown>):
   if (accessErr) return fail(accessErr);
   const table = String(body.p_table ?? '');
   const res = await env.DB.prepare(`DELETE FROM ${table}`).run();
+  await bumpStamp(env, table);
   return ok(Number(res.meta?.changes ?? 0));
 };

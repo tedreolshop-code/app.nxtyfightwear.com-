@@ -19,7 +19,7 @@
  * Setup backend: server/wrangler.toml + server/schema.sql (lihat server/README.md).
  */
 
-import { createClient, CloudClient } from './cloudApi';
+import { createClient, CloudClient, getCloudVersion } from './cloudApi';
 import { getCloudToken, setCloudToken, clearCloudToken } from './cloudAuth';
 
 const API_BASE_URL = import.meta.env?.VITE_API_BASE_URL as string | undefined;
@@ -918,6 +918,51 @@ const SYNC_AT_KEY = 'nxty_cloud_synced_at_cf';
 // tetap murah, biasanya cuma menambah beberapa baris.
 const CLOCK_SKEW_MS = 2 * 60 * 60 * 1000;
 const FULL_RESYNC_AFTER_MS = 7 * 86400 * 1000;
+
+// ===================== Stamp per-tabel (hemat kuota baca D1) =====================
+// Polling tiap 30s memindai SEMUA id semua tabel = jutaan baris baca/hari untuk
+// D1 free tier. Dengan stamp per tabel (/api/version, 1 request kecil), tarik
+// ringan dilewati TOTAL bila tidak ada perubahan apa pun — dan per tabel bila
+// tabel itu saja yang berubah.
+const CLOUD_VERSION_KEY = 'nxty_cloud_version';
+let knownStamps: Record<string, string> | null = null;
+let nextStamps: Record<string, string> | null = null;
+
+const readKnownStamps = (): Record<string, string> | null => {
+  if (knownStamps) return knownStamps;
+  try {
+    const raw = localStorage.getItem(CLOUD_VERSION_KEY);
+    if (!raw) return null;
+    const v = JSON.parse(raw) as Record<string, string>;
+    if (v && typeof v === 'object') { knownStamps = v; return v; }
+  } catch { /* rusak: anggap belum pernah tahu */ }
+  return null;
+};
+
+/** true = tabel ini pasti tidak berubah sejak tarik sukses terakhir → boleh skip. */
+const tableUnchanged = (table: string): boolean => {
+  const known = readKnownStamps();
+  if (!known || !nextStamps) return false;
+  return known[table] === nextStamps[table];
+};
+
+const persistStamps = (): void => {
+  if (!nextStamps) return;
+  knownStamps = nextStamps;
+  nextStamps = null;
+  try { localStorage.setItem(CLOUD_VERSION_KEY, JSON.stringify(knownStamps)); } catch { /* penuh: abaikan */ }
+};
+
+/** Ambil versi terkini; true = tidak ada perubahan → tarik bisa dilewati. */
+const cloudVersionUnchanged = async (): Promise<boolean> => {
+  const v = await getCloudVersion();
+  if (!v) return false; // gagal ambil → jangan pernah skip (tarik jalan seperti biasa)
+  const known = readKnownStamps();
+  if (known && JSON.stringify(v) === JSON.stringify(known)) return true;
+  nextStamps = v;
+  return false;
+};
+
 const readSyncSince = (): string | null => {
   try {
     const raw = localStorage.getItem(SYNC_AT_KEY);
@@ -929,6 +974,7 @@ const readSyncSince = (): string | null => {
 };
 const writeSyncNow = (): void => {
   try { localStorage.setItem(SYNC_AT_KEY, String(Date.now())); } catch { /* penuh: abaikan */ }
+  persistStamps();
   markSyncSuccess();
 };
 
@@ -1037,18 +1083,24 @@ export const initCloudSync = async (): Promise<void> => {
   pruneLocalHeavyData('awal');
   const since = readSyncSince();
   const incremental = since !== null;
+  // Stamp ikut disimpan saat tarik sukses (writeSyncNow → persistStamps).
+  nextStamps = await getCloudVersion();
   try {
     // ---- ari_store (audit log, recycle bin, brand/work settings) ----
-    let storeQ = client.from(TABLE).select('key, value');
-    if (incremental) storeQ = storeQ.gt('updated_at', since!);
-    const { data, error } = await storeQ;
-    if (error) throw error;
+    let storeRows: Array<{ key: string; value: unknown }> = [];
+    if (!incremental || !tableUnchanged(TABLE)) {
+      let storeQ = client.from(TABLE).select('key, value');
+      if (incremental) storeQ = storeQ.gt('updated_at', since!);
+      const { data, error } = await storeQ;
+      if (error) throw error;
+      storeRows = (data || []) as Array<{ key: string; value: unknown }>;
+    }
 
-    const legacyStore = new Map((data || []).map(row => [row.key as string, row.value]));
+    const legacyStore = new Map(storeRows.map(row => [row.key, row.value]));
 
     applyingRemote = true;
     try {
-      for (const row of data || []) {
+      for (const row of storeRows) {
         if (row.key === ATT_KEY) continue;
         if (perRowByKey.has(row.key)) continue;
         if (MERGE_KEYS.has(row.key as string)) continue; // ditangani di bawah (gabungan)
@@ -1061,14 +1113,15 @@ export const initCloudSync = async (): Promise<void> => {
     // Key menumpuk diterapkan SESUDAH blok di atas: fungsinya menyetel
     // applyingRemote sendiri & menjadwalkan push balik bila lokal punya entri
     // yang belum ada di cloud.
-    for (const row of data || []) {
+    for (const row of storeRows) {
       if (MERGE_KEYS.has(row.key as string)) applyMergedStoreKey(row.key as string, row.value);
     }
-    if (data && data.length > 0) window.dispatchEvent(new Event('nxty_storage_change'));
+    if (storeRows.length > 0) window.dispatchEvent(new Event('nxty_storage_change'));
 
     // ---- Absensi ----
-    try {
-      const attRows = await fetchAllRows(ATT_TABLE, incremental ? { sinceCol: 'created_at', since: since! } : undefined);
+    if (!tableUnchanged(ATT_TABLE)) {
+      try {
+        const attRows = await fetchAllRows(ATT_TABLE, incremental ? { sinceCol: 'created_at', since: since! } : undefined);
       const tomb = readTombstones();
       const freshRecs = attRows.map(r => r.value as AttendanceRecordLike).filter(r => r && r.id && !tomb.has(r.id));
       const local = readLocalAttendance();
@@ -1107,8 +1160,9 @@ export const initCloudSync = async (): Promise<void> => {
         writeLocalAttendance(sortAttendance([...freshRecs.filter(r => !tomb.has(r.id)), ...localOnly]));
       }
       void flushPendingAttendance();
-    } catch (e) {
-      console.error(`[cloudSync] Gagal sinkron tabel absensi (schema server/schema.sql sudah diterapkan?):`, e);
+      } catch (e) {
+        console.error(`[cloudSync] Gagal sinkron tabel absensi (schema server/schema.sql sudah diterapkan?):`, e);
+      }
     }
 
     // ---- Tabel per-baris ----
@@ -1121,6 +1175,12 @@ export const initCloudSync = async (): Promise<void> => {
         // data terhapus (insiden 17 Okt 2026). Tarikan gagal / tulis gagal
         // (storage penuh) → ready tetap false sampai sinkron berikutnya berhasil.
         const nisan = nisanFor(cfg.key);
+        // Stamp tabel tidak berubah & baseline ada → tabel ini persis sama
+        // dengan tarik terakhir; lewati semua fetch (hemat ratusan ribu baris).
+        if (tableUnchanged(cfg.table) && cloudSnapshot.has(cfg.key)) {
+          cfg.ready = true;
+          continue;
+        }
         if (incremental) {
           const changed = (await fetchAllRows(cfg.table, { sinceCol: 'updated_at', since: since! }))
             .map(r => r.value as RowLike).filter(r => r && r.id && !nisan.has(r.id));
@@ -1227,34 +1287,42 @@ const resyncDataOnWakeup = async (): Promise<void> => {
     if (!since) return; //belum pernah sinkron: initCloudSync yang menarik penuh
 
     // ---- ari_store (aturan aplikasi, brand, dll.) ----
-    const { data: storeRows, error: storeErr } = await client.from(TABLE).select('key, value').gt('updated_at', since);
-    if (storeErr) throw storeErr;
-    for (const row of storeRows || []) {
-      if (row.key === ATT_KEY || perRowByKey.has(row.key)) continue;
-      if (MERGE_KEYS.has(row.key)) applyMergedStoreKey(row.key, row.value);
-      else applyRemoteValue(row.key, row.value);
+    if (tableUnchanged(TABLE)) {
+      // Stamp ari_store tidak berubah → lewati (hemat kuota baca).
+    } else {
+      const { data: storeRows, error: storeErr } = await client.from(TABLE).select('key, value').gt('updated_at', since);
+      if (storeErr) throw storeErr;
+      for (const row of storeRows || []) {
+        if (row.key === ATT_KEY || perRowByKey.has(row.key)) continue;
+        if (MERGE_KEYS.has(row.key)) applyMergedStoreKey(row.key, row.value);
+        else applyRemoteValue(row.key, row.value);
+      }
     }
 
     // ---- Absensi (heal + nisan, sama dengan init inkremental) ----
-    const attRows = await fetchAllRows(ATT_TABLE, { sinceCol: 'created_at', since });
-    const tomb = readTombstones();
-    const fresh = attRows.map(r => r.value as AttendanceRecordLike).filter(r => r && r.id && !tomb.has(r.id));
-    const local = readLocalAttendance();
-    if (fresh.length > 0) {
-      const cloudIdAge = await fetchAllIdsWithCreatedAt(ATT_TABLE);
-      const cloudIds = new Set(cloudIdAge.keys());
-      const localIds = new Set(local.map(r => r.id).filter(Boolean) as string[]);
-      const missing = missingLocalIdsWithAge(localIds, cloudIdAge, readAttendancePruneUntil())
-        .filter(id => !tomb.has(id));
-      const refilled = missing.length > 0
-        ? (await fetchRowsByIds(ATT_TABLE, missing)).map(r => r.value as AttendanceRecordLike).filter(r => r && r.id && !tomb.has(r.id))
-        : [];
-      const merged = mergeRowsById(
-        [...fresh, ...refilled] as { id: string }[],
-        local as { id: string }[],
-        cloudIds,
-      ) as AttendanceRecordLike[];
-      writeLocalAttendance(sortAttendance(merged.filter(r => !tomb.has(r.id))));
+    if (tableUnchanged(ATT_TABLE)) {
+      // Stamp absensi tidak berubah → lewati.
+    } else {
+      const attRows = await fetchAllRows(ATT_TABLE, { sinceCol: 'created_at', since });
+      const tomb = readTombstones();
+      const fresh = attRows.map(r => r.value as AttendanceRecordLike).filter(r => r && r.id && !tomb.has(r.id));
+      const local = readLocalAttendance();
+      if (fresh.length > 0) {
+        const cloudIdAge = await fetchAllIdsWithCreatedAt(ATT_TABLE);
+        const cloudIds = new Set(cloudIdAge.keys());
+        const localIds = new Set(local.map(r => r.id).filter(Boolean) as string[]);
+        const missing = missingLocalIdsWithAge(localIds, cloudIdAge, readAttendancePruneUntil())
+          .filter(id => !tomb.has(id));
+        const refilled = missing.length > 0
+          ? (await fetchRowsByIds(ATT_TABLE, missing)).map(r => r.value as AttendanceRecordLike).filter(r => r && r.id && !tomb.has(r.id))
+          : [];
+        const merged = mergeRowsById(
+          [...fresh, ...refilled] as { id: string }[],
+          local as { id: string }[],
+          cloudIds,
+        ) as AttendanceRecordLike[];
+        writeLocalAttendance(sortAttendance(merged.filter(r => !tomb.has(r.id))));
+      }
     }
     void flushPendingAttendance();
 
@@ -1262,6 +1330,11 @@ const resyncDataOnWakeup = async (): Promise<void> => {
     for (const cfg of PER_ROW) {
       try {
         const nisan = nisanFor(cfg.key);
+        // Stamp tidak berubah & baseline ada → lewati tabel ini (hemat kuota).
+        if (tableUnchanged(cfg.table) && cloudSnapshot.has(cfg.key)) {
+          cfg.ready = true;
+          continue;
+        }
         const changed = (await fetchAllRows(cfg.table, { sinceCol: 'updated_at', since }))
           .map(r => r.value as RowLike).filter(r => r && r.id && !nisan.has(r.id));
         const localRows = readLocalRows(cfg.key);
@@ -1588,7 +1661,12 @@ const tryWakeupSync = (): void => {
   const now = Date.now();
   if (now - lastWakeupSync < WAKEUP_SYNC_MIN_GAP_MS) return;
   lastWakeupSync = now;
-  void resyncDataOnWakeup();
+  void (async () => {
+    // Cek versi dulu (1 request mungil): tidak ada perubahan di SEMUA tabel →
+    // seluruh tarik bertahap dilewati. Inilah penghemat utama kuota baca D1.
+    if (await cloudVersionUnchanged()) return;
+    await resyncDataOnWakeup();
+  })();
 };
 
 // Detak jaring pengaman jadi SATU jalur pembaru lintas perangkat (30s) — setelah

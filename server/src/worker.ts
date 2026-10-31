@@ -19,7 +19,7 @@
 
 import { Env, ApiResult } from './cf';
 import { handleLogin, handleLogout, handleDeleteRows, handleClearTable } from './auth';
-import { handleQuery, handleUpsert } from './sync';
+import { handleQuery, handleUpsert, handleVersion } from './sync';
 import { handlePhotoUpload, handlePhotoDelete, servePhoto } from './photos';
 
 const json = (result: ApiResult, status = 200, cors: HeadersInit = {}): Response => (
@@ -74,6 +74,9 @@ export default {
     try {
       if (req.method === 'GET' && url.pathname === '/health') {
         return answer({ data: { ok: true, time: new Date().toISOString() }, error: null });
+      }
+      if (req.method === 'GET' && url.pathname === '/api/version') {
+        return answer(await handleVersion(env));
       }
 
       if (req.method === 'POST') {
