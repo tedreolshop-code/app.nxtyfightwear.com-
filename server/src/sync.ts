@@ -117,12 +117,20 @@ export const handleVersion = async (env: Env): Promise<ApiResult> => {
   return ok(map);
 };
 
-/** Tandai tabel berubah (dipanggil setelah upsert/delete/clear sukses). */
+/** Tandai tabel berubah (dipanggil setelah upsert/delete/clear sukses).
+ *  _global = satu baris yang selalu berubah pada tulis apa pun — klien cukup
+ *  membandingkan 1 nilai untuk memutuskan skip seluruh tarik. */
 export const bumpStamp = async (env: Env, table: string): Promise<void> => {
   try {
-    await env.DB.prepare(
-      'INSERT INTO ari_sync_state (table_name, stamp) VALUES (?, ?) ON CONFLICT(table_name) DO UPDATE SET stamp=excluded.stamp'
-    ).bind(table, new Date().toISOString()).run();
+    const now = new Date().toISOString();
+    await env.DB.batch([
+      env.DB.prepare(
+        'INSERT INTO ari_sync_state (table_name, stamp) VALUES (?, ?) ON CONFLICT(table_name) DO UPDATE SET stamp=excluded.stamp'
+      ).bind(table, now),
+      env.DB.prepare(
+        "INSERT INTO ari_sync_state (table_name, stamp) VALUES ('_global', ?) ON CONFLICT(table_name) DO UPDATE SET stamp=excluded.stamp"
+      ).bind(now),
+    ]);
   } catch { /* stamp gagal = tarik berikutnya tetap jalan, aman */ }
 };
 

@@ -953,12 +953,17 @@ const persistStamps = (): void => {
   try { localStorage.setItem(CLOUD_VERSION_KEY, JSON.stringify(knownStamps)); } catch { /* penuh: abaikan */ }
 };
 
-/** Ambil versi terkini; true = tidak ada perubahan → tarik bisa dilewati. */
+/** Ambil versi terkini; true = tidak ada perubahan → tarik bisa dilewati.
+ *  Perbandingan utama memakai stamp _global (1 nilai) — jatuh ke peta penuh
+ *  bila _global belum ada (perangkat lama / belum pernah ditulis). */
 const cloudVersionUnchanged = async (): Promise<boolean> => {
   const v = await getCloudVersion();
   if (!v) return false; // gagal ambil → jangan pernah skip (tarik jalan seperti biasa)
   const known = readKnownStamps();
-  if (known && JSON.stringify(v) === JSON.stringify(known)) return true;
+  if (known) {
+    if (typeof v._global === 'string' && typeof known._global === 'string' && v._global === known._global) return true;
+    if (JSON.stringify(v) === JSON.stringify(known)) return true;
+  }
   nextStamps = v;
   return false;
 };
@@ -1276,7 +1281,8 @@ export const initCloudSync = async (): Promise<void> => {
 
 let lastWakeupSync = 0;
 let wakeupBusy = false;
-const WAKEUP_SYNC_MIN_GAP_MS = 30_000;
+// 60 detik: kompromi hemat kuota vs segar-nya data lintas perangkat.
+const WAKEUP_SYNC_MIN_GAP_MS = 60_000;
 
 const resyncDataOnWakeup = async (): Promise<void> => {
   if (!client || wakeupBusy) return;
@@ -1669,9 +1675,9 @@ const tryWakeupSync = (): void => {
   })();
 };
 
-// Detak jaring pengaman jadi SATU jalur pembaru lintas perangkat (30s) — setelah
-// Supabase Realtime dilepas. Tarikannya ringan (bertahap), aman diulang tiap 30s.
+// Detak jaring pengaman jadi SATU jalur pembaru lintas perangkat (60s) — setelah
+// Supabase Realtime dilepas. Tarikannya ringan, aman diulang tiap 60s.
 if (typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', tryWakeupSync);
-  setInterval(tryWakeupSync, 30 * 1000);
+  setInterval(tryWakeupSync, 60 * 1000);
 }
