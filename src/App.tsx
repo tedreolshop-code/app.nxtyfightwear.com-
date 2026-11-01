@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserRole, Employee, ProductionHandoff, ProductionJob, PackingTask } from './types';
 import { dataStore, wibTodayStr } from './dataStore';
-import { isCloudEnabled, getCloudStatus, CloudStatus, loginCloud, logoutCloud, getLastSyncAtMs, SYNC_TIME_EVENT, resyncDataNow, getLocalUsageRatio, ensureAttendanceHistory } from './cloudSync';
+import { isCloudEnabled, getCloudStatus, CloudStatus, loginCloud, logoutCloud, getLastSyncAtMs, SYNC_TIME_EVENT, resyncDataNow, getLocalUsageRatio, ensureAttendanceHistory, getOutboxPendingCount, OUTBOX_EVENT } from './cloudSync';
 import { MainDashboard } from './components/MainDashboard';
 import { EmployeeDashboard } from './components/EmployeeDashboard';
 import { AttendanceModule } from './components/AttendanceModule';
@@ -266,6 +266,8 @@ export default function App() {
   };
   const [formattedTime, setFormattedTime] = useState('');
   const [cloudStatus, setCloudStatus] = useState<CloudStatus>(getCloudStatus());
+  // Perubahan yang belum pasti sampai ke cloud (outbox + absensi + hapus tertunda)
+  const [pendingCloud, setPendingCloud] = useState<number>(getOutboxPendingCount());
   // Waktu tarik-ulang terakhir dari cloud (indikator data segar, bukan status koneksi)
   const [lastSyncAt, setLastSyncAt] = useState<number>(getLastSyncAtMs());
   const [toast, setToast] = useState<string | null>(null);
@@ -364,6 +366,13 @@ export default function App() {
     const handler = (e: Event) => setCloudStatus((e as CustomEvent<CloudStatus>).detail);
     window.addEventListener('nxty_cloud_status', handler);
     return () => window.removeEventListener('nxty_cloud_status', handler);
+  }, []);
+
+  // Pantau jumlah perubahan yang belum terkirim ke cloud
+  useEffect(() => {
+    const handler = (e: Event) => setPendingCloud(Number((e as CustomEvent<number>).detail) || 0);
+    window.addEventListener(OUTBOX_EVENT, handler);
+    return () => window.removeEventListener(OUTBOX_EVENT, handler);
   }, []);
 
   // Pantau waktu tarik-ulang terakhir (dipicu cloudSync saat tarikan berhasil)
@@ -764,6 +773,11 @@ export default function App() {
                   tarik-ulang {new Date(lastSyncAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
                 </span>
               )}
+              {pendingCloud > 0 && (
+                <span className="block text-[10px] font-bold text-amber-300">
+                  ⏳ {pendingCloud} perubahan belum terkirim — biarkan app terbuka
+                </span>
+              )}
             </span>
           </div>
           <div className="flex items-center justify-between gap-2 text-[10px]">
@@ -832,7 +846,9 @@ export default function App() {
                   ? new Date(lastSyncAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
                   : '';
                 setToast(
-                  cloudStatus === 'online'
+                  pendingCloud > 0
+                    ? `⏳ ${pendingCloud} perubahan belum terkirim ke cloud.\nData aman di perangkat ini — biarkan app terbuka sampai terkirim, dan JANGAN clear data browser.`
+                    : cloudStatus === 'online'
                     ? `Tersinkron ke Cloud${waktu ? ` — tarik-ulang terakhir ${waktu}` : ''}.\nData perangkat ini sama dengan data semua perangkat lain.`
                     : cloudStatus === 'connecting'
                       ? 'Menghubungkan ke Cloud…'

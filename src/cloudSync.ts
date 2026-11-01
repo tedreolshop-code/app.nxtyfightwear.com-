@@ -263,6 +263,105 @@ const queuePendingDeletes = (key: string, ids: string[]): void => {
 const tableForKey = (key: string): string | null =>
   key === ATT_KEY ? ATT_TABLE : (perRowByKey.get(key)?.table ?? null);
 
+// ===================== Outbox: antrian tulis untuk SEMUA data =====================
+// Kasbon-insiden 31 Okt: tulisan yang gagal ke cloud (luring/limit) hidup hanya
+// di cache utuh — dan bisa hilang kalau perangkat di-clear sebelum sinkron.
+// Outbox membuat KEGAGALAN ITU TERLIHAT: setiap upsert gagal masuk antrian yang
+// sama, dihitung, ditampilkan di UI ("N perubahan belum terkirim"), dan
+// dikirim ulang otomatis. Perangkat yang benar-benar di-clear tetap bisa
+// kehilangan data — tetapi sekarang orangnya DIPERINGATKAN sebelum menutup.
+type OutboxEntry =
+  | { id: string; kind: 'rows'; table: string; rows: Array<{ id: string; value: unknown; updated_at: string }>; ts: number }
+  | { id: string; kind: 'store'; key: string; value: unknown; ts: number };
+const OUTBOX_KEY = 'nxty_cloud_outbox';
+const OUTBOX_MAX = 200;
+const OUTBOX_MAX_MS = 30 * 86400_000;
+export const OUTBOX_EVENT = 'nxty_cloud_outbox';
+
+const readOutbox = (): OutboxEntry[] => {
+  try {
+    const a = JSON.parse(localStorage.getItem(OUTBOX_KEY) || '[]');
+    return Array.isArray(a) ? a.filter(it => it && (it.kind === 'rows' || it.kind === 'store')) : [];
+  } catch { return []; }
+};
+
+const writeOutbox = (items: OutboxEntry[]): void => {
+  setItemQuotaSafe(OUTBOX_KEY, JSON.stringify(items.slice(0, OUTBOX_MAX)));
+  notifyOutbox();
+};
+
+let outboxFlushTimer: ReturnType<typeof setTimeout> | null = null;
+let outboxBusy = false;
+
+const scheduleOutboxFlush = (delayMs = 1500): void => {
+  if (outboxFlushTimer) return;
+  outboxFlushTimer = setTimeout(() => {
+    outboxFlushTimer = null;
+    void flushOutbox();
+  }, delayMs);
+};
+
+/** Masukkan/antrikan satu tulisan gagal; entri dengan id sama digabung (terbaru menang). */
+const queueOutbox = (entry: OutboxEntry): void => {
+  if (!client) return;
+  const now = Date.now();
+  const existing = readOutbox().filter(it => now - it.ts <= OUTBOX_MAX_MS);
+  const same = existing.find(it => it.id === entry.id);
+  let finalEntry = entry;
+  if (same && same.kind === 'rows' && entry.kind === 'rows') {
+    // Gabungkan baris antar percobaan: baris versi baru menang per id.
+    const byId = new Map(same.rows.map(r => [r.id, r]));
+    for (const r of entry.rows) byId.set(r.id, r);
+    finalEntry = { ...entry, rows: [...byId.values()] };
+  }
+  const rest = existing.filter(it => it.id !== entry.id);
+  writeOutbox([finalEntry, ...rest]);
+  scheduleOutboxFlush();
+};
+
+/** Kirim seluruh isi outbox; yang masih gagal ditahan untuk percobaan berikutnya. */
+export const flushOutbox = async (): Promise<void> => {
+  if (!client || outboxBusy) return;
+  const items = readOutbox();
+  if (items.length === 0) return;
+  outboxBusy = true;
+  try {
+    const remaining: OutboxEntry[] = [];
+    for (const item of items) {
+      try {
+        if (item.kind === 'rows') {
+          if (item.rows.length > 0) {
+            const { error } = await client.from(item.table).upsert(item.rows, { onConflict: 'id' });
+            if (error) throw error;
+          }
+        } else {
+          const { error } = await client.from(TABLE)
+            .upsert({ key: item.key, value: item.value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+          if (error) throw error;
+        }
+      } catch {
+        remaining.push(item); // gagal: dicoba ulang pada wakeup berikutnya
+      }
+    }
+    if (remaining.length !== items.length) writeOutbox(remaining);
+    if (remaining.length === 0 && status !== 'online') setStatus('online');
+  } finally {
+    outboxBusy = false;
+  }
+};
+
+/** Jumlah perubahan yang belum pasti sampai ke cloud (outbox + absensi + hapus). */
+export const getOutboxPendingCount = (): number => {
+  const outbox = readOutbox().length;
+  const att = readPendingAttendance().length;
+  const del = readPendingDeletes().reduce((n, p) => n + p.ids.length, 0);
+  return outbox + att + del;
+};
+
+const notifyOutbox = (): void => {
+  try { window.dispatchEvent(new CustomEvent(OUTBOX_EVENT, { detail: getOutboxPendingCount() })); } catch { /* abaikan */ }
+};
+
 /** Coba ulang seluruh antrian hapus; menetapkan nisan untuk yang berhasil. */
 const retryPendingDeletes = async (): Promise<void> => {
   if (!client) return;
@@ -479,7 +578,11 @@ const pushRowsToCloud = (cfg: PerRowSync, list: RowLike[]): void => {
       if (changed.length > 0) {
         const rows = changed.map(r => ({ id: r.id, value: r, updated_at: new Date().toISOString() }));
         const { error: upErr } = await client!.from(cfg.table).upsert(rows, { onConflict: 'id' });
-        if (upErr) throw upErr;
+        if (upErr) {
+          // Gagal kirim (luring/limit) → outbox: terlihat di UI & dikirim ulang otomatis.
+          queueOutbox({ id: `rows:${cfg.table}`, kind: 'rows', table: cfg.table, rows, ts: Date.now() });
+          throw upErr;
+        }
       }
 
       // Baris yang hilang dari daftar → hapus, HANYA bila lolos pengaman.
@@ -635,7 +738,12 @@ const pushMergedStoreKey = async (key: string): Promise<void> => {
     dispatchStorageChangeCoalesced();
     if (status !== 'online') setStatus('online');
   } catch (e) {
-    console.error(`[cloudSync] Gagal push gabungan "${key}" ke Supabase:`, e);
+    console.error(`[cloudSync] Gagal push gabungan "${key}" ke cloud:`, e);
+    try {
+      // merged tidak terlihat di catch — hitung ulang dari cache lokal saja.
+      const local = readLocalRowsRaw(key);
+      queueOutbox({ id: `store:${key}`, kind: 'store', key, value: mergeStoreValue(key, null, local), ts: Date.now() });
+    } catch { /* cache lokal tidak terbaca: lewati antrian untuk key ini */ }
     setStatus('error');
   }
 };
@@ -682,7 +790,8 @@ export const pushKeyToCloud = (key: string, data: unknown): void => {
       if (error) throw error;
       if (status !== 'online') setStatus('online');
     } catch (e) {
-      console.error(`[cloudSync] Gagal push "${key}" ke Supabase:`, e);
+      console.error(`[cloudSync] Gagal push "${key}" ke cloud:`, e);
+      queueOutbox({ id: `store:${key}`, kind: 'store', key, value: data, ts: Date.now() });
       setStatus('error');
     }
   }, 600);
@@ -1256,11 +1365,13 @@ export const initCloudSync = async (): Promise<void> => {
     // pemakaian berikutnya mengulang rentang yang sama, bukan melewatinya.
     if (!anyTableFailed) writeSyncNow();
     pruneLocalHeavyData('pasca-tarik');
+    // Antrian tulisan yang gagal kemarin diantar setelah tarik penuh selesai.
+    scheduleOutboxFlush(500);
 
 // Realtime Supabase tidak lagi dipakai — perubahan dari perangkat lain kini
-// ditarik oleh detak wake-up di bawah (tiap 30 detik saat halaman terlihat),
+// ditarik oleh detak wake-up di bawah (tiap 60 detik saat halaman terlihat),
 // yang memakai tarik bertahap murah (`updated_at > watermark`) sehingga latensi
-// lintas perangkat ≈ ≤30 detik tanpa biaya terus-menerus channel WebSocket.
+// lintas perangkat ≈ ≤60 detik tanpa biaya terus-menerus channel WebSocket.
 
     setStatus('online');
   } catch (e) {
@@ -1668,12 +1779,25 @@ const tryWakeupSync = (): void => {
   if (now - lastWakeupSync < WAKEUP_SYNC_MIN_GAP_MS) return;
   lastWakeupSync = now;
   void (async () => {
-    // Cek versi dulu (1 request mungil): tidak ada perubahan di SEMUA tabel →
-    // seluruh tarik bertahap dilewati. Inilah penghemat utama kuota baca D1.
+    // Outbox dulu (murah saat kosong): tulisan gagal kemarin diantar sebelum apa pun.
+    await flushOutbox();
+    // Cek versi: tidak ada perubahan di SEMUA tabel → tarik bertahap dilewati.
     if (await cloudVersionUnchanged()) return;
     await resyncDataOnWakeup();
   })();
 };
+
+// Peringatan sebelum menutup: jangan biarkan perangkat menutup tab saat masih
+// ada perubahan yang belum sampai ke cloud (kasbon-insiden 31 Okt).
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', (e) => {
+    if (getOutboxPendingCount() > 0) {
+      e.preventDefault();
+      e.returnValue = 'Masih ada perubahan yang belum terkirim ke cloud.';
+      return e.returnValue;
+    }
+  });
+}
 
 // Detak jaring pengaman jadi SATU jalur pembaru lintas perangkat (60s) — setelah
 // Supabase Realtime dilepas. Tarikannya ringan, aman diulang tiap 60s.
