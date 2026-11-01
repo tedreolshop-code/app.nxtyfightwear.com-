@@ -15,7 +15,11 @@ import {
 } from './tables';
 
 const UPSERT_CHUNK = 100;
-const MAX_FILTER_VALUES = 900; // batas bind parameter SQLite ≈ 999
+// D1 membatasi 100 bind parameter per statement — daftar IN lebih besar dari ini
+// dipecah otomatis menjadi beberapa query di handleQuery. MAX_FILTER_VALUES =
+// batas keras satu request (diluar itu ditolak).
+const IN_CHUNK = 90;
+const MAX_FILTER_VALUES = 2000;
 
 type Filter = { col: string; json?: string; op: string; value?: unknown; values?: unknown[] };
 
@@ -61,44 +65,65 @@ export const handleQuery = async (env: Env, body: QueryBody): Promise<ApiResult>
     }
   }
 
-  const where: string[] = [];
-  const params: unknown[] = [];
-  for (const f of filters) {
-    const expr = colExpr(f);
-    if (f.op === 'in') {
-      const placeholders = (f.values as unknown[]).map(() => '?').join(',');
-      where.push(`${expr} IN (${placeholders})`);
-      params.push(...(f.values as unknown[]));
-    } else {
-      const sym = f.op === 'eq' ? '=' : f.op === 'gt' ? '>' : f.op === 'gte' ? '>=' : '<=';
-      where.push(`${expr} ${sym} ?`);
-      params.push(f.value);
-    }
-  }
-
   const limit = Number.isFinite(Number(body.limit))
     ? Math.min(Math.max(Number(body.limit), 1), 10_000)
     : null;
   const offset = Number.isFinite(Number(body.offset)) ? Math.max(Number(body.offset), 0) : 0;
 
-  const parts = [`SELECT ${columns.join(', ')} FROM ${table}`];
-  if (where.length > 0) parts.push(`WHERE ${where.join(' AND ')}`);
-  // Urutan stabil antar halaman pagination (rowid baris yang di-upsert tetap).
-  if (limit !== null) {
-    parts.push('ORDER BY rowid');
-    parts.push(`LIMIT ${limit} OFFSET ${offset}`);
-  } else if (!body.single) {
-    // Tanpa .range() → kembalikan SEMUA hasil yang lolos filter (paritas
-    // PostgREST), dengan ceiling pengaman saja.
-    parts.push('LIMIT 10000');
+  const buildSql = (inValues: unknown[]): { sql: string; params: unknown[] } => {
+    const where: string[] = [];
+    const params: unknown[] = [];
+    for (const f of filters) {
+      const expr = colExpr(f);
+      if (f.op === 'in') {
+        // Saat inFilter sedang dipecah, pakai grup nilai yang diberikan.
+        const chunk = f === inFilter ? inValues : (f.values as unknown[]);
+        const placeholders = chunk.map(() => '?').join(',');
+        where.push(`${expr} IN (${placeholders})`);
+        params.push(...chunk);
+      } else {
+        const sym = f.op === 'eq' ? '=' : f.op === 'gt' ? '>' : f.op === 'gte' ? '>=' : '<=';
+        where.push(`${expr} ${sym} ?`);
+        params.push(f.value);
+      }
+    }
+    const parts = [`SELECT ${columns.join(', ')} FROM ${table}`];
+    if (where.length > 0) parts.push(`WHERE ${where.join(' AND ')}`);
+    // Urutan stabil antar halaman pagination (rowid baris yang di-upsert tetap).
+    if (limit !== null) {
+      parts.push('ORDER BY rowid');
+      parts.push(`LIMIT ${limit} OFFSET ${offset}`);
+    } else if (!body.single) {
+      // Tanpa .range() → kembalikan SEMUA hasil yang lolos filter (paritas
+      // PostgREST), dengan ceiling pengaman saja.
+      parts.push('LIMIT 10000');
+    } else {
+      parts.push('LIMIT 1');
+    }
+    return { sql: parts.join(' '), params };
+  };
+
+  // D1 membatasi 100 bind parameter per statement — daftar IN besar dipecah
+  // menjadi beberapa query lalu hasilnya digabung (urutan tetap by-group).
+  const inFilter = filters.find(f => f.op === 'in' && (f.values?.length ?? 0) > IN_CHUNK);
+  let allRows: Record<string, unknown>[] = [];
+  if (inFilter) {
+    const values = inFilter.values as unknown[];
+    for (let i = 0; i < values.length; i += IN_CHUNK) {
+      const group = values.slice(i, i + IN_CHUNK);
+      const { sql, params } = buildSql(group);
+      const rows = await env.DB.prepare(sql).bind(...params).all<Record<string, unknown>>();
+      allRows.push(...(rows.results ?? []));
+    }
   } else {
-    parts.push('LIMIT 1');
+    const { sql, params } = buildSql([]);
+    const rows = await env.DB.prepare(sql).bind(...params).all<Record<string, unknown>>();
+    allRows = rows.results ?? [];
   }
 
-  const rows = await env.DB.prepare(parts.join(' ')).bind(...params).all<Record<string, unknown>>();
   // Paritas JSONB PostgREST: kolom value dikirim kembali sebagai OBJEK (bukan teks
   // JSON) — klien (cloudSync) mengandalkan bentuk objek untuk merge store/tombstone.
-  const parsed = (rows.results ?? []).map(row => {
+  const parsed = allRows.map(row => {
     if (typeof row.value === 'string' && row.value.length > 0) {
       try { return { ...row, value: JSON.parse(row.value) }; } catch { return row; }
     }

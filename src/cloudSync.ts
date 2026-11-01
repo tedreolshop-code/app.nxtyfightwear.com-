@@ -856,7 +856,7 @@ const fetchAllIdsWithCreatedAt = async (table: string): Promise<Map<string, stri
  * "Perlu Review" jadi salah hitung. Tarik baris hilang by-id menutup itu.
  */
 const fetchRowsByIds = async (table: string, ids: string[]): Promise<{ id: string; value: unknown }[]> => {
-  const CHUNK = 200; // batasi panjang URL query IN
+  const CHUNK = 90; // batas keras D1: ≤ 100 bind parameter per statement
   const all: { id: string; value: unknown }[] = [];
   for (let i = 0; i < ids.length; i += CHUNK) {
     const { data, error } = await client!.from(table).select('id, value').in('id', ids.slice(i, i + CHUNK));
