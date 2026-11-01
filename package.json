@@ -13,7 +13,8 @@
     "worker:dev": "npm --prefix server run dev",
     "worker:deploy": "npm --prefix server run deploy",
     "d1:schema": "npm --prefix server run d1:schema",
-    "d1:schema:local": "npm --prefix server run d1:schema:local"
+    "d1:schema:local": "npm --prefix server run d1:schema:local",
+    "backup:d1": "node scripts/backup-d1.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
