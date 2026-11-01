@@ -49,9 +49,10 @@ export const handleQuery = async (env: Env, body: QueryBody): Promise<ApiResult>
       if (!isSafeIdent(f.col)) return fail('Kolom filter tidak valid.');
       if (f.json && !isSafeJsonPath(f.json)) return fail('Path JSON tidak valid.');
       if (op === 'in') {
-        const values = Array.isArray(f.value)
-          ? f.value.filter((v): v is string | number => typeof v === 'string' || typeof v === 'number')
-          : [];
+        // Adapter mengirim daftar di field `values` (terima juga `value` array
+        // untuk kompatibilitas panggilan langsung).
+        const rawList = Array.isArray(f.values) ? f.values : (Array.isArray(f.value) ? f.value : []);
+        const values = rawList.filter((v): v is string | number => typeof v === 'string' || typeof v === 'number');
         if (values.length === 0 || values.length > MAX_FILTER_VALUES) return fail('Daftar IN tidak valid.');
         filters.push({ col: f.col, json: f.json ? String(f.json) : undefined, op, values });
       } else {
