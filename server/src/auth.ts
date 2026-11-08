@@ -21,7 +21,7 @@ const LOGIN_WINDOW_MIN = 15;
 const ALLOWED_ROLES = new Set(['owner', 'admin_penjualan', 'admin_gudang']);
 const MASS_DELETE_MAX_ROWS = 8;
 const MASS_DELETE_MAX_RATIO = 0.25;
-const DELETE_CHUNK = 200;
+const DELETE_CHUNK = 90; // batas keras D1: ≤ 100 bind parameter per statement
 const nowIso = (): string => new Date().toISOString();
 
 /** Tiruan hashPin() dari src/dataStore.ts — bit-sama (int32 per langkah). */
