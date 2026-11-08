@@ -60,12 +60,16 @@ const applyBrandIcons = (brand: BrandSettings): void => {
     brandManifestUrl = null;
   }
   if (hasLogo) {
+    // Manifest via blob URL: start_url & scope WAJIB absolut — URL relatif ('/')
+    // tidak bisa di-resolve dari basis blob dan Chrome mengabaikannya
+    // ("Manifest: property 'start_url' ignored, URL is invalid").
+    const abs = (p: string) => new URL(p, window.location.origin).href;
     const manifest = {
-      id: '/',
+      id: abs('/'),
       name: brand.company_name,
       short_name: brand.company_name,
-      start_url: '/',
-      scope: '/',
+      start_url: abs('/'),
+      scope: abs('/'),
       display: 'standalone',
       background_color: '#F3F4F6',
       theme_color: brand.primary_color,
