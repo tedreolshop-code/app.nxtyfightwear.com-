@@ -1182,6 +1182,26 @@ const writeSyncNow = (): void => {
   markSyncSuccess();
 };
 
+// Watermark KHUSUS absensi (bug 8 Nov: tarik absensi gagal tetapi watermark utama
+// maju → bulan berjalan bolong permanen sampai clear cache). Kegagalan tarik
+// absensi kini TIDAK menggerakkan watermark-nya, jadi rentang yang bolong
+// diulang otomatis pada sinkron berikutnya — perangkat menyembuhkan diri.
+const ATT_SYNC_AT_KEY = 'nxty_att_synced_at_cf';
+let attPullOk = false;
+const readAttSince = (): string | null => {
+  try {
+    const raw = localStorage.getItem(ATT_SYNC_AT_KEY);
+    if (!raw) return null;
+    const t = Number(raw);
+    if (!t || Date.now() - t > FULL_RESYNC_AFTER_MS) return null;
+    return new Date(t - CLOCK_SKEW_MS).toISOString();
+  } catch { return null; }
+};
+const writeAttNow = (): void => {
+  if (!attPullOk) return; // tarik absensi gagal → watermark absensi tidak maju
+  try { localStorage.setItem(ATT_SYNC_AT_KEY, String(Date.now())); } catch { /* penuh: abaikan */ }
+};
+
 // Penanda waktu "terakhir tarik-ulang penuh dari cloud" untuk tampilan di
 // sidebar (indikator 1-sumber-kebenaran) — walau kolom tombol "Tersinkron ke
 // Cloud" bermakna status KONEKSI realtime, bukan segar-nya data.
@@ -1322,10 +1342,13 @@ export const initCloudSync = async (): Promise<void> => {
     }
     if (storeRows.length > 0) window.dispatchEvent(new Event('nxty_storage_change'));
 
-    // ---- Absensi ----
-    if (!tableUnchanged(ATT_TABLE)) {
+    // ---- Absensi (watermark sendiri: gagal tarik absensi diulang otomatis) ----
+    const attSince = readAttSince();
+    const attIncremental = attSince !== null;
+    attPullOk = false;
+    if (!tableUnchanged(ATT_TABLE) || !attIncremental) {
       try {
-        const attRows = await fetchAllRows(ATT_TABLE, incremental ? { sinceCol: 'created_at', since: since! } : undefined);
+        const attRows = await fetchAllRows(ATT_TABLE, attIncremental ? { sinceCol: 'created_at', since: attSince! } : undefined);
       const tomb = readTombstones();
       const freshRecs = attRows.map(r => r.value as AttendanceRecordLike).filter(r => r && r.id && !tomb.has(r.id));
       const local = readLocalAttendance();
@@ -1366,11 +1389,13 @@ export const initCloudSync = async (): Promise<void> => {
         const localOnly = local.filter(r => r.id && !cloudIds.has(r.id) && !tomb.has(r.id));
         writeLocalAttendance(sortAttendance([...freshRecs.filter(r => !tomb.has(r.id)), ...localOnly]));
       }
+      attPullOk = true;
       void flushPendingAttendance();
       } catch (e) {
         console.error(`[cloudSync] Gagal sinkron tabel absensi (schema server/schema.sql sudah diterapkan?):`, e);
       }
     }
+    writeAttNow();
 
     // ---- Tabel per-baris ----
     let anyTableFailed = false;
@@ -1507,11 +1532,13 @@ const resyncDataOnWakeup = async (): Promise<void> => {
       }
     }
 
-    // ---- Absensi (heal + nisan, sama dengan init inkremental) ----
-    if (tableUnchanged(ATT_TABLE)) {
-      // Stamp absensi tidak berubah → lewati.
+    // ---- Absensi (heal + nisan; watermark absensi sendiri) ----
+    const attSince = readAttSince();
+    attPullOk = false;
+    if (tableUnchanged(ATT_TABLE) && attSince !== null) {
+      // Stamp absensi tidak berubah & watermark absensi ada → lewati.
     } else {
-      const attRows = await fetchAllRows(ATT_TABLE, { sinceCol: 'created_at', since });
+      const attRows = await fetchAllRows(ATT_TABLE, attSince ? { sinceCol: 'created_at', since: attSince } : undefined);
       const tomb = readTombstones();
       const fresh = attRows.map(r => r.value as AttendanceRecordLike).filter(r => r && r.id && !tomb.has(r.id));
       const local = readLocalAttendance();
@@ -1534,7 +1561,9 @@ const resyncDataOnWakeup = async (): Promise<void> => {
         ) as AttendanceRecordLike[];
         writeLocalAttendance(sortAttendance(merged.filter(r => !tomb.has(r.id))));
       }
+      attPullOk = true;
     }
+    writeAttNow();
     void flushPendingAttendance();
 
     // ---- Tabel per-baris ----
