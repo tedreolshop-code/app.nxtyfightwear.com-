@@ -965,17 +965,27 @@ export const deleteAttendanceRowsInCloud = (ids: string[]): void => {
   });
 };
 
-/** Kirim ulang scan absensi yang tertunda (mis. saat sinyal hilang). */
+/** Kirim ulang scan absensi yang tertunda (mis. saat sinyal hilang).
+ *  Dikirim BERSAMA dalam batch ≤90 (dulu satu-per-satu: 69 request beruntun
+ *  membuat browser kehabisan resource — ERR_INSUFFICIENT_RESOURCES). */
 const flushPendingAttendance = async (): Promise<void> => {
   const tomb = readTombstones();
   const pending = readPendingAttendance().filter(r => !tomb.has(r.id));
-  if (pending.length === 0) return;
-  const stillPending: AttendanceRecordLike[] = [];
-  for (const rec of pending) {
-    const ok = await upsertAttendanceRow(rec);
-    if (!ok) stillPending.push(rec);
+  if (pending.length === 0 || !client) return;
+  const payload = pending.map(r => ({ id: r.id, value: r, created_at: new Date().toISOString() }));
+  const sentIds = new Set<string>();
+  for (let i = 0; i < payload.length; i += 90) {
+    const chunk = payload.slice(i, i + 90);
+    const { error } = await client.from(ATT_TABLE).upsert(chunk, { onConflict: 'id', ignoreDuplicates: true });
+    if (error) {
+      console.error('[cloudSync] Gagal push absensi ke cloud:', error);
+      notifyOutbox();
+      return; // sisa pending tetap; dicoba ulang pada wakeup berikutnya
+    }
+    for (const p of chunk) sentIds.add(p.id);
   }
-  writePendingAttendance(stillPending);
+  writePendingAttendance(readPendingAttendance().filter(r => !sentIds.has(r.id)));
+  notifyOutbox();
 };
 
 /**
@@ -1188,6 +1198,7 @@ const writeSyncNow = (): void => {
 // diulang otomatis pada sinkron berikutnya — perangkat menyembuhkan diri.
 const ATT_SYNC_AT_KEY = 'nxty_att_synced_at_cf';
 let attPullOk = false;
+let lastFullAttPull = 0;
 const readAttSince = (): string | null => {
   try {
     const raw = localStorage.getItem(ATT_SYNC_AT_KEY);
@@ -1535,9 +1546,14 @@ const resyncDataOnWakeup = async (): Promise<void> => {
     // ---- Absensi (heal + nisan; watermark absensi sendiri) ----
     const attSince = readAttSince();
     attPullOk = false;
-    if (tableUnchanged(ATT_TABLE) && attSince !== null) {
+    // Tanpa watermark absensi = tarik PENUH (5 ribu+ baris). Jangan tiap 60 dtk —
+    // batasi 1x/5 menit supaya tidak menggerus resource & kuota (audit 8 Nov).
+    if (attSince === null && Date.now() - lastFullAttPull < 5 * 60_000) {
+      // lewati tarik absensi di wakeup ini; watermark absensi tetap kosong.
+    } else if (tableUnchanged(ATT_TABLE) && attSince !== null) {
       // Stamp absensi tidak berubah & watermark absensi ada → lewati.
     } else {
+      if (attSince === null) lastFullAttPull = Date.now();
       const attRows = await fetchAllRows(ATT_TABLE, attSince ? { sinceCol: 'created_at', since: attSince } : undefined);
       const tomb = readTombstones();
       const fresh = attRows.map(r => r.value as AttendanceRecordLike).filter(r => r && r.id && !tomb.has(r.id));
