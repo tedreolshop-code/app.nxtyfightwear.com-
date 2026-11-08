@@ -1888,7 +1888,9 @@ const pingDevice = (pending: number): void => {
   const id = deviceId();
   if (!id) return;
   const now = Date.now();
-  if (now - lastDevicePing < 5 * 60_000) return;
+  // Aturan keras kuota: detak maksimal 1x per 15 menit (+ saat app dibuka lewat
+  // visibilitychange). 20 perangkat = ±1.920 tulis/hari untuk detak.
+  if (now - lastDevicePing < 15 * 60_000) return;
   lastDevicePing = now;
   void pingDeviceApi(id, pending, navigator.userAgent?.slice(0, 200) ?? '');
 };

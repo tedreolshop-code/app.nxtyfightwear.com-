@@ -152,14 +152,38 @@ export const bumpStamp = async (env: Env, table: string, delsDelta = 0): Promise
         'ON CONFLICT(table_name) DO UPDATE SET stamp=excluded.stamp, dels=ari_sync_state.dels + excluded.dels'
       ).bind(now, delsDelta),
     ]);
+    // Peta lengkap disalin ke SATU baris '_map' — /api/version membaca 1 baris
+    // saja (audit kuota: 20 perangkat × poll 60 dtk × 31 baris = 892 ribu baca/hari
+    // kalau membaca seluruh tabel stamp; kini 28,8 ribu/hari).
+    const all = await env.DB.prepare('SELECT table_name, stamp, dels FROM ari_sync_state')
+      .all<{ table_name: string; stamp: string; dels: number }>();
+    const map: Record<string, string> = {};
+    for (const r of all.results ?? []) {
+      if (r.table_name === '_map') continue;
+      map[r.table_name] = `${r.stamp}:${r.dels ?? 0}`;
+    }
+    await env.DB.prepare(
+      "INSERT INTO ari_sync_state (table_name, stamp, dels) VALUES ('_map', ?, 0) " +
+      'ON CONFLICT(table_name) DO UPDATE SET stamp=excluded.stamp'
+    ).bind(now, JSON.stringify(map)).run();
   } catch { /* stamp gagal = tarik berikutnya tetap jalan, aman */ }
 };
 
 export const handleVersion = async (env: Env): Promise<ApiResult> => {
+  // 1 baris dibaca per poll — peta di-'_map' dirangkum ulang server saat tiap tulis.
+  const row = await env.DB.prepare(
+    "SELECT stamp FROM ari_sync_state WHERE table_name = '_map'"
+  ).first<{ stamp: string }>();
+  if (row?.stamp) {
+    try { return ok(JSON.parse(row.stamp) as Record<string, string>); } catch { /* rusak: jatuh ke baca penuh */ }
+  }
   const rows = await env.DB.prepare('SELECT table_name, stamp, dels FROM ari_sync_state')
     .all<{ table_name: string; stamp: string; dels: number }>();
   const map: Record<string, string> = {};
-  for (const r of rows.results ?? []) map[String(r.table_name)] = `${r.stamp}:${r.dels ?? 0}`;
+  for (const r of rows.results ?? []) {
+    if (r.table_name === '_map') continue;
+    map[String(r.table_name)] = `${r.stamp}:${r.dels ?? 0}`;
+  }
   return ok(map);
 };
 
