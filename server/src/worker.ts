@@ -21,6 +21,7 @@ import { Env, ApiResult } from './cf';
 import { handleLogin, handleLogout, handleDeleteRows, handleClearTable } from './auth';
 import { handleQuery, handleUpsert, handleVersion } from './sync';
 import { handlePhotoUpload, handlePhotoDelete, servePhoto } from './photos';
+import { handleDevicePing, handleDevicesList } from './devices';
 
 const json = (result: ApiResult, status = 200, cors: HeadersInit = {}): Response => (
   new Response(JSON.stringify(result), {
@@ -78,9 +79,14 @@ export default {
       if (req.method === 'GET' && url.pathname === '/api/version') {
         return answer(await handleVersion(env));
       }
+      if (req.method === 'GET' && url.pathname === '/api/devices') {
+        return answer(await handleDevicesList(env));
+      }
 
       if (req.method === 'POST') {
         switch (url.pathname) {
+          case '/api/device':
+            return answer(await handleDevicePing(env, await readJsonBody(req)));
           case '/api/q':
             return answer(await handleQuery(env, await readJsonBody(req)));
           case '/api/upsert':

@@ -1509,7 +1509,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
                   className="flex items-center gap-1.5 text-[10px] font-medium text-gray-400 hover:text-gray-700 cursor-pointer disabled:opacity-50"
                 >
                   <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
-                  {isSyncing ? 'Menyinkron…' : lastSync ? `Tersinkron ${syncAgoLabel}` : 'Tarik dari server'}
+                  {isSyncing ? 'Memperbarui…' : lastSync ? `Data diperbarui ${syncAgoLabel}` : 'Perbarui data'}
                 </button>
               )}
             </div>

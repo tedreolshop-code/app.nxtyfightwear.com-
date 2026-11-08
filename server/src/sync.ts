@@ -263,6 +263,37 @@ export const handleUpsert = async (env: Env, body: UpsertBody): Promise<ApiResul
   }
 
   const ignore = body.ignoreDuplicates === true;
+
+  // ===== Konflik editan (audit perangkat, tugas 4): baris yang lebih LAMA
+  // tidak boleh menimpa yang lebih baru di server. Baca updated_at baris yang
+  // ada (lookup terindeks per ≤90 id), tolak yang lebih tua, laporkan daftarnya
+  // supaya klien menandainya untuk admin — tidak ada editan hilang diam-diam.
+  let conflicts: Array<{ id: string; server_updated_at: string }> = [];
+  if (table !== 'ari_store' && !ignore) {
+    const byId = new Map(rows.map(r => [String(r[conflictCol]), r]));
+    for (let i = 0; i < rows.length; i += IN_CHUNK) {
+      const chunkIds = rows.slice(i, i + IN_CHUNK).map(r => String(r[conflictCol]));
+      const existingRows = await env.DB.prepare(
+        `SELECT id, updated_at FROM ${table} WHERE id IN (${chunkIds.map(() => '?').join(',')})`
+      ).bind(...chunkIds).all<{ id: string; updated_at: string }>();
+      for (const ex of existingRows.results ?? []) {
+        const incoming = byId.get(String(ex.id));
+        if (!incoming) continue;
+        const incAt = String(incoming.updated_at ?? '');
+        if (incAt && ex.updated_at && incAt < ex.updated_at) {
+          conflicts.push({ id: ex.id, server_updated_at: ex.updated_at });
+        }
+      }
+    }
+    if (conflicts.length > 0) {
+      const conflictIds = new Set(conflicts.map(c => c.id));
+      for (let idx = rows.length - 1; idx >= 0; idx--) {
+        if (conflictIds.has(String(rows[idx][conflictCol]))) rows.splice(idx, 1);
+      }
+    }
+  }
+  if (rows.length === 0) return ok({ changes: 0, conflicts });
+
   // Kolom dup_hash (anti penjualan ganda) dihitung server agar backfill & client
   // lama otomatis konsisten.
   if (table === 'ari_marketplace_item_sales') {
@@ -311,6 +342,6 @@ export const handleUpsert = async (env: Env, body: UpsertBody): Promise<ApiResul
       return fail(msg);
     }
   }
-  await bumpStamp(env, table);
-  return ok(changes);
+  if (changes > 0) await bumpStamp(env, table);
+  return ok({ changes, conflicts });
 };

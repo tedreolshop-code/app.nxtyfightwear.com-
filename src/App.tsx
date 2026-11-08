@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserRole, Employee, ProductionHandoff, ProductionJob, PackingTask } from './types';
 import { dataStore, wibTodayStr } from './dataStore';
-import { isCloudEnabled, getCloudStatus, CloudStatus, loginCloud, logoutCloud, getLastSyncAtMs, SYNC_TIME_EVENT, resyncDataNow, getLocalUsageRatio, ensureAttendanceHistory, getOutboxPendingCount, OUTBOX_EVENT } from './cloudSync';
+import { isCloudEnabled, getCloudStatus, CloudStatus, loginCloud, logoutCloud, getLastSyncAtMs, SYNC_TIME_EVENT, resyncDataNow, getLocalUsageRatio, ensureAttendanceHistory, getOutboxPendingCount, OUTBOX_EVENT, flushOutbox } from './cloudSync';
 import { MainDashboard } from './components/MainDashboard';
 import { EmployeeDashboard } from './components/EmployeeDashboard';
 import { AttendanceModule } from './components/AttendanceModule';
@@ -764,22 +764,34 @@ export default function App() {
               : 'bg-gray-400'
             }`} />
             <span className="text-emerald-100/80">
-              {cloudStatus === 'online' ? 'Tersinkron ke Cloud'
+              {cloudStatus === 'online' ? 'Data tersimpan'
               : cloudStatus === 'connecting' ? 'Menghubungkan…'
-              : cloudStatus === 'error' ? 'Cloud error — data lokal'
-              : isCloudEnabled ? 'Offline' : 'Data lokal (offline)'}
+              : cloudStatus === 'error' ? 'Belum tersimpan, periksa internet'
+              : isCloudEnabled ? 'Belum tersimpan, periksa internet' : 'Mode tanpa internet'}
               {cloudStatus === 'online' && lastSyncAt > 0 && (
                 <span className="block text-[10px] text-emerald-200/60">
-                  tarik-ulang {new Date(lastSyncAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                  diperbarui {new Date(lastSyncAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
                 </span>
               )}
               {pendingCloud > 0 && (
                 <span className="block text-[10px] font-bold text-amber-300">
-                  ⏳ {pendingCloud} perubahan belum terkirim — biarkan app terbuka
+                  ⏳ {pendingCloud} perubahan belum tersimpan — biarkan app terbuka
+                </span>
+              )}
+              {pendingCloud > 0 && cloudStatus !== 'online' && (
+                <span className="block text-[10px] text-amber-200/80">
+                  Data belum tersimpan di server. Sambungkan internet, dan jangan hapus data aplikasi.
                 </span>
               )}
             </span>
           </div>
+          {/* Jalan pintas darurat: tarik perubahan baru + antar yang tertunda */}
+          <button
+            onClick={() => { void flushOutbox(); void resyncDataNow(); }}
+            className="w-full text-[10px] font-semibold text-emerald-100/70 hover:text-white bg-emerald-900/40 hover:bg-emerald-800/60 border border-emerald-800/60 rounded-md py-1.5 transition-colors"
+          >
+            Perbarui data
+          </button>
           <div className="flex items-center justify-between gap-2 text-[10px]">
             <span className={`font-semibold ${storagePct >= 90 ? 'text-rose-300' : storagePct >= 85 ? 'text-amber-300' : 'text-emerald-200/60'}`}>
               Penyimpanan {storagePct}%
@@ -847,14 +859,12 @@ export default function App() {
                   : '';
                 setToast(
                   pendingCloud > 0
-                    ? `⏳ ${pendingCloud} perubahan belum terkirim ke cloud.\nData aman di perangkat ini — biarkan app terbuka sampai terkirim, dan JANGAN clear data browser.`
+                    ? `⏳ ${pendingCloud} perubahan belum tersimpan.\nData aman di perangkat ini — biarkan app terbuka sampai tersimpan, dan JANGAN hapus data aplikasi.`
                     : cloudStatus === 'online'
-                    ? `Tersinkron ke Cloud${waktu ? ` — tarik-ulang terakhir ${waktu}` : ''}.\nData perangkat ini sama dengan data semua perangkat lain.`
+                    ? `Data tersimpan${waktu ? ` — diperbarui ${waktu}` : ''}.\nData perangkat ini sama dengan data semua perangkat lain.`
                     : cloudStatus === 'connecting'
-                      ? 'Menghubungkan ke Cloud…'
-                      : cloudStatus === 'error'
-                        ? 'Cloud error — data tersimpan di perangkat ini dan akan diantar begitu koneksi pulih.'
-                        : 'Mode offline — data tersimpan di perangkat ini.'
+                      ? 'Menghubungkan…'
+                      : 'Belum tersimpan, periksa internet. Data tersimpan di perangkat ini dan akan diantar begitu koneksi pulih.'
                 );
               }}
               className="md:hidden flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-full px-2 py-1 cursor-pointer shrink-0"

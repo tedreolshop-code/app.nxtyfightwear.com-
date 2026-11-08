@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CloudUpload, HardDrive, History, RotateCcw, Search, ShieldCheck, Trash2 } from 'lucide-react';
+import { CloudUpload, HardDrive, History, RotateCcw, Search, ShieldCheck, Smartphone, TriangleAlert, Trash2 } from 'lucide-react';
 import { dataStore } from '../dataStore';
 import { AuditEntry, RecycleEntry } from '../types';
 import { findLegacyProofPhotos, migrateLegacyProofPhotos, STORAGE_BUDGET_BYTES, LegacyProofPhoto } from '../storageMaintenance';
+import { getSyncConflicts, SYNC_CONFLICTS_EVENT, resyncDataNow, flushOutbox } from '../cloudSync';
 
 const formatBytes = (bytes: number) => bytes >= 1024 * 1024
   ? `${(bytes / 1024 / 1024).toFixed(1)} MB`
@@ -73,6 +74,10 @@ export const AuditRecycleModule: React.FC = () => {
   return <div className="space-y-5">
     <div><h2 className="text-xl font-black text-gray-900 flex items-center gap-2"><ShieldCheck className="w-5 h-5 text-[var(--color-evergreen)]" /> Audit & Recycle Bin</h2><p className="text-xs text-gray-500 mt-1">Riwayat kegiatan penting dan data terhapus yang dapat dipulihkan selama 30 hari.</p></div>
 
+    {/* PERANGKAT & KONFLIK (audit perangkat, tugas 7): admin melihat perangkat mana
+        aktif, berapa perubahan yang belum tersimpan di sana, dan editan bentrok. */}
+    <DevicePanel />
+
     {/* PENYIMPANAN LOKAL — data asli ada di cloud, localStorage cuma cache.
         Batasnya ±5 MB (iOS Safari), jadi pemakaian harus terlihat sebelum penuh. */}
     <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
@@ -126,4 +131,90 @@ export const AuditRecycleModule: React.FC = () => {
     {tab === 'audit' ? <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto"><table className="w-full text-xs"><thead className="bg-evergreen text-white font-bold uppercase tracking-wider text-[10px]"><tr><th className="p-3 text-left">Waktu</th><th className="p-3 text-left">Pelaku</th><th className="p-3 text-left">Tindakan</th><th className="p-3 text-left">Keterangan</th></tr></thead><tbody>{filteredLogs.map(log => <tr key={log.id} className="border-t border-emerald-200"><td className="p-3 whitespace-nowrap text-gray-500">{formatTime(log.timestamp)}</td><td className="p-3"><b>{log.actor_name}</b><span className="block text-[10px] text-gray-400">{log.actor_role}</span></td><td className="p-3"><span className="px-2 py-1 rounded bg-emerald-50 text-emerald-700 font-bold uppercase text-[9px]">{log.action}</span><span className="block mt-1 text-gray-400">{log.entity_type}</span></td><td className="p-3 text-gray-700 min-w-64">{log.description}</td></tr>)}{!filteredLogs.length && <tr><td colSpan={4} className="p-10 text-center text-gray-400">Belum ada aktivitas tercatat.</td></tr>}</tbody></table></div>
     : <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">{filteredRecycle.map(item => <div key={item.id} className="bg-white border border-gray-200 rounded-xl p-4 space-y-3"><div><span className="text-[9px] uppercase font-bold bg-rose-50 text-rose-600 px-2 py-1 rounded">{item.entity_type}</span><h3 className="font-bold text-gray-900 mt-2 truncate">{item.label}</h3><p className="text-[11px] text-gray-500">Dihapus {formatTime(item.deleted_at)} oleh {item.deleted_by_name}</p><p className="text-[10px] text-amber-700 mt-1">Kedaluwarsa {formatTime(item.expires_at)}</p></div><div className="grid grid-cols-2 gap-2"><button onClick={() => restore(item)} className="py-2 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-100 text-xs font-bold cursor-pointer"><RotateCcw className="w-3.5 h-3.5 inline mr-1" /> Pulihkan</button><button onClick={() => removeForever(item)} className="py-2 rounded-lg bg-rose-50 text-rose-700 border border-rose-100 text-xs font-bold cursor-pointer"><Trash2 className="w-3.5 h-3.5 inline mr-1" /> Permanen</button></div></div>)}{!filteredRecycle.length && <div className="col-span-full p-10 bg-white border border-gray-200 rounded-xl text-center text-sm text-gray-400">Recycle Bin kosong.</div>}</div>}
   </div>;
+};
+
+// ===================== Panel perangkat & konflik (audit perangkat, tugas 7) =====================
+type DeviceRow = { device_id: string; last_sync: string; pending: number; user_agent: string };
+
+export const DevicePanel = () => {
+  const [devices, setDevices] = useState<DeviceRow[]>([]);
+  const [conflicts, setConflicts] = useState(getSyncConflicts());
+  const [memuat, setMemuat] = useState(false);
+
+  const load = async () => {
+    setMemuat(true);
+    try {
+      const base = String(import.meta.env?.VITE_API_BASE_URL ?? '').replace(/\/+$/, '');
+      if (base) {
+        const res = await fetch(`${base}/api/devices`);
+        const json = await res.json() as { data?: DeviceRow[]; error?: unknown };
+        if (Array.isArray(json.data)) setDevices(json.data);
+      }
+    } catch { /* offline: biarkan daftar terakhir */ }
+    setConflicts(getSyncConflicts());
+    setMemuat(false);
+  };
+
+  useEffect(() => {
+    void load();
+    const onConflicts = () => setConflicts(getSyncConflicts());
+    window.addEventListener(SYNC_CONFLICTS_EVENT, onConflicts);
+    const t = setInterval(() => { void load(); }, 60_000);
+    return () => { window.removeEventListener(SYNC_CONFLICTS_EVENT, onConflicts); clearInterval(t); };
+  }, []);
+
+  const perbarui = async () => {
+    setMemuat(true);
+    try { await flushOutbox(); await resyncDataNow(); } finally { void load(); }
+  };
+
+  const hariLalu = (iso: string): boolean => {
+    const t = Date.parse(iso || '');
+    return Number.isFinite(t) && (Date.now() - t) > 26 * 3600_000;
+  };
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h3 className="font-bold text-sm text-gray-800 flex items-center gap-2"><Smartphone className="w-4 h-4 text-[var(--color-evergreen)]" /> Perangkat</h3>
+          <p className="text-[11px] text-gray-500 mt-0.5">Perangkat yang terlihat server & berapa perubahan yang belum tersimpan di sana.</p>
+        </div>
+        <button onClick={() => void perbarui()} disabled={memuat} className="px-3 py-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 text-emerald-800 border border-emerald-100 text-xs font-bold cursor-pointer">
+          {memuat ? 'Memperbarui…' : 'Perbarui data'}
+        </button>
+      </div>
+      {devices.length === 0 ? (
+        <p className="text-[11px] text-gray-400">Belum ada perangkat terdaftar — daftar terisi setiap perangkat membuka aplikasi.</p>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+          {devices.map(d => (
+            <div key={d.device_id} className={`border rounded-lg p-2.5 ${d.pending > 0 || hariLalu(d.last_sync) ? 'border-amber-200 bg-amber-50/50' : 'border-gray-200 bg-gray-50/50'}`}>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-bold font-mono text-gray-700">{d.device_id.slice(0, 10)}</span>
+                {d.pending > 0 && <span className="text-[9px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">{d.pending} belum tersimpan</span>}
+              </div>
+              <p className={`text-[10px] mt-1 ${hariLalu(d.last_sync) ? 'text-amber-700 font-semibold' : 'text-gray-500'}`}>
+                Terakhir aktif: {d.last_sync ? new Date(d.last_sync).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
+                {hariLalu(d.last_sync) ? ' (lebih dari sehari)' : ''}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+      {conflicts.length > 0 && (
+        <div className="border border-amber-200 bg-amber-50 rounded-lg p-3 space-y-1">
+          <p className="text-xs font-bold text-amber-800 flex items-center gap-1.5"><TriangleAlert className="w-3.5 h-3.5" /> Editan bentrok ({conflicts.length})</p>
+          <p className="text-[10px] text-amber-700">Dua perangkat mengubah data sama saat tidak tersambung. Versi terbaru yang dipakai; periksa datanya bila perlu.</p>
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            {conflicts.slice(0, 12).map((c, i) => (
+              <span key={`${c.key}-${c.id}-${i}`} className="text-[10px] font-mono text-amber-800 bg-white border border-amber-200 rounded px-2 py-1">
+                {c.key} · {c.id} · {new Date(c.at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
