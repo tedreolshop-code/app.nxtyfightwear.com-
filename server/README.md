@@ -33,6 +33,22 @@ npm run deploy                               # → URL hasil deploy ke .env (VIT
 # opsional: ALLOWED_ORIGINS di wrangler.toml sesuai domain app produksi
 ```
 
+## Backup otomatis via GitHub Actions
+
+Workflow `.github/workflows/backup-d1.yml` menjalankan ekspor harian 06:00 WIB,
+mengenkripsi (AES-256), lalu menyimpannya sebagai artifact GitHub (retensi 21 hari).
+
+Setup sekali (GitHub → Settings → Secrets and variables → Actions):
+- `CLOUDFLARE_API_TOKEN` — token Cloudflare berizin **D1 read** saja.
+- `BACKUP_PASSPHRASE` — frasa sandi enkripsi; simpan juga di luar GitHub.
+
+Restore:
+```bash
+openssl enc -d -aes-256-cbc -pbkdf2 -in d1-backup-*.sql.gz.enc -pass pass:<PASSPHRASE> | gzip -d > dump.sql
+# disarankan: buat database BARU lalu import, atau kosongkan tabel lama dulu:
+cd server && npx wrangler d1 execute ari-store --remote --file dump.sql -y
+```
+
 ## Migrasi data Supabase → D1
 
 ```bash

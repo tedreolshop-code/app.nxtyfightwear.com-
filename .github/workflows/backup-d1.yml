@@ -1,0 +1,67 @@
+# Backup otomatis D1 via GitHub Actions.
+#
+# Setup sekali (dashboard GitHub → Settings → Secrets and variables → Actions):
+#   CLOUDFLARE_API_TOKEN : token Cloudflare berizin D1 READ (jangan token berkuasa penuh)
+#   BACKUP_PASSPHRASE    : frasa sandi untuk enkripsi dump (simpan di tempat aman!)
+#
+# Jadwal: tiap hari 23:00 UTC = 06:00 WIB. Bisa juga manual: tab Actions → Backup D1 → Run workflow.
+# Hasil: artifact terenkripsi `d1-backup-<run_id>` (retensi 21 hari, ±3 MB/hari — muat kuota artifact gratis).
+#
+# RESTORE (lihat juga server/README.md):
+#   1. Unduh artifact dari halaman Actions run, lalu:
+#      openssl enc -d -aes-256-cbc -pbkdf2 -in d1-backup-*.sql.gz.enc -pass pass:<PASSPHRASE> | gzip -d > dump.sql
+#   2. Restore ke database BARU (disarankan) atau hapus tabel lama dulu:
+#      cd server && npx wrangler d1 execute ari-store --remote --file dump.sql -y
+#
+# catatan kuota (aturan audit): ekspor membaca seluruh DB ±28 ribu baris/hari —
+# tetap jauh di bawah batas baca 5 juta/hari. Tulis 0.
+
+name: Backup D1
+
+on:
+  schedule:
+    - cron: '0 23 * * *' # 06:00 WIB
+  workflow_dispatch: # tombol manual di tab Actions
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Ekspor D1 (butuh CLOUDFLARE_API_TOKEN)
+        working-directory: server
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npx --yes wrangler@4 d1 export ari-store --remote --output "$GITHUB_WORKSPACE/dump.sql"
+          test -s "$GITHUB_WORKSPACE/dump.sql" || { echo "Dump kosong — gagal."; exit 1; }
+          grep -q "INSERT INTO" "$GITHUB_WORKSPACE/dump.sql" || { echo "Dump tidak berisi data — gagal."; exit 1; }
+          echo "Ukuran dump: $(du -h "$GITHUB_WORKSPACE/dump.sql" | cut -f1)"
+
+      - name: Kompres & enkripsi (AES-256)
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          test -n "$BACKUP_PASSPHRASE" || { echo "BACKUP_PASSPHRASE belum diisi di Secrets."; exit 1; }
+          gzip -9 "$GITHUB_WORKSPACE/dump.sql"
+          openssl enc -aes-256-cbc -pbkdf2 -salt \
+            -in "$GITHUB_WORKSPACE/dump.sql.gz" \
+            -out "$GITHUB_WORKSPACE/backup-d1.sql.gz.enc" \
+            -pass env:BACKUP_PASSPHRASE
+          rm "$GITHUB_WORKSPACE/dump.sql.gz"
+
+      - name: Simpan artifact terenkripsi (retensi 21 hari)
+        uses: actions/upload-artifact@v4
+        with:
+          name: d1-backup-${{ github.run_id }}
+          path: backup-d1.sql.gz.enc
+          retention-days: 21
+          if-no-files-found: error
