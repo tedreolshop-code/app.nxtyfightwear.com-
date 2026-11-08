@@ -135,35 +135,47 @@ export const handleQuery = async (env: Env, body: QueryBody): Promise<ApiResult>
 
 // ===================== /api/version =====================
 
-/** Stamp per tabel — klien bandingkan supaya tarik ringan bisa dilewati total. */
-export const handleVersion = async (env: Env): Promise<ApiResult> => {
-  const rows = await env.DB.prepare('SELECT table_name, stamp FROM ari_sync_state').all<{ table_name: string; stamp: string }>();
-  const map: Record<string, string> = {};
-  for (const r of rows.results ?? []) map[String(r.table_name)] = String(r.stamp);
-  return ok(map);
-};
-
-/** Tandai tabel berubah (dipanggil setelah upsert/delete/clear sukses).
- *  _global = satu baris yang selalu berubah pada tulis apa pun — klien cukup
- *  membandingkan 1 nilai untuk memutuskan skip seluruh tarik. */
-export const bumpStamp = async (env: Env, table: string): Promise<void> => {
+/** Stamp per tabel — klien bandingkan supaya tarik ringan bisa dilewati total.
+ *  Nilai berformat `stamp:dels` — dels = penghitung kumulatif penghapusan;
+ *  klien hanya perlu baca-ulang daftar ID bila dels berubah (audit 8 Nov:
+ *  pemboros baca terbesar adalah pindai ID padahal tak ada yang terhapus). */
+export const bumpStamp = async (env: Env, table: string, delsDelta = 0): Promise<void> => {
   try {
     const now = new Date().toISOString();
     await env.DB.batch([
       env.DB.prepare(
-        'INSERT INTO ari_sync_state (table_name, stamp) VALUES (?, ?) ON CONFLICT(table_name) DO UPDATE SET stamp=excluded.stamp'
-      ).bind(table, now),
+        'INSERT INTO ari_sync_state (table_name, stamp, dels) VALUES (?, ?, ?) ' +
+        'ON CONFLICT(table_name) DO UPDATE SET stamp=excluded.stamp, dels=ari_sync_state.dels + excluded.dels'
+      ).bind(table, now, delsDelta),
       env.DB.prepare(
-        "INSERT INTO ari_sync_state (table_name, stamp) VALUES ('_global', ?) ON CONFLICT(table_name) DO UPDATE SET stamp=excluded.stamp"
-      ).bind(now),
+        "INSERT INTO ari_sync_state (table_name, stamp, dels) VALUES ('_global', ?, ?) " +
+        'ON CONFLICT(table_name) DO UPDATE SET stamp=excluded.stamp, dels=ari_sync_state.dels + excluded.dels'
+      ).bind(now, delsDelta),
     ]);
   } catch { /* stamp gagal = tarik berikutnya tetap jalan, aman */ }
 };
 
+export const handleVersion = async (env: Env): Promise<ApiResult> => {
+  const rows = await env.DB.prepare('SELECT table_name, stamp, dels FROM ari_sync_state')
+    .all<{ table_name: string; stamp: string; dels: number }>();
+  const map: Record<string, string> = {};
+  for (const r of rows.results ?? []) map[String(r.table_name)] = `${r.stamp}:${r.dels ?? 0}`;
+  return ok(map);
+};
+
 // ===================== /api/upsert =====================
 
-/** Cermin trigger ari_tolak_penjualan_ganda (supabase/realtime-lengkap.sql). */
+/** Cermin trigger ari_tolak_penjualan_ganda (supabase/realtime-lengkap.sql).
+ *  Versi terindeks (audit 8 Nov): hash 7 field disimpan di kolom dup_hash
+ *  (backfill scripts/backfill-dup-hash.mjs + unique index) — pengecekan jadi
+ *  lookup IN ber-index, bukan pindai seluruh tabel. */
 const SALES_DUP_FIELDS = ['order_number', 'description', 'variant', 'qty', 'price', 'date', 'marketplace_ref'];
+
+const salesDupHash = (v: Record<string, unknown>): string | null => {
+  const joined = SALES_DUP_FIELDS.map(f => String(v?.[f] ?? '')).join('|');
+  // Baris tanpa field pembanding sama sekali tidak dianggap kandidat dobel.
+  return joined === '||||||' ? null : joined;
+};
 
 interface UpsertBody {
   table?: unknown;
@@ -175,29 +187,42 @@ interface UpsertBody {
 
 const dupSalesError = async (env: Env, rows: Record<string, unknown>[]): Promise<string | null> => {
   if (rows.length === 0) return null;
-  const selectExpr = SALES_DUP_FIELDS.map(f => `json_extract(value, '$.${f}') AS ${f}`).join(', ');
-  const existing = await env.DB.prepare(
-    `SELECT id, ${selectExpr} FROM ari_marketplace_item_sales`
-  ).all<Record<string, unknown>>();
-  // 7 field identik + id BERBEDA = penjualan dobel → tolak (semantik trigger SQL).
-  const keyOf = (v: Record<string, unknown>): string =>
-    SALES_DUP_FIELDS.map(f => String(v[f] ?? '')).join('\u0001');
-
-  const keys = new Map<string, Set<string>>();
-  for (const row of existing.results ?? []) {
-    const k = keyOf(row);
-    if (!keys.has(k)) keys.set(k, new Set());
-    keys.get(k)!.add(String(row.id));
-  }
+  const incoming: Array<{ hash: string; id: string }> = [];
   for (const r of rows) {
     let v: Record<string, unknown> | null = null;
     try {
       v = typeof r.value === 'string' ? JSON.parse(String(r.value)) : (r.value ?? null) as Record<string, unknown>;
     } catch { /* value bukan JSON: lewati pemeriksaan */ }
     if (!v) continue;
-    const ids = keys.get(keyOf(v));
-    if (ids && !ids.has(String(r.id))) {
-      return 'Penjualan ganda ditolak oleh server: data yang persis sama sudah pernah dibuat dengan id berbeda.';
+    const hash = salesDupHash(v);
+    if (hash) incoming.push({ hash, id: String(r.id) });
+  }
+  if (incoming.length === 0) return null;
+
+  // Dobel DI DALAM satu request: dua id berbeda dengan hash sama.
+  const byHash = new Map<string, Set<string>>();
+  for (const g of incoming) {
+    if (!byHash.has(g.hash)) byHash.set(g.hash, new Set());
+    byHash.get(g.hash)!.add(g.id);
+  }
+  for (const ids of byHash.values()) {
+    if (ids.size > 1) {
+      return 'Penjualan ganda ditolak oleh server: data yang persis sama dikirim dengan id berbeda.';
+    }
+  }
+
+  // Dobel terhadap database: lookup ber-index, bukan pindai tabel.
+  for (let i = 0; i < incoming.length; i += IN_CHUNK) {
+    const group = incoming.slice(i, i + IN_CHUNK);
+    const placeholders = group.map(() => '?').join(',');
+    const existing = await env.DB.prepare(
+      `SELECT id, dup_hash FROM ari_marketplace_item_sales WHERE dup_hash IN (${placeholders})`
+    ).bind(...group.map(g => g.hash)).all<{ id: string; dup_hash: string }>();
+    for (const row of existing.results ?? []) {
+      const sameRecord = group.some(g => g.hash === row.dup_hash && g.id === String(row.id));
+      if (!sameRecord) {
+        return 'Penjualan ganda ditolak oleh server: data yang persis sama sudah pernah dibuat dengan id berbeda.';
+      }
     }
   }
   return null;
@@ -222,7 +247,9 @@ export const handleUpsert = async (env: Env, body: UpsertBody): Promise<ApiResul
     : String(body.onConflict);
   if (onConflict !== conflictCol) return fail('Kolom konflik tidak didukung.');
 
-  const allowedCols = table === 'ari_store' ? STORE_UPSERT_COLS : ROW_UPSERT_COLS;
+  const allowedCols = table === 'ari_store'
+    ? STORE_UPSERT_COLS
+    : (table === 'ari_marketplace_item_sales' ? [...ROW_UPSERT_COLS, 'dup_hash'] : ROW_UPSERT_COLS);
   for (const r of rows) {
     for (const k of Object.keys(r)) {
       if (!allowedCols.includes(k)) return fail(`Kolom ${k} tidak diperkenankan di ${table}.`);
@@ -236,6 +263,18 @@ export const handleUpsert = async (env: Env, body: UpsertBody): Promise<ApiResul
   }
 
   const ignore = body.ignoreDuplicates === true;
+  // Kolom dup_hash (anti penjualan ganda) dihitung server agar backfill & client
+  // lama otomatis konsisten.
+  if (table === 'ari_marketplace_item_sales') {
+    for (const r of rows) {
+      let v: Record<string, unknown> | null = null;
+      try {
+        v = typeof r.value === 'string' ? JSON.parse(String(r.value)) : (r.value ?? null) as Record<string, unknown>;
+      } catch { v = null; }
+      const hash = v ? salesDupHash(v) : null;
+      if (hash) r.dup_hash = hash; else delete r.dup_hash;
+    }
+  }
   const toSqlText = (v: unknown): unknown => {
     if (v === undefined) return null;
     if (v === null) return null;
@@ -265,7 +304,11 @@ export const handleUpsert = async (env: Env, body: UpsertBody): Promise<ApiResul
       const results = await env.DB.batch(stmts);
       for (const res of results) changes += Number(res.meta?.changes ?? 0);
     } catch (e) {
-      return fail(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes('UNIQUE') && msg.includes('dup_hash')) {
+        return fail('Penjualan ganda ditolak oleh server: data yang persis sama sudah pernah dibuat dengan id berbeda.');
+      }
+      return fail(msg);
     }
   }
   await bumpStamp(env, table);

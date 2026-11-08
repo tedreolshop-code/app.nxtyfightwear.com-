@@ -1055,6 +1055,19 @@ const tableUnchanged = (table: string): boolean => {
   return known[table] === nextStamps[table];
 };
 
+/** Penghitung hapus tabel tidak berubah → TIDAK ADA baris terhapus di cloud,
+ *  jadi baca-ulang seluruh ID (untuk deteksi hapus) bisa dilewati. Versi server
+ *  berformat `stamp:dels` (audit 8 Nov: pemboros baca terbesar). */
+const delsUnchanged = (table: string): boolean => {
+  const known = readKnownStamps();
+  if (!known || !nextStamps) return false;
+  const k = known[table];
+  const n = nextStamps[table];
+  if (!k || !n) return false;
+  const dels = (s: string): string => s.slice(s.lastIndexOf(':') + 1) || '';
+  return dels(k) === dels(n);
+};
+
 const persistStamps = (): void => {
   if (!nextStamps) return;
   knownStamps = nextStamps;
@@ -1242,7 +1255,10 @@ export const initCloudSync = async (): Promise<void> => {
       const localIds = new Set(local.map(r => r.id).filter(Boolean) as string[]);
       if (tomb.size > 0) console.info(`[cloudSync] Nisan aktif: ${tomb.size} id absensi sudah dibersihkan dari cloud.`);
       if (incremental) {
-        const cloudIdAge = await fetchAllIdsWithCreatedAt(ATT_TABLE);
+        // Del-counter tak berubah → tak ada absensi terhapus → lewati pindai ID.
+        const cloudIdAge = delsUnchanged(ATT_TABLE)
+          ? new Map<string, string>()
+          : await fetchAllIdsWithCreatedAt(ATT_TABLE);
         const cloudIds = new Set(cloudIdAge.keys());
         // Heal daftar bolong: baris yang tidak ada di perangkat tak akan pernah
         // lolos filter "created_at > watermark" — tarik langsung by-id (lihat
@@ -1300,7 +1316,8 @@ export const initCloudSync = async (): Promise<void> => {
             .map(r => r.value as RowLike).filter(r => r && r.id && !nisan.has(r.id));
           const localRows = readLocalRows(cfg.key);
           // Log append-only tidak pernah hapus baris → lewati cek id (hemat egress).
-          const cloudIds = cfg.appendOnly ? null : await fetchAllIds(cfg.table);
+          // Del-counter tak berubah → tak ada yang terhapus di cloud → skip cek id.
+          const cloudIds = (cfg.appendOnly || delsUnchanged(cfg.table)) ? null : await fetchAllIds(cfg.table);
           // Heal daftar bolong (lihat fetchRowsByIds): tanpa ini perangkat yang
           // kehilangan baris lama tak pernah mendapatkannya kembali. Id bernisan
           // (sengaja dihapus tapi penghapusan cloudnya gagal) TIDAK diisi ulang.
@@ -1425,7 +1442,10 @@ const resyncDataOnWakeup = async (): Promise<void> => {
       const fresh = attRows.map(r => r.value as AttendanceRecordLike).filter(r => r && r.id && !tomb.has(r.id));
       const local = readLocalAttendance();
       if (fresh.length > 0) {
-        const cloudIdAge = await fetchAllIdsWithCreatedAt(ATT_TABLE);
+        // Del-counter tak berubah → tak ada absensi terhapus → lewati pindai ID.
+        const cloudIdAge = delsUnchanged(ATT_TABLE)
+          ? new Map<string, string>()
+          : await fetchAllIdsWithCreatedAt(ATT_TABLE);
         const cloudIds = new Set(cloudIdAge.keys());
         const localIds = new Set(local.map(r => r.id).filter(Boolean) as string[]);
         const missing = missingLocalIdsWithAge(localIds, cloudIdAge, readAttendancePruneUntil())
@@ -1455,7 +1475,8 @@ const resyncDataOnWakeup = async (): Promise<void> => {
         const changed = (await fetchAllRows(cfg.table, { sinceCol: 'updated_at', since }))
           .map(r => r.value as RowLike).filter(r => r && r.id && !nisan.has(r.id));
         const localRows = readLocalRows(cfg.key);
-        const cloudIds = cfg.appendOnly ? null : await fetchAllIds(cfg.table);
+        // Del-counter tak berubah → tak ada yang terhapus di cloud → skip cek id.
+        const cloudIds = (cfg.appendOnly || delsUnchanged(cfg.table)) ? null : await fetchAllIds(cfg.table);
         const missing = cloudIds
           ? missingLocalIds(new Set(localRows.map(r => r?.id).filter(Boolean)), cloudIds).filter(id => !nisan.has(id))
           : [];

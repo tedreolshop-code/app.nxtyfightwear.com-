@@ -149,7 +149,8 @@ export const handleDeleteRows = async (env: Env, body: Record<string, unknown>):
       .run();
     jumlah += Number(res.meta?.changes ?? 0);
   }
-  await bumpStamp(env, table);
+  // dels naik sebanyak baris terhapus → klien tahu kapan perlu baca-ulang ID.
+  await bumpStamp(env, table, jumlah);
   return ok(jumlah);
 };
 
@@ -158,6 +159,7 @@ export const handleClearTable = async (env: Env, body: Record<string, unknown>):
   if (accessErr) return fail(accessErr);
   const table = String(body.p_table ?? '');
   const res = await env.DB.prepare(`DELETE FROM ${table}`).run();
-  await bumpStamp(env, table);
-  return ok(Number(res.meta?.changes ?? 0));
+  const jumlah = Number(res.meta?.changes ?? 0);
+  await bumpStamp(env, table, jumlah);
+  return ok(jumlah);
 };
