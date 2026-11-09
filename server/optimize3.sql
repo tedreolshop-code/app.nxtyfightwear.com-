@@ -5,5 +5,6 @@ CREATE TABLE IF NOT EXISTS ari_devices (
   device_id  TEXT PRIMARY KEY,
   last_sync  TEXT NOT NULL,
   pending    INTEGER NOT NULL DEFAULT 0,
-  user_agent TEXT NOT NULL DEFAULT ''
+  user_agent TEXT NOT NULL DEFAULT '',
+  name       TEXT NOT NULL DEFAULT ''
 );

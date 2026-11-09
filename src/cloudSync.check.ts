@@ -94,11 +94,15 @@ const ids = (rows: R[]) => rows.map(r => r.id).sort().join(',');
 // Trim absensi 90 hari: bulan yang di-pin & baris koreksi tetap disimpan.
 {
   const HARI = 86400000;
-  const pinned = new Set(['2026-04']);
+  // Deterministik terhadap waktu: bulan yang di-pin = bulan baris 'pin' sendiri,
+  // dan 'lama' 200 hari lebih tua dari 'pin' (pasti beda bulan — dulu bulan pin
+  // di-hardcode '2026-04', test meledak begitu kalender menyusul).
+  const bulanDari = (iso: string) => iso.slice(0, 7);
+  const pinned = new Set([bulanDari(new Date(Date.now() - 200 * HARI).toISOString())]);
   const rows = [
-    { id: 'lama', timestamp: new Date(Date.now() - 200 * HARI).toISOString() },
-    { id: 'pin', timestamp: '2026-04-10T07:00:00+07:00' },
-    { id: 'koreksi', timestamp: new Date(Date.now() - 200 * HARI).toISOString(), device_token: 'koreksi-admin' },
+    { id: 'lama', timestamp: new Date(Date.now() - 400 * HARI).toISOString() },
+    { id: 'pin', timestamp: new Date(Date.now() - 200 * HARI).toISOString() },
+    { id: 'koreksi', timestamp: new Date(Date.now() - 400 * HARI).toISOString(), device_token: 'koreksi-admin' },
     { id: 'baru', timestamp: new Date(Date.now() - HARI).toISOString() },
     { id: 'rusak', timestamp: 'bukan-tanggal' },
   ];

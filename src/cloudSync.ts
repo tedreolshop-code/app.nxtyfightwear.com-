@@ -270,30 +270,47 @@ const tableForKey = (key: string): string | null =>
 // sama, dihitung, ditampilkan di UI ("N perubahan belum terkirim"), dan
 // dikirim ulang otomatis. Perangkat yang benar-benar di-clear tetap bisa
 // kehilangan data — tetapi sekarang orangnya DIPERINGATKAN sebelum menutup.
+type OutboxRow = { id: string; value: unknown; updated_at: string };
 type OutboxEntry =
-  | { id: string; kind: 'rows'; table: string; rows: Array<{ id: string; value: unknown; updated_at: string }>; ts: number }
-  | { id: string; kind: 'store'; key: string; value: unknown; ts: number };
+  | { id: string; kind: 'rows'; table: string; rows: OutboxRow[]; ts: number; attempts?: number }
+  // Entri 'store' hanya menyimpan REFERENSI (key) — nilai terbaru dibaca dari
+  // cache saat kirim. Dulu nilai utuh ikut disimpan (mis. seluruh array audit
+  // hasil merge): outbox membengkak 2,3 MB dan tidak bisa ditulis saat storage
+  // penuh (audit 9 Nov).
+  | { id: string; kind: 'store'; key: string; ts: number; attempts?: number };
 const OUTBOX_KEY = 'nxty_cloud_outbox';
 const OUTBOX_MAX = 200;
 const OUTBOX_MAX_MS = 30 * 86400_000;
 export const OUTBOX_EVENT = 'nxty_cloud_outbox';
 
+// Id entri yang SUDAH terkonfirmasi terkirim ke server tetapi catatan outbox
+// gagal ditulis ulang ke localStorage (storage penuh). Disimpan di memori agar
+// entri itu tidak dikirim ulang terus-menerus dan hitungan "belum tersimpan"
+// tidak menempel selamanya. Hilang saat reload: entri terkirim sekali lagi —
+// upsert idempoten, aman.
+const confirmedSentEntryIds = new Set<string>();
+
 const readOutbox = (): OutboxEntry[] => {
   try {
     const a = JSON.parse(localStorage.getItem(OUTBOX_KEY) || '[]');
-    return Array.isArray(a) ? a.filter(it => it && (it.kind === 'rows' || it.kind === 'store')) : [];
+    if (!Array.isArray(a)) return [];
+    return (a as OutboxEntry[]).filter(it => it && (it.kind === 'rows' || it.kind === 'store')
+      && !confirmedSentEntryIds.has(String(it.id)));
   } catch { return []; }
 };
 
-const writeOutbox = (items: OutboxEntry[]): void => {
-  setItemQuotaSafe(OUTBOX_KEY, JSON.stringify(items.slice(0, OUTBOX_MAX)));
+const writeOutbox = (items: OutboxEntry[]): boolean => {
+  const okTulis = setItemQuotaSafe(OUTBOX_KEY, JSON.stringify(items.slice(0, OUTBOX_MAX)));
   notifyOutbox();
+  return okTulis;
 };
 
 let outboxFlushTimer: ReturnType<typeof setTimeout> | null = null;
 let outboxBusy = false;
 
-const scheduleOutboxFlush = (delayMs = 1500): void => {
+// Jeda 1 detik: perubahan sampai ke server maksimal ±1 detik setelah disimpan
+// saat online (poll 60 detik hanya untuk MENARIK perubahan perangkat lain).
+const scheduleOutboxFlush = (delayMs = 1000): void => {
   if (outboxFlushTimer) return;
   outboxFlushTimer = setTimeout(() => {
     outboxFlushTimer = null;
@@ -319,6 +336,86 @@ const queueOutbox = (entry: OutboxEntry): void => {
   scheduleOutboxFlush();
 };
 
+/**
+ * Kesalahan PERMANEN (server menolak isinya) vs SEMENTARA (luring, 5xx, limit).
+ * Hanya kesalahan permanen yang dihitung untuk pembuangan entri "beracun" —
+ * kesalahan sementara TIDAK pernah dihitung, jadi antrean perangkat luring
+ * tetap aman sampai koneksi pulih.
+ */
+const isPermanentUpsertError = (msg: string): boolean => {
+  const m = String(msg || '');
+  if (/failed to fetch|networkerror|load failed|fetch failed|time\s?out|HTTP 5\d\d|HTTP 429|HTTP 408/i.test(m)) return false;
+  if (/HTTP 4\d\d/i.test(m)) return true;
+  return /origin|tidak dapat ditulis|tidak diperkenankan|tidak valid|ditolak oleh server|tidak diizinkan|tidak dikenal|harus punya kolom|NOT NULL|CHECK constraint failed/i.test(m);
+};
+
+/**
+ * Kirim baris-baris entri. Satu baris bermasalah TIDAK BOLEH menggagalkan
+ * chunk-nya (audit 9 Nov 15:05: satu chunk gagal → 89 baris lain masuk antrean
+ * berulang-ulang): bila server menolak chunk, kirim ulang per baris — baris
+ * yang ditolak permanen dilepas (dengan catatan + peringatan), yang gagal
+ * sementara dikembalikan untuk dicoba lagi.
+ * Return: baris yang masih harus dicoba ulang.
+ */
+const sendRowsWithIsolation = async (table: string, rows: OutboxRow[]): Promise<OutboxRow[]> => {
+  if (rows.length === 0) return [];
+  const { data, error } = await client!.from(table).upsert(rows, { onConflict: 'id' });
+  if (!error) {
+    const failedIds = new Set((((data ?? null) as { failed?: Array<{ id: string }> } | null)?.failed ?? [])
+      .map(f => String(f.id)));
+    if (failedIds.size === 0) return [];
+    return dropRejectedRows(table, rows.filter(r => failedIds.has(String(r.id))));
+  }
+  if (!isPermanentUpsertError(error.message)) throw error; // sementara: coba lagi nanti
+  return dropRejectedRows(table, rows);
+};
+
+const dropRejectedRows = async (table: string, rows: OutboxRow[]): Promise<OutboxRow[]> => {
+  const masih: OutboxRow[] = [];
+  for (const row of rows) {
+    try {
+      const { error } = await client!.from(table).upsert([row], { onConflict: 'id' });
+      if (!error) continue;
+      if (isPermanentUpsertError(error.message)) {
+        console.error(`[cloudSync] Baris ${row.id} (${table}) ditolak server — dilepas dari antrean: ${error.message}`);
+        warnOnce(`Ada data yang ditolak server (${table} · ${row.id.slice(0, 12)}…). Hubungi admin supaya diperiksa.`);
+      } else {
+        masih.push(row);
+      }
+    } catch {
+      masih.push(row); // jaringan putus: tetap ditahan, tidak dihitung beracun
+    }
+  }
+  return masih;
+};
+
+/** Entri 'store' kirim nilai TERBARU dari cache (bukan nilai saat diantrikan). */
+const sendOutboxStore = async (key: string): Promise<void> => {
+  if (MERGE_KEYS.has(key)) {
+    // Key menumpuk: gabungkan lokal + cloud lalu push hasil gabungannya
+    // (dikerjakan inline supaya kegagalan cukup ditahan di sini, tanpa antrian baru).
+    const local = readLocalRowsRaw(key);
+    const { data, error } = await client!.from(TABLE).select('value').eq('key', key).maybeSingle();
+    if (error) throw error;
+    const remote = (data as { value?: unknown } | null)?.value ?? null;
+    const merged = mergeStoreValue(key, remote, local);
+    if (JSON.stringify(merged) !== JSON.stringify(remote)) {
+      const { error: upErr } = await client!.from(TABLE)
+        .upsert({ key, value: merged, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+      if (upErr) throw upErr;
+      setItemQuotaSafe(`nxty_${key}`, JSON.stringify(localStoreView(key, merged)));
+    }
+    return;
+  }
+  const raw = localStorage.getItem(`nxty_${key}`);
+  if (raw === null) return; // key sudah tidak ada → antrean usang, buang
+  let value: unknown;
+  try { value = JSON.parse(raw); } catch { return; }
+  const { error } = await client!.from(TABLE)
+    .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+  if (error) throw error;
+};
+
 /** Kirim seluruh isi outbox; yang masih gagal ditahan untuk percobaan berikutnya. */
 export const flushOutbox = async (): Promise<void> => {
   if (!client || outboxBusy) return;
@@ -330,20 +427,36 @@ export const flushOutbox = async (): Promise<void> => {
     for (const item of items) {
       try {
         if (item.kind === 'rows') {
-          if (item.rows.length > 0) {
-            const { error } = await client.from(item.table).upsert(item.rows, { onConflict: 'id' });
-            if (error) throw error;
-          }
+          const masihGagal = await sendRowsWithIsolation(item.table, item.rows);
+          if (masihGagal.length > 0) remaining.push({ ...item, rows: masihGagal });
         } else {
-          const { error } = await client.from(TABLE)
-            .upsert({ key: item.key, value: item.value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
-          if (error) throw error;
+          await sendOutboxStore(item.key);
         }
-      } catch {
-        remaining.push(item); // gagal: dicoba ulang pada wakeup berikutnya
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        const percobaan = (item.attempts ?? 0) + (isPermanentUpsertError(msg) ? 1 : 0);
+        if (percobaan >= 3) {
+          // Jalan keluar entri beracun: selalu ditolak server → buang setelah
+          // 3x, dengan catatan — jangan menumpuk selamanya.
+          console.error(`[cloudSync] Entri antrean "${item.id}" dibuang setelah ${percobaan}x ditolak server: ${msg}`);
+          warnOnce('Ada perubahan yang ditolak server dan dilepas dari antrean. Hubungi admin.');
+        } else {
+          remaining.push({ ...item, attempts: percobaan });
+        }
       }
     }
-    if (remaining.length !== items.length) writeOutbox(remaining);
+    if (remaining.length !== items.length) {
+      const okTulis = writeOutbox(remaining);
+      if (!okTulis) {
+        // Storage penuh: entri yang sudah terkonfirmasi terkirim jangan dihitung
+        // pending lagi (angka tidak boleh menipu) dan jangan dikirim ulang terus.
+        const remainingIds = new Set(remaining.map(r => r.id));
+        for (const it of items) if (!remainingIds.has(it.id)) confirmedSentEntryIds.add(it.id);
+        if (confirmedSentEntryIds.size > 500) confirmedSentEntryIds.clear();
+        notifyOutbox();
+        warnOnce('Penyimpanan perangkat penuh — perubahan tetap dikirim, tetapi catatan antrean tidak bisa diperbarui. Hubungi admin.');
+      }
+    }
     if (remaining.length === 0 && status !== 'online') setStatus('online');
   } finally {
     outboxBusy = false;
@@ -495,7 +608,12 @@ const writeLocalRows = (key: string, rows: RowLike[]): boolean => {
     const aman = rule ? trimLocalCache<RowLike[]>(key, rows) : rows;
     // Gagal tulis = storage penuh: JANGAN perbarui snapshot (mencegah deteksi
     // removal palsu) dan JANGAN banjir event (memicu reload seluruh modul).
-    if (!setItemQuotaSafe(`nxty_${key}`, JSON.stringify(aman))) return false;
+    if (!setItemQuotaSafe(`nxty_${key}`, JSON.stringify(aman))) {
+      // Cache lokal tidak lengkap → tampilan tidak boleh mengaku segar
+      // (indikator sidebar) dan riwayat harus konsultasi cloud (ensureHistory).
+      setDataIncomplete(true);
+      return false;
+    }
     // Data dari cloud = baseline baru; simpan lokal berikutnya membandingkan ke sini.
     cloudSnapshot.set(key, snapshotFrom(aman));
     dispatchStorageChangeCoalesced();
@@ -503,6 +621,26 @@ const writeLocalRows = (key: string, rows: RowLike[]): boolean => {
   } finally {
     applyingRemote = false;
   }
+};
+
+// ===================== Penanda "cache perangkat belum lengkap" =====================
+// Set saat tulis-lokal gagal (storage penuh) dan bersih saat satu sinkron penuh
+// sukses (writeSyncNow). Dipakai indikator sidebar ("Data mungkin belum lengkap")
+// dan ensureAttendanceHistory (riwayat diambil dari cloud, bukan percaya cache).
+export const DATA_INCOMPLETE_EVENT = 'nxty_data_incomplete';
+const DATA_INCOMPLETE_KEY = 'nxty_data_incomplete';
+let dataIncomplete = (() => {
+  try { return localStorage.getItem(DATA_INCOMPLETE_KEY) === '1'; } catch { return false; }
+})();
+export const isDataIncomplete = (): boolean => dataIncomplete;
+const setDataIncomplete = (v: boolean): void => {
+  if (dataIncomplete === v) return;
+  dataIncomplete = v;
+  try {
+    if (v) localStorage.setItem(DATA_INCOMPLETE_KEY, '1');
+    else localStorage.removeItem(DATA_INCOMPLETE_KEY);
+  } catch { /* penuh: flag di memori saja */ }
+  try { window.dispatchEvent(new CustomEvent(DATA_INCOMPLETE_EVENT, { detail: v })); } catch { /* abaikan */ }
 };
 
 // ===================== Pengaman anti-hapus cloud =====================
@@ -578,7 +716,7 @@ const pushRowsToCloud = (cfg: PerRowSync, list: RowLike[]): void => {
         const reason = blockDeleteReason(cfg.key, prev, prev ? [...prev.keys()] : []);
         if (reason) {
           console.warn(`[cloudSync] Tolak kosongkan "${cfg.key}": ${reason}. Tidak ada yang dihapus.`);
-          notifyBlocked(`Penghapusan seluruh data "${cfg.key}" ditolak cloud: ${reason}. Data di perangkat Anda tidak jadi terhapus permanen.`);
+          notifyBlocked(`Penghapusan seluruh data "${cfg.key}" ditolak server: ${reason}. Data di perangkat Anda tidak jadi terhapus permanen.`);
           return;
         }
         // Policy DELETE sudah dicabut di database, jadi hapus seluruh tabel hanya
@@ -588,7 +726,7 @@ const pushRowsToCloud = (cfg: PerRowSync, list: RowLike[]): void => {
           p_token: getCloudToken() ?? '',
         });
         if (error) {
-          notifyBlocked(`Penghapusan seluruh data "${cfg.key}" ditolak cloud: ${error.message}`);
+          notifyBlocked(`Penghapusan seluruh data "${cfg.key}" ditolak server: ${error.message}`);
           throw error;
         }
         if (prev) markTombstones(cfg.key, [...prev.keys()]);
@@ -618,10 +756,18 @@ const pushRowsToCloud = (cfg: PerRowSync, list: RowLike[]): void => {
           queueOutbox({ id: `rows:${cfg.table}`, kind: 'rows', table: cfg.table, rows, ts: Date.now() });
           throw res.error;
         }
+        // Server bisa menolak SEBAGIAN baris (partial failure per id) — antrekan
+        // hanya baris itu, bukan seluruh chunk (isolasi berlanjut di outbox).
+        const gagal = ((res.data ?? null) as { failed?: Array<{ id: string }> } | null)?.failed ?? [];
+        if (gagal.length > 0) {
+          const gagalIds = new Set(gagal.map(f => String(f.id)));
+          queueOutbox({ id: `rows:${cfg.table}`, kind: 'rows', table: cfg.table,
+            rows: rows.filter(r => gagalIds.has(String(r.id))), ts: Date.now() });
+        }
         // Konflik: server memegang versi LEBIH BARU untuk id ini (editan dua
         // perangkat saat luring). Versi server akan datang lewat tarik bertahap;
         // catat supaya admin tahu — tidak ada editan hilang diam-diam.
-        const konflik = (res.data as { conflicts?: Array<{ id: string }> } | null)?.conflicts ?? [];
+        const konflik = ((res.data ?? null) as { conflicts?: Array<{ id: string }> } | null)?.conflicts ?? [];
         if (konflik.length > 0) {
           recordSyncConflicts(cfg.key, konflik.map(c => c.id));
           for (const c of konflik) conflictSuppressed.set(c.id, Date.now() + 10 * 60_000);
@@ -635,7 +781,7 @@ const pushRowsToCloud = (cfg: PerRowSync, list: RowLike[]): void => {
         const reason = blockDeleteReason(cfg.key, prev, removed);
         if (reason) {
           console.warn(`[cloudSync] Tolak hapus di "${cfg.key}": ${reason}. Tidak ada yang dihapus.`);
-          notifyBlocked(`Penghapusan ${removed.length} data "${cfg.key}" ditolak cloud: ${reason}. Data di cloud tetap utuh.`);
+          notifyBlocked(`Penghapusan ${removed.length} data "${cfg.key}" ditolak server: ${reason}. Data di perangkat lain tetap utuh.`);
         } else if (removed.length > 0) {
           // Policy DELETE sudah dicabut di database, jadi hapus hanya sah lewat RPC
           // ini — yang memeriksa token sesi (hasil verifikasi PIN di server) dan
@@ -646,7 +792,7 @@ const pushRowsToCloud = (cfg: PerRowSync, list: RowLike[]): void => {
             p_token: getCloudToken() ?? '',
           });
           if (delErr) {
-            notifyBlocked(`Penghapusan ${removed.length} data "${cfg.key}" gagal di cloud: ${delErr.message}. Akan dicoba ulang otomatis.`);
+            notifyBlocked(`Penghapusan ${removed.length} data "${cfg.key}" gagal di server: ${delErr.message}. Akan dicoba ulang otomatis.`);
             // Nisan dulu supaya baris yang sudah dihapus lokal tidak dibangkitkan
             // ulang oleh heal sebelum penghapusan di cloud benar-benar terjadi;
             // antrian di bawah menyelesaikannya saat sinyal/sesi pulih.
@@ -685,12 +831,22 @@ const seedRowsToCloud = async (cfg: PerRowSync, list: RowLike[]): Promise<void> 
 
 /**
  * Kirim baris lokal-saja TANPA batas jumlah (audit perangkat: gate <= 100 membuat
- * >100 baris tidak pernah naik & hilang dari cache). Bertahap 90/lembar; gagal →
- * sisa baris masuk outbox + peringatan terlihat, baris TETAP di cache.
+ * >100 baris tidak pernah naik & hilang dari cache). Bertahap 90/lembar sampai
+ * habis, berapa pun jumlahnya; baris bermasalah diisolasi per-baris (lihat
+ * sendRowsWithIsolation); gagal → sisa baris masuk outbox + peringatan terlihat,
+ * baris TETAP di cache sampai server mengonfirmasi.
  * Return true bila semua lembar sukses.
  */
 export const SYNC_WARNING_EVENT = 'nxty_sync_warning';
 let syncWarningShownAt = 0;
+/** Peringatan terlihat (bukan diam-diam), dibatasi satu per menit. */
+const warnOnce = (message: string): void => {
+  const now = Date.now();
+  if (now - syncWarningShownAt < 60_000) return;
+  syncWarningShownAt = now;
+  try { window.dispatchEvent(new CustomEvent(SYNC_WARNING_EVENT, { detail: message })); } catch { /* abaikan */ }
+};
+
 const pushLocalOnlyRows = async (cfg: PerRowSync, rows: RowLike[]): Promise<boolean> => {
   if (!client || rows.length === 0) return true;
   const nisan = nisanFor(cfg.key);
@@ -700,16 +856,15 @@ const pushLocalOnlyRows = async (cfg: PerRowSync, rows: RowLike[]): Promise<bool
   if (payload.length === 0) return true;
   for (let i = 0; i < payload.length; i += 90) {
     const chunk = payload.slice(i, i + 90);
-    const { error } = await client.from(cfg.table).upsert(chunk, { onConflict: 'id' });
-    if (error) {
-      queueOutbox({ id: `rows:${cfg.table}`, kind: 'rows', table: cfg.table, rows: payload.slice(i), ts: Date.now() });
-      const now = Date.now();
-      if (now - syncWarningShownAt > 60_000) {
-        syncWarningShownAt = now;
-        window.dispatchEvent(new CustomEvent(SYNC_WARNING_EVENT, {
-          detail: `${payload.length - i} data "${cfg.key}" belum naik ke server — akan dicoba ulang otomatis.`,
-        }));
-      }
+    let masihGagal: OutboxRow[] = chunk;
+    try {
+      masihGagal = await sendRowsWithIsolation(cfg.table, chunk);
+    } catch {
+      masihGagal = chunk; // gagal sementara (luring/limit): tahan seluruh sisa
+    }
+    if (masihGagal.length > 0) {
+      queueOutbox({ id: `rows:${cfg.table}`, kind: 'rows', table: cfg.table, rows: masihGagal, ts: Date.now() });
+      warnOnce(`${masihGagal.length} data "${cfg.key}" belum naik ke server — akan dicoba ulang otomatis.`);
       return false;
     }
   }
@@ -722,7 +877,10 @@ const pushLocalOnlyRows = async (cfg: PerRowSync, rows: RowLike[]): Promise<bool
  * audit log cloud runtuh ke 7 baris pada 17 Okt 2026 karena ini. */
 const AUDIT_KEY = 'audit_logs';
 const RECYCLE_KEY = 'recycle_bin';
-const AUDIT_MERGE_CAP = 1500;      // = AUDIT_MAX_ENTRIES dataStore; cloud menyimpan paling banyak ini
+// Perangkat menyimpan 200 entri (AUDIT_MAX_ENTRIES dataStore); cloud boleh
+// menyimpan sedikit lebih banyak untuk arsip singkat. Dulu 1.500 dengan snapshot
+// lengkap per entri — satu key audit bisa 1 MB+ dan memicu QuotaExceededError.
+const AUDIT_MERGE_CAP = 400;       // cloud menyimpan paling banyak ini
 const RECYCLE_MERGE_CAP = 300;     // = RECYCLE_MAX_ENTRIES dataStore
 const MERGE_KEYS = new Set([AUDIT_KEY, RECYCLE_KEY, NISAN_KEY, ATT_TOMBSTONE_STORE_KEY]);
 
@@ -815,11 +973,8 @@ const pushMergedStoreKey = async (key: string): Promise<void> => {
     if (status !== 'online') setStatus('online');
   } catch (e) {
     console.error(`[cloudSync] Gagal push gabungan "${key}" ke cloud:`, e);
-    try {
-      // merged tidak terlihat di catch — hitung ulang dari cache lokal saja.
-      const local = readLocalRowsRaw(key);
-      queueOutbox({ id: `store:${key}`, kind: 'store', key, value: mergeStoreValue(key, null, local), ts: Date.now() });
-    } catch { /* cache lokal tidak terbaca: lewati antrian untuk key ini */ }
+    // Hanya referensi — nilai terbaru dibaca ulang saat outbox dikirim.
+    queueOutbox({ id: `store:${key}`, kind: 'store', key, ts: Date.now() });
     setStatus('error');
   }
 };
@@ -867,7 +1022,8 @@ export const pushKeyToCloud = (key: string, data: unknown): void => {
       if (status !== 'online') setStatus('online');
     } catch (e) {
       console.error(`[cloudSync] Gagal push "${key}" ke cloud:`, e);
-      queueOutbox({ id: `store:${key}`, kind: 'store', key, value: data, ts: Date.now() });
+      // Hanya referensi — nilai terbaru dibaca ulang saat outbox dikirim.
+      queueOutbox({ id: `store:${key}`, kind: 'store', key, ts: Date.now() });
       setStatus('error');
     }
   }, 600);
@@ -892,7 +1048,9 @@ const readTombstones = (): Set<string> => {
   return ids;
 };
 
-const writeLocalAttendance = (rows: AttendanceRecordLike[]) => {
+/** Tulis cache absensi. false = storage penuh — pemanggil WAJIB tidak
+ *  memajukan watermark absensi (rentang yang sama diulang nanti). */
+const writeLocalAttendance = (rows: AttendanceRecordLike[]): boolean => {
   applyingRemote = true;
   try {
     const cutoff = Date.now() - ATTENDANCE_TRIM_DAYS * 86_400_000;
@@ -903,8 +1061,12 @@ const writeLocalAttendance = (rows: AttendanceRecordLike[]) => {
       dipangkas, Date.now() - COMPACT_ATTENDANCE_DAYS * 86_400_000
     ).rows as unknown as AttendanceRecordLike[];
     writeAttendancePruneUntil(cutoff);
-    if (!setItemQuotaSafe(`nxty_${ATT_KEY}`, JSON.stringify(aman))) return;
+    if (!setItemQuotaSafe(`nxty_${ATT_KEY}`, JSON.stringify(aman))) {
+      setDataIncomplete(true);
+      return false;
+    }
     dispatchStorageChangeCoalesced();
+    return true;
   } finally {
     applyingRemote = false;
   }
@@ -956,7 +1118,7 @@ export const deleteAttendanceRowsInCloud = (ids: string[]): void => {
   }).then(({ error }) => {
     if (error) {
       console.error('[cloudSync] Gagal menghapus absensi di cloud:', error);
-      notifyBlocked(`Pembatalan koreksi absensi gagal di cloud: ${error.message}. Akan dicoba ulang otomatis.`);
+      notifyBlocked(`Pembatalan koreksi absensi gagal di server: ${error.message}. Akan dicoba ulang otomatis.`);
       markTombstones(ATT_KEY, ids);
       queuePendingDeletes(ATT_KEY, ids);
     } else {
@@ -1189,6 +1351,8 @@ const readSyncSince = (): string | null => {
 const writeSyncNow = (): void => {
   try { localStorage.setItem(SYNC_AT_KEY, String(Date.now())); } catch { /* penuh: abaikan */ }
   persistStamps();
+  // Satu sinkron penuh sukses = cache perangkat kembali lengkap.
+  setDataIncomplete(false);
   markSyncSuccess();
 };
 
@@ -1393,14 +1557,14 @@ export const initCloudSync = async (): Promise<void> => {
         const cleanMerged = merged.filter(r => !tomb.has(r.id));
         const localOnly = local.filter(r => r.id && !cloudIds.has(r.id) && !tomb.has(r.id));
         if (tombTouched) console.info(`[cloudSync] ${merged.length - cleanMerged.length} baris absensi nisan dibuang dari perangkat.`);
-        writeLocalAttendance(sortAttendance(cleanMerged));
+        // Tulis gagal (storage penuh) → attPullOk false → watermark absensi diam.
+        attPullOk = writeLocalAttendance(sortAttendance(cleanMerged));
         for (const rec of localOnly) pushAttendanceToCloud(rec);
       } else {
         const cloudIds = new Set(freshRecs.map(r => r.id));
         const localOnly = local.filter(r => r.id && !cloudIds.has(r.id) && !tomb.has(r.id));
-        writeLocalAttendance(sortAttendance([...freshRecs.filter(r => !tomb.has(r.id)), ...localOnly]));
+        attPullOk = writeLocalAttendance(sortAttendance([...freshRecs.filter(r => !tomb.has(r.id)), ...localOnly]));
       }
-      attPullOk = true;
       void flushPendingAttendance();
       } catch (e) {
         console.error(`[cloudSync] Gagal sinkron tabel absensi (schema server/schema.sql sudah diterapkan?):`, e);
@@ -1428,6 +1592,13 @@ export const initCloudSync = async (): Promise<void> => {
           const changed = (await fetchAllRows(cfg.table, { sinceCol: 'updated_at', since: since! }))
             .map(r => r.value as RowLike).filter(r => r && r.id && !nisan.has(r.id));
           const localRows = readLocalRows(cfg.key);
+          // Baseline SEBELUM tulis-lokal: pembeda baris yang memang hanya ada di
+          // perangkat (dibuat luring, belum pernah naik) dari baris yang sudah ada
+          // di cloud. BUG 9 Nov 15:05: cloudIds null (del-counter tak berubah)
+          // dulu dibaca "semua baris lokal = lokal-saja" → SELURUH cache
+          // diantrekan ulang ke outbox tiap sinkron (jutaan karakter, storage
+          // penuh, angka pending menempel selamanya).
+          const baselineAwal = cloudSnapshot.get(cfg.key);
           // Log append-only tidak pernah hapus baris → lewati cek id (hemat egress).
           // Del-counter tak berubah → tak ada yang terhapus di cloud → skip cek id.
           const cloudIds = (cfg.appendOnly || delsUnchanged(cfg.table)) ? null : await fetchAllIds(cfg.table);
@@ -1445,11 +1616,17 @@ export const initCloudSync = async (): Promise<void> => {
             new Set(localRows.filter(r => r && r.id && (!cloudIds || !cloudIds.has(r.id)) && !nisan.has(r.id)).map(r => r.id)));
           const adaPerubahan = merged.length !== localRows.length || changed.length > 0 || refilled.length > 0;
           cfg.ready = adaPerubahan ? writeLocalRows(cfg.key, merged) : (cloudSnapshot.set(cfg.key, snapshotFrom(localRows)), true);
+          // Tulis lokal gagal (storage penuh) = tarikan ini tidak lengkap:
+          // watermark jangan maju, rentang yang sama diulang pada sinkron berikutnya.
+          if (!cfg.ready) anyTableFailed = true;
           // Baris yang HANYA ada di perangkat ini (dibuat saat luring / push gagal)
           // wajib naik — TANPA batas jumlah (audit perangkat); baris tetap di cache
           // sampai server mengonfirmasi (keepIds di merge di atas).
+          // cloudIds null ≠ "semua lokal-saja": pakai baseline (baris yang belum
+          // pernah diketahui ada di cloud saja yang dinaikkan).
           if (!cfg.appendOnly && cfg.ready) {
-            const lokalSaja = localRows.filter(r => r && r.id && (!cloudIds || !cloudIds.has(r.id)) && !nisan.has(r.id)) as RowLike[];
+            const lokalSaja = localRows.filter(r => r && r.id && !nisan.has(r.id)
+              && (cloudIds ? !cloudIds.has(r.id) : !(baselineAwal?.has(r.id) ?? false))) as RowLike[];
             const okKirim = await pushLocalOnlyRows(cfg, lokalSaja);
             if (!okKirim) anyTableFailed = true;
           }
@@ -1465,13 +1642,14 @@ export const initCloudSync = async (): Promise<void> => {
           const lokalSaja = cfg.appendOnly ? [] : localRows.filter(r => r && r.id && !cloudIdSet.has(r.id) && !nisan.has(r.id)) as RowLike[];
           const tulis = lokalSaja.length > 0 ? [...cloudRows, ...lokalSaja] : cloudRows;
           cfg.ready = writeLocalRows(cfg.key, tulis);
+          if (!cfg.ready) anyTableFailed = true;
           const okKirim = await pushLocalOnlyRows(cfg, lokalSaja);
           if (!okKirim) anyTableFailed = true;
         } else {
           const legacy = Array.isArray(legacyStore.get(cfg.key)) ? legacyStore.get(cfg.key) as RowLike[] : [];
           const seed = (localRows.length > 0 ? localRows : legacy).filter(r => r && r.id && !nisan.has(r.id));
           if (seed.length > 0) {
-            if (localRows.length === 0) writeLocalRows(cfg.key, seed);
+            if (localRows.length === 0 && !writeLocalRows(cfg.key, seed)) anyTableFailed = true;
             await seedRowsToCloud(cfg, seed);
             cloudSnapshot.set(cfg.key, snapshotFrom(seed));
           }
@@ -1575,9 +1753,10 @@ const resyncDataOnWakeup = async (): Promise<void> => {
           local as { id: string }[],
           cloudIds,
         ) as AttendanceRecordLike[];
-        writeLocalAttendance(sortAttendance(merged.filter(r => !tomb.has(r.id))));
+        // Tulis lokal gagal (storage penuh) → watermark absensi jangan maju.
+        attPullOk = writeLocalAttendance(sortAttendance(merged.filter(r => !tomb.has(r.id))));
       }
-      attPullOk = true;
+      if (fresh.length === 0) attPullOk = true;
     }
     writeAttNow();
     void flushPendingAttendance();
@@ -1594,6 +1773,9 @@ const resyncDataOnWakeup = async (): Promise<void> => {
         const changed = (await fetchAllRows(cfg.table, { sinceCol: 'updated_at', since }))
           .map(r => r.value as RowLike).filter(r => r && r.id && !nisan.has(r.id));
         const localRows = readLocalRows(cfg.key);
+        // Baseline SEBELUM tulis-lokal — lihat komentar bug 9 Nov di initCloudSync:
+        // cloudIds null TIDAK boleh dibaca "semua baris lokal = lokal-saja".
+        const baselineAwal = cloudSnapshot.get(cfg.key);
         // Del-counter tak berubah → tak ada yang terhapus di cloud → skip cek id.
         const cloudIds = (cfg.appendOnly || delsUnchanged(cfg.table)) ? null : await fetchAllIds(cfg.table);
         const missing = cloudIds
@@ -1611,8 +1793,10 @@ const resyncDataOnWakeup = async (): Promise<void> => {
           cloudSnapshot.set(cfg.key, snapshotFrom(localRows));
         }
         cfg.ready = sukses;
+        if (!sukses) anyFailed = true; // tulis lokal gagal: watermark jangan maju
         if (!cfg.appendOnly && cfg.ready) {
-          const lokalSaja = localRows.filter(r => r && r.id && (!cloudIds || !cloudIds.has(r.id)) && !nisan.has(r.id)) as RowLike[];
+          const lokalSaja = localRows.filter(r => r && r.id && !nisan.has(r.id)
+            && (cloudIds ? !cloudIds.has(r.id) : !(baselineAwal?.has(r.id) ?? false))) as RowLike[];
           const okKirim = await pushLocalOnlyRows(cfg, lokalSaja);
           if (!okKirim) anyFailed = true;
         }
@@ -1742,12 +1926,22 @@ const pinAttendanceMonthsForRange = (start: string, end: string): void => {
  * sudah dilepas dari perangkat (>30 hari) diambil dari cloud lalu digabung dedup
  * by-id. Bulan yang diminta di-pin supaya tidak terpangkas selagi dilihat user.
  * Hanya MEMBACA cloud — tidak pernah mengubah data di sana.
+ *
+ * Cache lokal TIDAK selalu lengkap walau rentangnya dalam jendela 30 hari:
+ * tulis-lokal bisa gagal (storage penuh — insiden 8 Nov: cache menampilkan 1
+ * orang hadir, cloud 29) atau watermark sinkron belum menjangkau rentang itu.
+ * Dalam keadaan itu kekurangan diambil dari cloud, bukan percaya cache.
  */
 export const ensureAttendanceHistory = async (start: string, end: string): Promise<number> => {
   if (!client) return 0;
   const HARI = 86_400_000;
   const batasJendela = Date.now() - ATTENDANCE_TRIM_DAYS * HARI;
-  if (Date.parse(start) >= batasJendela) return 0;
+  const dalamJendela = Date.parse(start) >= batasJendela;
+  if (dalamJendela && !isDataIncomplete()) {
+    // Cache dipercaya hanya bila tarikan sukses terakhir sudah mencakup rentang.
+    const since = readSyncSince();
+    if (since !== null && Date.parse(since) >= Date.parse(start)) return 0;
+  }
   const { data, error } = await client.from(ATT_TABLE).select('id, value')
     .filter('value->>timestamp', 'gte', start)
     .filter('value->>timestamp', 'lte', end);
@@ -1767,6 +1961,8 @@ export const ensureAttendanceHistory = async (start: string, end: string): Promi
   const ringkas = compactAttendanceRows(
     baru as unknown as Array<Record<string, unknown>>, Date.now() - COMPACT_ATTENDANCE_DAYS * HARI
   ).rows;
+  // Gagal tulis lokal → flag menyala: indikator sidebar & tarik berikutnya ikut
+  // menangani; tampilan Tetap benar karena data ini datang dari cloud.
   writeLocalAttendance(sortAttendance([...(ringkas as unknown as AttendanceRecordLike[]), ...local]));
   console.info(`[cloudSync] Menarik ${baru.length} riwayat absensi dari cloud (${start} s.d. ${end}).`);
   return baru.length;
@@ -1937,18 +2133,27 @@ const pingDevice = (pending: number): void => {
   // visibilitychange). 20 perangkat = ±1.920 tulis/hari untuk detak.
   if (now - lastDevicePing < 15 * 60_000) return;
   lastDevicePing = now;
-  void pingDeviceApi(id, pending, navigator.userAgent?.slice(0, 200) ?? '');
+  // Nama karyawan yang login — daftar perangkat harus bisa dibaca manusia
+  // (admin tahu langsung perangkat SIAPA, bukan hanya ID acak).
+  let nama = '';
+  try {
+    const sesi = JSON.parse(localStorage.getItem('nxty_session') || 'null') as { name?: string } | null;
+    nama = String(sesi?.name ?? '').slice(0, 80);
+  } catch { /* abaikan */ }
+  void pingDeviceApi(id, pending, navigator.userAgent?.slice(0, 200) ?? '', nama);
 };
 
 const tryWakeupSync = (): void => {
   if (!client) return;
   if (typeof document === 'undefined' || document.visibilityState !== 'visible') return;
   const now = Date.now();
+  // Antarkan antrean SEGERA saat tab terlihat — murah saat kosong dan tidak
+  // boleh menunggu jeda tarik 60 detik (perubahan harus terkirim ≤1 detik
+  // setelah tersimpan saat online).
+  void flushOutbox();
   if (now - lastWakeupSync < WAKEUP_SYNC_MIN_GAP_MS) return;
   lastWakeupSync = now;
   void (async () => {
-    // Outbox dulu (murah saat kosong): tulisan gagal kemarin diantar sebelum apa pun.
-    await flushOutbox();
     pingDevice(getOutboxPendingCount());
     // Cek versi: tidak ada perubahan di SEMUA tabel → tarik bertahap dilewati.
     if (await cloudVersionUnchanged()) return;
@@ -1957,14 +2162,14 @@ const tryWakeupSync = (): void => {
 };
 
 // Peringatan sebelum menutup: jangan biarkan perangkat menutup tab saat masih
-// ada perubahan yang belum sampai ke cloud (kasbon-insiden 31 Okt).
+// ada perubahan yang belum sampai ke server (kasbon-insiden 31 Okt).
 if (typeof window !== 'undefined') {
   // Koneksi kembali → antar seluruh antrian secepatnya (jangan tunggu detak 60 dtk).
   window.addEventListener('online', () => { void flushOutbox(); scheduleOutboxFlush(0); });
   window.addEventListener('beforeunload', (e) => {
     if (getOutboxPendingCount() > 0) {
       e.preventDefault();
-      e.returnValue = 'Masih ada perubahan yang belum terkirim ke cloud.';
+      e.returnValue = 'Masih ada perubahan yang belum tersimpan. Biarkan aplikasi terbuka sampai tersimpan.';
       return e.returnValue;
     }
   });

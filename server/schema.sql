@@ -41,6 +41,15 @@ CREATE TABLE IF NOT EXISTS ari_login_attempts (
 );
 CREATE INDEX IF NOT EXISTS ari_login_attempts_idx ON ari_login_attempts (identifier, at DESC);
 
+-- ---------- Registry perangkat (optimize3.sql; kolom name = optimize4) ----------
+CREATE TABLE IF NOT EXISTS ari_devices (
+  device_id  TEXT PRIMARY KEY,
+  last_sync  TEXT NOT NULL,
+  pending    INTEGER NOT NULL DEFAULT 0,
+  user_agent TEXT NOT NULL DEFAULT '',
+  name       TEXT NOT NULL DEFAULT ''
+);
+
 -- ---------- Tabel per-baris ----------
 CREATE TABLE IF NOT EXISTS ari_employees (id TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT '');
 CREATE TABLE IF NOT EXISTS ari_departments (id TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT '');

@@ -370,7 +370,9 @@ class DataStore {
   // Audit log & recycle bin adalah dua key yang tumbuh paling cepat — tanpa batas
   // mereka memicu QuotaExceededError yang menggagalkan sinkronisasi cloud.
   // Versi lengkapnya tetap tersimpan di cloud (ari_store).
-  private static readonly AUDIT_MAX_ENTRIES = 1500;
+  // 200 entri (bukan 1.500): tiap entri memuat metadata ringkas — dan audit adalah
+  // informasi, bukan data operasional; riwayat lebih lama tetap utuh di cloud.
+  private static readonly AUDIT_MAX_ENTRIES = 200;
   private static readonly RECYCLE_MAX_ENTRIES = 300;
   // Batas mundur koreksi absensi. Perlu cukup longgar untuk koreksi yang telat
   // disadari (mis. baru ketahuan saat tutup buku mingguan), tapi tetap membatasi
@@ -395,10 +397,62 @@ class DataStore {
     }));
   };
 
+  // ===== Metadata audit RINGKAS =====
+  // Dulu tiap entri update menyimpan snapshot lengkap sebelum+sesudah baris —
+  // satu baris besar (order/payroll) bisa puluhan KB, 1.500 entri melampaui kuota
+  // perangkat (audit 8-9 Nov). Kini: field yang berubah saja, nilainya dipangkas.
+  private static readonly AUDIT_META_MAX_CHARS = 1200;
+  private static readonly AUDIT_VALUE_SNIPPET = 160;
+  private static readonly AUDIT_REDACTED = ['pin', 'password', 'attendance_qr_token', 'token', 'selfie_url'];
+
+  private ringkasNilai = (v: unknown): unknown => {
+    let s: string;
+    try { s = JSON.stringify(v ?? null); } catch { return '[tidak-tertulis]'; }
+    if (s === undefined || s === null || s.length <= DataStore.AUDIT_VALUE_SNIPPET) return v;
+    return `${s.slice(0, DataStore.AUDIT_VALUE_SNIPPET)}…(${s.length} karakter)`;
+  };
+
+  private ringkasMetadata = (metadata?: Record<string, unknown>): Record<string, unknown> | undefined => {
+    if (!metadata) return undefined;
+    const ringkas: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(metadata)) {
+      if (k === 'before' || k === 'after') continue; // ditangani terpisah di bawah
+      ringkas[k] = this.ringkasNilai(v);
+    }
+    const before = metadata.before as Record<string, unknown> | undefined;
+    const after = metadata.after as Record<string, unknown> | undefined;
+    if (before && after && typeof before === 'object' && typeof after === 'object') {
+      const berubah: Record<string, { dari: unknown; ke: unknown }> = {};
+      const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+      for (const k of keys) {
+        if (DataStore.AUDIT_REDACTED.includes(k)) continue;
+        let a: string, b: string;
+        try {
+          a = JSON.stringify((before as Record<string, unknown>)[k] ?? null) ?? 'null';
+          b = JSON.stringify((after as Record<string, unknown>)[k] ?? null) ?? 'null';
+        } catch { continue; }
+        if (a !== b) berubah[k] = { dari: this.ringkasNilai((before as Record<string, unknown>)[k]), ke: this.ringkasNilai((after as Record<string, unknown>)[k]) };
+      }
+      ringkas.berubah = berubah;
+    } else {
+      if (before) ringkas.before = this.ringkasNilai(before);
+      if (after) ringkas.after = this.ringkasNilai(after);
+    }
+    let s: string;
+    try { s = JSON.stringify(ringkas); } catch { return { ringkas: 'metadata tidak tertulis' }; }
+    if (s && s.length > DataStore.AUDIT_META_MAX_CHARS) {
+      // Masih terlalu besar (banyak field berubah): simpan nama field-nya saja.
+      const berubah = (ringkas.berubah ?? {}) as Record<string, unknown>;
+      const kunci = Object.keys(berubah);
+      return { ringkas: `berubah: ${kunci.slice(0, 20).join(', ')}${kunci.length > 20 ? ', …' : ''}` };
+    }
+    return ringkas;
+  };
+
   private appendAudit = (entry: Omit<AuditEntry, 'id' | 'timestamp' | 'actor_name' | 'actor_role' | 'actor_id'>): void => {
     const actor = this.currentActor();
     const current = this.get<AuditEntry[]>(this.auditKey, []);
-    const audit: AuditEntry = { ...entry, id: uuid(), timestamp: wibNowISO(), actor_id: actor.id, actor_name: actor.name, actor_role: actor.role };
+    const audit: AuditEntry = { ...entry, metadata: this.ringkasMetadata(entry.metadata), id: uuid(), timestamp: wibNowISO(), actor_id: actor.id, actor_name: actor.name, actor_role: actor.role };
     const next = [audit, ...current].slice(0, DataStore.AUDIT_MAX_ENTRIES);
     this.setItemWithQuotaGuard(this.auditKey, JSON.stringify(next));
     pushKeyToCloud(this.auditKey, next);

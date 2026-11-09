@@ -339,6 +339,9 @@ export const handleUpsert = async (env: Env, body: UpsertBody): Promise<ApiResul
   };
 
   let changes = 0;
+  // Baris yang ditolak server saat eksekusi per-baris (dilaporkan ke klien supaya
+  // hanya baris itu yang diulang/dicatat — bukan seluruh chunk).
+  const failed: Array<{ id: string; error: string }> = [];
   for (let i = 0; i < rows.length; i += UPSERT_CHUNK) {
     const chunk = rows.slice(i, i + UPSERT_CHUNK);
     const stmts: D1PreparedStatement[] = [];
@@ -363,9 +366,29 @@ export const handleUpsert = async (env: Env, body: UpsertBody): Promise<ApiResul
       if (msg.includes('UNIQUE') && msg.includes('dup_hash')) {
         return fail('Penjualan ganda ditolak oleh server: data yang persis sama sudah pernah dibuat dengan id berbeda.');
       }
-      return fail(msg);
+      // Satu baris bermasalah TIDAK BOLEH menggagalkan chunk-nya (audit 9 Nov:
+      // sisa 89 baris ikut masuk antrean berulang-ulang karena satu baris ditolak).
+      // Ulangi per baris: yang berhasil dihitung, yang gagal dilaporkan per id.
+      for (let j = 0; j < chunk.length; j++) {
+        const r = chunk[j];
+        const cols = Object.keys(r);
+        const extra = cols.filter(c => c !== conflictCol);
+        const clause = ignore || extra.length === 0
+          ? 'DO NOTHING'
+          : `DO UPDATE SET ${extra.map(c => `"${c}" = excluded."${c}"`).join(', ')}`;
+        try {
+          const res = await env.DB.prepare(
+            `INSERT INTO ${table} (${cols.map(c => `"${c}"`).join(', ')})` +
+            ` VALUES (${cols.map(() => '?').join(',')}) ON CONFLICT("${conflictCol}") ${clause}`
+          ).bind(...cols.map(c => toSqlText(r[c]))).run();
+          changes += Number(res.meta?.changes ?? 0);
+        } catch (e2) {
+          failed.push({ id: String(r[conflictCol] ?? ''), error: e2 instanceof Error ? e2.message : String(e2) });
+        }
+      }
+      if (failed.length === chunk.length) return fail(msg);
     }
   }
   if (changes > 0) await bumpStamp(env, table);
-  return ok({ changes, conflicts });
+  return ok({ changes, conflicts, failed });
 };

@@ -279,14 +279,15 @@ export const getCloudVersion = async (): Promise<Record<string, string> | null> 
 
 // ===================== Registry perangkat =====================
 
-/** Ping perangkat: admin melihat perangkat aktif & pending-nya (tugas 7). */
-export const pingDeviceApi = async (deviceId: string, pending: number, userAgent: string): Promise<void> => {
+/** Ping perangkat: admin melihat perangkat aktif & pending-nya (tugas 7).
+ *  name = nama karyawan yang login, supaya daftar perangkat bisa dibaca manusia. */
+export const pingDeviceApi = async (deviceId: string, pending: number, userAgent: string, name = ''): Promise<void> => {
   if (!API_BASE || !isCloudApiEnabled) return;
   try {
     await fetch(`${API_BASE}/api/device`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ device_id: deviceId, pending, user_agent: userAgent }),
+      body: JSON.stringify({ device_id: deviceId, pending, user_agent: userAgent, name }),
     });
   } catch { /* ping gagal: dicoba pada detak berikutnya */ }
 };

@@ -1499,7 +1499,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
             </div>
             {historyPeriod === 'custom' && <div className="grid grid-cols-2 gap-2 max-w-md"><input type="date" value={historyStart} onChange={e => setHistoryStart(e.target.value)} className="border border-gray-200 rounded-lg p-2 text-xs" /><input type="date" value={historyEnd} min={historyStart} onChange={e => setHistoryEnd(e.target.value)} className="border border-gray-200 rounded-lg p-2 text-xs" /></div>}
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <p className="text-[10px] text-gray-400">Periode analisa: {periodBounds.start} s/d {periodBounds.end}</p>
+              <p className="text-[10px] text-gray-400">Kartu di bawah selalu data <b>hari ini</b>. Filter periode di atas berlaku untuk tab Rekap Karyawan & Riwayat Scan.</p>
               {isCloudEnabled && (
                 <button
                   type="button"
@@ -1576,7 +1576,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ isAdmin, loc
               </div>
               <div className="lg:col-span-5 bg-white rounded-2xl border border-gray-200 p-5 space-y-4 shadow-xs text-left">
                 <h3 className="font-extrabold text-xs text-gray-700 uppercase tracking-wider">Perlu Perhatian</h3>
-                <p className="text-[10px] text-gray-400 leading-relaxed">Ringkasan cepat, bukan bukti final. Sebelum menegur karyawan, tekan "Tersinkron/Tarik dari server" di atas atau cek tab <b>Riwayat Scan</b> — patokan sah bagi karyawan adalah layar hijau "BERHASIL" saat scan.</p>
+                <p className="text-[10px] text-gray-400 leading-relaxed">Ringkasan cepat, bukan bukti final. Sebelum menegur karyawan, tekan "Perbarui data" di atas atau cek tab <b>Riwayat Scan</b> — patokan sah bagi karyawan adalah layar hijau "BERHASIL" saat scan.</p>
                 <div className="space-y-2 max-h-64 overflow-y-auto overscroll-contain">
                   {[...notCheckedInToday.map(emp => ({ name: emp.name, text: 'Belum absen masuk', tone: 'text-rose-700 bg-rose-50 border-rose-100' })),
                     ...notCheckedOutToday.map(emp => ({ name: emp.name, text: 'Belum absen pulang', tone: 'text-sky-700 bg-sky-50 border-sky-100' }))].map((item, index) => (

@@ -134,7 +134,20 @@ export const AuditRecycleModule: React.FC = () => {
 };
 
 // ===================== Panel perangkat & konflik (audit perangkat, tugas 7) =====================
-type DeviceRow = { device_id: string; last_sync: string; pending: number; user_agent: string };
+type DeviceRow = { device_id: string; last_sync: string; pending: number; user_agent: string; name?: string };
+
+/** Jenis perangkat yang bisa dibaca manusia, dari user agent. */
+const deviceLabel = (ua: string): string => {
+  const s = ua || '';
+  const os = /Windows/i.test(s) ? 'Windows'
+    : /Android/i.test(s) ? 'Android'
+    : /iPhone|iPad|iPod/i.test(s) ? 'iPhone/iPad'
+    : /Macintosh|Mac OS X/i.test(s) ? 'Mac'
+    : /Linux/i.test(s) ? 'Linux'
+    : 'Tidak dikenal';
+  const jenis = /Mobile|Android|iPhone|iPad|iPod/i.test(s) ? 'HP' : 'Laptop';
+  return `${jenis} ${os}`;
+};
 
 export const DevicePanel = () => {
   const [devices, setDevices] = useState<DeviceRow[]>([]);
@@ -173,6 +186,11 @@ export const DevicePanel = () => {
     return Number.isFinite(t) && (Date.now() - t) > 26 * 3600_000;
   };
 
+  // Perangkat yang menumpuk perubahan lebih dari sehari — kemungkinan besar sumber
+  // komplain "data tidak sama". Beri tahu ADMIN dengan bahasa biasa, bukan user
+  // perangkat itu.
+  const menumpuk = devices.filter(d => d.pending > 100 && hariLalu(d.last_sync));
+
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -184,22 +202,44 @@ export const DevicePanel = () => {
           {memuat ? 'Memperbarui…' : 'Perbarui data'}
         </button>
       </div>
+      {menumpuk.length > 0 && (
+        <div className="border border-rose-200 bg-rose-50 rounded-lg p-3 space-y-1">
+          <p className="text-xs font-bold text-rose-800 flex items-center gap-1.5"><TriangleAlert className="w-3.5 h-3.5" /> Perangkat menumpuk perubahan lebih dari sehari</p>
+          <p className="text-[10px] text-rose-700">Perangkat ini kemungkinan besar sumber data yang tidak sama antar perangkat. Minta pemakainya membuka aplikasi sambil terhubung internet sampai angkanya habis — jangan hapus data aplikasinya.</p>
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            {menumpuk.map(d => (
+              <span key={d.device_id} className="text-[10px] font-semibold text-rose-800 bg-white border border-rose-200 rounded px-2 py-1">
+                {(d.name || '').trim() || d.device_id.slice(0, 10)} · {d.pending} belum tersimpan
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
       {devices.length === 0 ? (
         <p className="text-[11px] text-gray-400">Belum ada perangkat terdaftar — daftar terisi setiap perangkat membuka aplikasi.</p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
-          {devices.map(d => (
-            <div key={d.device_id} className={`border rounded-lg p-2.5 ${d.pending > 0 || hariLalu(d.last_sync) ? 'border-amber-200 bg-amber-50/50' : 'border-gray-200 bg-gray-50/50'}`}>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-bold font-mono text-gray-700">{d.device_id.slice(0, 10)}</span>
-                {d.pending > 0 && <span className="text-[9px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">{d.pending} belum tersimpan</span>}
+          {devices.map(d => {
+            const kritis = d.pending > 100 && hariLalu(d.last_sync);
+            return (
+              <div key={d.device_id} className={`border rounded-lg p-2.5 ${kritis ? 'border-rose-300 bg-rose-50/70' : d.pending > 0 || hariLalu(d.last_sync) ? 'border-amber-200 bg-amber-50/50' : 'border-gray-200 bg-gray-50/50'}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-gray-800 truncate" title={d.device_id}>{(d.name || '').trim() || `Perangkat ${d.device_id.slice(0, 10)}`}</span>
+                  {d.pending > 0 && <span className="text-[9px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded shrink-0">{d.pending} belum tersimpan</span>}
+                </div>
+                <p className="text-[10px] text-gray-500 mt-0.5">{deviceLabel(d.user_agent)}{d.pending > 0 ? ` · ${d.pending} perubahan menunggu` : ''}</p>
+                <p className={`text-[10px] mt-1 ${hariLalu(d.last_sync) ? 'text-amber-700 font-semibold' : 'text-gray-500'}`}>
+                  Terakhir aktif: {d.last_sync ? new Date(d.last_sync).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
+                  {hariLalu(d.last_sync) ? ' (lebih dari sehari)' : ''}
+                </p>
+                {kritis && (
+                  <p className="text-[10px] font-semibold text-rose-700 mt-1">
+                    Menumpuk lebih dari sehari — periksa perangkat ini.
+                  </p>
+                )}
               </div>
-              <p className={`text-[10px] mt-1 ${hariLalu(d.last_sync) ? 'text-amber-700 font-semibold' : 'text-gray-500'}`}>
-                Terakhir aktif: {d.last_sync ? new Date(d.last_sync).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
-                {hariLalu(d.last_sync) ? ' (lebih dari sehari)' : ''}
-              </p>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
       {conflicts.length > 0 && (

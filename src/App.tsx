@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserRole, Employee, ProductionHandoff, ProductionJob, PackingTask } from './types';
 import { dataStore, wibTodayStr } from './dataStore';
-import { isCloudEnabled, getCloudStatus, CloudStatus, loginCloud, logoutCloud, getLastSyncAtMs, SYNC_TIME_EVENT, resyncDataNow, getLocalUsageRatio, ensureAttendanceHistory, getOutboxPendingCount, OUTBOX_EVENT, flushOutbox } from './cloudSync';
+import { isCloudEnabled, getCloudStatus, CloudStatus, loginCloud, logoutCloud, getLastSyncAtMs, SYNC_TIME_EVENT, resyncDataNow, getLocalUsageRatio, ensureAttendanceHistory, getOutboxPendingCount, OUTBOX_EVENT, flushOutbox, isDataIncomplete, DATA_INCOMPLETE_EVENT } from './cloudSync';
 import { MainDashboard } from './components/MainDashboard';
 import { EmployeeDashboard } from './components/EmployeeDashboard';
 import { AttendanceModule } from './components/AttendanceModule';
@@ -324,6 +324,7 @@ export default function App() {
   // Kesehatan storage perangkat + tarik ulang manual
   const [storagePct, setStoragePct] = useState<number>(() => Math.round(getLocalUsageRatio() * 100));
   const [resyncing, setResyncing] = useState(false);
+  const [storageCritical, setStorageCritical] = useState(false);
   useEffect(() => {
     const refresh = () => setStoragePct(Math.round(getLocalUsageRatio() * 100));
     refresh();
@@ -336,11 +337,32 @@ export default function App() {
       window.removeEventListener(SYNC_TIME_EVENT, refresh);
     };
   }, []);
+  // Penyimpanan perangkat penuh: WAJIB terlihat (bukan diam-diam) — bahasa biasa.
+  useEffect(() => {
+    const onCritical = () => setStorageCritical(true);
+    window.addEventListener('nxty_storage_critical', onCritical);
+    return () => window.removeEventListener('nxty_storage_critical', onCritical);
+  }, []);
+  useEffect(() => {
+    if (storagePct < 80) setStorageCritical(false);
+  }, [storagePct]);
+  // Cache perangkat mungkin belum lengkap (tulis lokal gagal) — indikator sidebar
+  // harus jujur, bukan tetap "Data tersimpan".
+  const [dataBelumLengkap, setDataBelumLengkap] = useState<boolean>(() => isDataIncomplete());
+  useEffect(() => {
+    const handler = (e: Event) => setDataBelumLengkap(Boolean((e as CustomEvent<boolean>).detail));
+    window.addEventListener(DATA_INCOMPLETE_EVENT, handler);
+    return () => window.removeEventListener(DATA_INCOMPLETE_EVENT, handler);
+  }, []);
+  // "Perbarui data" = kirim dulu antrean yang tertunda, BARU tarik perubahan baru
+  // (flushOutbox dulu, lalu resync — audit 9 Nov: dulu hanya menarik, angka
+  // "belum tersimpan" tidak pernah turun).
   const handleResyncNow = async () => {
     setResyncing(true);
     try {
+      await flushOutbox();
       await resyncDataNow();
-      setToast('Sinkron ulang selesai — data terbaru sudah ditarik dari cloud.');
+      setToast('Perbarui selesai — perubahan sudah dikirim dan data terbaru sudah ditarik.');
     } finally {
       setResyncing(false);
       setStoragePct(Math.round(getLocalUsageRatio() * 100));
@@ -758,17 +780,23 @@ export default function App() {
           {/* Status sinkronisasi data */}
           <div className="flex items-center gap-2 text-[11px] font-semibold">
             <span className={`w-2 h-2 rounded-full shrink-0 ${
-              cloudStatus === 'online' ? 'bg-emerald-400'
+              cloudStatus === 'online' ? (dataBelumLengkap ? 'bg-amber-400' : 'bg-emerald-400')
               : cloudStatus === 'connecting' ? 'bg-amber-400'
               : cloudStatus === 'error' ? 'bg-rose-500'
               : 'bg-gray-400'
             }`} />
-            <span className="text-emerald-100/80">
-              {cloudStatus === 'online' ? 'Data tersimpan'
+            <span className={`text-emerald-100/80 ${cloudStatus === 'online' && dataBelumLengkap ? 'text-amber-300' : ''}`}>
+              {cloudStatus === 'online'
+                ? (dataBelumLengkap ? 'Data mungkin belum lengkap' : 'Data tersimpan')
               : cloudStatus === 'connecting' ? 'Menghubungkan…'
               : cloudStatus === 'error' ? 'Belum tersimpan, periksa internet'
               : isCloudEnabled ? 'Belum tersimpan, periksa internet' : 'Mode tanpa internet'}
-              {cloudStatus === 'online' && lastSyncAt > 0 && (
+              {cloudStatus === 'online' && dataBelumLengkap && (
+                <span className="block text-[10px] text-amber-200/80">
+                  Menyelaraskan data perangkat ini…
+                </span>
+              )}
+              {cloudStatus === 'online' && !dataBelumLengkap && lastSyncAt > 0 && (
                 <span className="block text-[10px] text-emerald-200/60">
                   diperbarui {new Date(lastSyncAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
                 </span>
@@ -785,12 +813,13 @@ export default function App() {
               )}
             </span>
           </div>
-          {/* Jalan pintas darurat: tarik perubahan baru + antar yang tertunda */}
+          {/* Jalan pintas darurat: kirim yang tertunda DULU, baru tarik perubahan baru */}
           <button
-            onClick={() => { void flushOutbox(); void resyncDataNow(); }}
-            className="w-full text-[10px] font-semibold text-emerald-100/70 hover:text-white bg-emerald-900/40 hover:bg-emerald-800/60 border border-emerald-800/60 rounded-md py-1.5 transition-colors"
+            onClick={() => { void handleResyncNow(); }}
+            disabled={resyncing}
+            className="w-full text-[10px] font-semibold text-emerald-100/70 hover:text-white bg-emerald-900/40 hover:bg-emerald-800/60 border border-emerald-800/60 rounded-md py-1.5 transition-colors disabled:opacity-60 cursor-pointer"
           >
-            Perbarui data
+            {resyncing ? 'Memperbarui…' : 'Perbarui data'}
           </button>
           <div className="flex items-center justify-between gap-2 text-[10px]">
             <span className={`font-semibold ${storagePct >= 90 ? 'text-rose-300' : storagePct >= 85 ? 'text-amber-300' : 'text-emerald-200/60'}`}>
@@ -804,6 +833,11 @@ export default function App() {
               {resyncing ? 'Menarik…' : 'Tarik ulang'}
             </button>
           </div>
+          {storageCritical && (
+            <span className="block text-[10px] font-semibold text-rose-200 bg-rose-900/40 border border-rose-800/60 rounded px-2 py-1">
+              Penyimpanan perangkat penuh, hubungi admin.
+            </span>
+          )}
           <span className="block text-[9px] text-emerald-200/40">versi v{__BUILD_ID__}</span>
 
           <div className="flex items-center gap-2.5">
@@ -848,7 +882,7 @@ export default function App() {
             <h2 className="text-base font-semibold text-gray-800 truncate">{activeMenu?.label || 'Dashboard'}</h2>
           </div>
           <p className="hidden md:block text-xs text-gray-500 shrink-0">{formattedTime}</p>
-          {/* Indikator sinkron cloud versi HP — sidebar tidak terlihat di layar kecil,
+          {/* Indikator status data versi HP — sidebar tidak terlihat di layar kecil,
               jadi status dipindah ke header: titik warna + jam tarik-ulang. Di-tap
               menampilkan penjelasan lengkap lewat toast (bukan menu baru). */}
           {session && (
@@ -868,7 +902,7 @@ export default function App() {
                 );
               }}
               className="md:hidden flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-full px-2 py-1 cursor-pointer shrink-0"
-              aria-label="Status sinkronisasi cloud"
+              aria-label="Status data"
             >
               <span className={`w-2 h-2 rounded-full shrink-0 ${
                 cloudStatus === 'online' ? 'bg-emerald-500'
@@ -880,7 +914,7 @@ export default function App() {
                 {cloudStatus === 'online'
                   ? lastSyncAt > 0
                     ? new Date(lastSyncAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
-                    : 'Cloud'
+                    : '✓'
                   : cloudStatus === 'connecting' ? '…'
                   : cloudStatus === 'error' ? '!'
                   : 'off'}
