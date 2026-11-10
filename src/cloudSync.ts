@@ -307,6 +307,9 @@ const writeOutbox = (items: OutboxEntry[]): boolean => {
 
 let outboxFlushTimer: ReturnType<typeof setTimeout> | null = null;
 let outboxBusy = false;
+// Kuota tulis habis → jangan coba lagi sebelum jeda ini lewat (lihat isQuotaExhaustedError).
+const QUOTA_BACKOFF_MS = 10 * 60_000;
+let quotaBackoffUntil = 0;
 
 // Jeda 1 detik: perubahan sampai ke server maksimal ±1 detik setelah disimpan
 // saat online (poll 60 detik hanya untuk MENARIK perubahan perangkat lain).
@@ -348,6 +351,16 @@ const isPermanentUpsertError = (msg: string): boolean => {
   if (/HTTP 4\d\d/i.test(m)) return true;
   return /origin|tidak dapat ditulis|tidak diperkenankan|tidak valid|ditolak oleh server|tidak diizinkan|tidak dikenal|harus punya kolom|NOT NULL|CHECK constraint failed/i.test(m);
 };
+
+/**
+ * Kuota tulis harian habis (mis. "D1_ERROR: ... exceeded D1's free tier daily
+ * row write limit ..."). Berbeda dari kegagalan sementara biasa: mencoba ulang
+ * tiap menit hanya membuang sisa kuota — seluruh antrean ditunda bermenit-menit,
+ * dan kejadiannya WAJIB terlihat (dulu senyap total: angka pending menempel
+ * tanpa satu baris pun di console — audit 10 Nov).
+ */
+const isQuotaExhaustedError = (msg: string): boolean =>
+  /exceeded|melebihi/i.test(String(msg || '')) && /limit|kuota/i.test(String(msg || ''));
 
 /**
  * Kirim baris-baris entri. Satu baris bermasalah TIDAK BOLEH menggagalkan
@@ -419,12 +432,14 @@ const sendOutboxStore = async (key: string): Promise<void> => {
 /** Kirim seluruh isi outbox; yang masih gagal ditahan untuk percobaan berikutnya. */
 export const flushOutbox = async (): Promise<void> => {
   if (!client || outboxBusy) return;
+  if (Date.now() < quotaBackoffUntil) return; // kuota habis: tunggu jeda, bukan pukul tiap menit
   const items = readOutbox();
   if (items.length === 0) return;
   outboxBusy = true;
   try {
     const remaining: OutboxEntry[] = [];
-    for (const item of items) {
+    for (let idx = 0; idx < items.length; idx++) {
+      const item = items[idx];
       try {
         if (item.kind === 'rows') {
           const masihGagal = await sendRowsWithIsolation(item.table, item.rows);
@@ -434,6 +449,15 @@ export const flushOutbox = async (): Promise<void> => {
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
+        if (isQuotaExhaustedError(msg)) {
+          // Kuota tulis harian habis: entri ini dan SEMUA sisanya ditunda bersama —
+          // mencoba entri lain sekejap lagi hanya mengulang penolakan yang sama.
+          quotaBackoffUntil = Date.now() + QUOTA_BACKOFF_MS;
+          const ditunda = items.slice(idx);
+          console.warn(`[cloudSync] Kuota tulis cloud habis — ${ditunda.length} entri antrean (${ditunda.reduce((n, it) => n + (it.kind === 'rows' ? it.rows.length : 1), 0)} baris) ditunda sampai ${new Date(quotaBackoffUntil).toLocaleTimeString()}: ${msg}`);
+          remaining.push(...ditunda);
+          break;
+        }
         const percobaan = (item.attempts ?? 0) + (isPermanentUpsertError(msg) ? 1 : 0);
         if (percobaan >= 3) {
           // Jalan keluar entri beracun: selalu ditolak server → buang setelah
@@ -441,7 +465,10 @@ export const flushOutbox = async (): Promise<void> => {
           console.error(`[cloudSync] Entri antrean "${item.id}" dibuang setelah ${percobaan}x ditolak server: ${msg}`);
           warnOnce('Ada perubahan yang ditolak server dan dilepas dari antrean. Hubungi admin.');
         } else {
+          // Dulu SENYAP (audit 10 Nov: kuota D1 habis seharian tanpa satu baris
+          // console) — kini dicatat, sekali per pesan, tanpa membanjiri console.
           remaining.push({ ...item, attempts: percobaan });
+          warnOnce(`Antrean "${item.id}" ditunda server: ${msg} — dikirim ulang otomatis nanti.`);
         }
       }
     }
