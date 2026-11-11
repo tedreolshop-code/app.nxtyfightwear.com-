@@ -1,6 +1,7 @@
 // Self-check gabung sinkron bertahap. Jalankan: npx tsx src/cloudSync.check.ts
 import assert from 'node:assert/strict';
-import { mergeRowsById, compactAttendanceRows, trimRowsByAge, missingLocalIdsWithAge, trimAttendanceRows, markTombstones, unmarkTombstones, nisanFor, pruneNisan, mergeStoreValue, localStoreView } from './cloudSync';
+import { mergeRowsById, compactAttendanceRows, trimRowsByAge, missingLocalIdsWithAge, trimAttendanceRows, markTombstones, unmarkTombstones, nisanFor, pruneNisan, mergeStoreValue, localStoreView,
+  filterLokalSaja, readKnownCloudIds, knowCloudIds, forgetCloudIds, replaceCloudIds, flushKnownIdsNow } from './cloudSync';
 
 // Stub localStorage (cloudSync membaca/menulis key di sini saat nisan dipasang).
 const store = new Map<string, string>();
@@ -41,6 +42,51 @@ const ids = (rows: R[]) => rows.map(r => r.id).sort().join(',');
   const local: R[] = [{ id: 'a', v: 1 }];
   const merged = mergeRowsById([{ id: 'x', v: 9 }], local, new Set(['a', 'x']));
   assert.equal(ids(merged), 'a,x');
+}
+
+// ============ Filter lokal-saja (bug kuota tulis 10-11 Nov) ============
+// Tanpa sumber id-cloud yang bisa dipercaya (app dibuka dari awal, catatan
+// belum ada) → KOSONG: jangan pernah menganggap SEMUA baris lokal lokal-saja
+// (dulu mem-push ulang seluruh cache → kuota D1 habis jam 08.03).
+{
+  const lokal: R[] = [{ id: 'a', v: 1 }, { id: 'b', v: 1 }, { id: 'c', v: 1 }];
+  assert.deepEqual(filterLokalSaja(lokal, new Set(), null), [], 'tanpa sumber: jangan menebak');
+  // Pindai ID / catatan persisten: hanya yang tidak ada di sumber yang naik.
+  assert.deepEqual(filterLokalSaja(lokal, new Set(), new Set(['a', 'b'])).map(r => r.id), ['c']);
+  // Baseline sesi (Map) juga diterima sebagai sumber.
+  assert.deepEqual(filterLokalSaja(lokal, new Set(), new Map([['a', '{}']])).map(r => r.id).sort(), ['b', 'c']);
+  // Baris bernisan tidak pernah dianggap lokal-saja (sengaja dihapus).
+  assert.deepEqual(filterLokalSaja(lokal, new Set(['c']), new Set(['a'])).map(r => r.id), ['b']);
+}
+
+// ============ Catatan persisten id-cloud ============
+{
+  // Isi → terbaca; replace menimpa; know menambah; forget menghapus.
+  knowCloudIds('employees', ['e1', 'e2']);
+  assert.ok(readKnownCloudIds('employees')!.has('e1') && readKnownCloudIds('employees')!.has('e2'));
+  replaceCloudIds('employees', ['e3']);
+  assert.deepEqual([...readKnownCloudIds('employees')!].sort(), ['e3'], 'replace menimpa seluruh catatan');
+  knowCloudIds('employees', ['e4']);
+  forgetCloudIds('employees', ['e3']);
+  assert.deepEqual([...readKnownCloudIds('employees')!].sort(), ['e4'], 'know menambah & forget menghapus');
+  // key kosong / id kosong → no-op, tidak melempar.
+  knowCloudIds('', ['x']);
+  knowCloudIds('employees', []);
+  assert.equal(readKnownCloudIds(''), null);
+  // Persist: tersimpan ke localStorage, dipangkas ke id yang masih di cache.
+  store.set('nxty_employees', JSON.stringify([{ id: 'e4' }, { id: 'e9' }]));
+  flushKnownIdsNow();
+  assert.deepEqual(JSON.parse(store.get('nxty_cloud_ids_employees') || '[]'), ['e4'],
+    'catatan tersimpan & ikut retensi cache');
+}
+{
+  // Simulasi app dibuka dari awal: key yang belum disentuh sesi ini dibaca dari
+  // localStorage; key tanpa catatan → null (pemicu pindai ID sekali); rusak → null.
+  store.set('nxty_cloud_ids_products', JSON.stringify(['p1', 'p2']));
+  assert.deepEqual([...readKnownCloudIds('products')!].sort(), ['p1', 'p2']);
+  assert.equal(readKnownCloudIds('belum_ada'), null);
+  store.set('nxty_cloud_ids_rusak', '{bukan-json');
+  assert.equal(readKnownCloudIds('rusak'), null);
 }
 
 // Tidak ada duplikat kalau id berubah muncul di local & changed.

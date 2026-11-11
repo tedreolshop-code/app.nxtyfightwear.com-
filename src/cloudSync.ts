@@ -93,6 +93,9 @@ const PER_ROW: PerRowSync[] = [
   { key: 'notifications', table: 'ari_notifications', ready: !isCloudEnabled },
 ];
 const perRowByKey = new Map(PER_ROW.map(cfg => [cfg.key, cfg]));
+// Kebalikan di atas: nama tabel → key cache (entri outbox menyimpan tabel, bukan key).
+const tableToKey = new Map<string, string>(PER_ROW.map(cfg => [cfg.table, cfg.key]));
+tableToKey.set(ATT_TABLE, ATT_KEY);
 
 export type CloudStatus = 'offline' | 'connecting' | 'online' | 'error';
 let status: CloudStatus = isCloudEnabled ? 'connecting' : 'offline';
@@ -443,7 +446,15 @@ export const flushOutbox = async (): Promise<void> => {
       try {
         if (item.kind === 'rows') {
           const masihGagal = await sendRowsWithIsolation(item.table, item.rows);
-          if (masihGagal.length > 0) remaining.push({ ...item, rows: masihGagal });
+          if (masihGagal.length > 0) {
+            remaining.push({ ...item, rows: masihGagal });
+            // Yang berhasil dikirim dicatat — tidak di-push ulang sinkron berikutnya.
+            const gagalIds = new Set(masihGagal.map(r => r.id));
+            knowCloudIds(tableToKey.get(item.table) ?? '',
+              item.rows.map(r => r.id).filter(id => !gagalIds.has(id)));
+          } else {
+            knowCloudIds(tableToKey.get(item.table) ?? '', item.rows.map(r => r.id));
+          }
         } else {
           await sendOutboxStore(item.key);
         }
@@ -580,6 +591,100 @@ const readLocalRows = (key: string): RowLike[] => {
 const cloudSnapshot = new Map<string, Map<string, string>>();
 const snapshotFrom = (rows: RowLike[]): Map<string, string> =>
   new Map(rows.filter(r => r && r.id).map(r => [r.id, JSON.stringify(r)]));
+
+// ===================== Catatan persisten id-yang-pasti-ada-di-cloud =====================
+// BUG 10-11 Nov (kuota tulis D1 habis jam 08.03/08.23): cloudSnapshot hanya di
+// memori — app dibuka dari awal, baseline kosong; del-counter tak berubah →
+// cloudIds null → filter lokal-saja membaca "belum tahu" sebagai "semua baris
+// lokal belum naik" → SELURUH cache di-push ulang (12 entri outbox dibuat ulang
+// dalam 5 detik setelah app dibuka, padahal semua barisnya sudah di cloud).
+//
+// Kini id yang SUDAH PASTI ada di cloud dicatat PERSISTEN per key. Sumbernya
+// hanya kebenaran pasti: hasil pindai ID / tarikan (baris yang dibaca dari
+// cloud) dan push yang sukses. Dipangkas mengikuti retensi cache saat disimpan,
+// dan dipakai sebagai pembanding lokal-saja ketika pindai ID dilewati
+// (del-counter tak berubah) — termasuk setelah app dibuka dari awal.
+const CLOUD_IDS_PREFIX = 'nxty_cloud_ids_';
+const cloudKnownIds = new Map<string, Set<string>>();
+
+/** Catatan id-cloud untuk key: null = belum tahu (belum pernah pindai/tercatat). */
+export const readKnownCloudIds = (key: string): Set<string> | null => {
+  const cached = cloudKnownIds.get(key);
+  if (cached) return cached;
+  try {
+    const raw = localStorage.getItem(CLOUD_IDS_PREFIX + key);
+    if (!raw) return null;
+    const arr = JSON.parse(raw) as unknown;
+    if (!Array.isArray(arr)) return null;
+    const set = new Set(arr.filter((x): x is string => typeof x === 'string'));
+    cloudKnownIds.set(key, set);
+    return set;
+  } catch { return null; }
+};
+
+const knownIdsDirty = new Set<string>();
+let knownIdsTimer: ReturnType<typeof setTimeout> | null = null;
+const persistKnownIds = (key: string): void => {
+  const set = cloudKnownIds.get(key);
+  if (!set) return;
+  // Pangkas ke id yang masih dipegang cache — catatan ikut retensi perangkat
+  // (cache dipangkas 30-90 hari), ukurannya berhingga.
+  const lokal = new Set(readLocalRows(key).map(r => r?.id).filter(Boolean) as string[]);
+  const kept = [...set].filter(id => lokal.has(id));
+  cloudKnownIds.set(key, new Set(kept));
+  setItemQuotaSafe(CLOUD_IDS_PREFIX + key, JSON.stringify(kept));
+};
+/** Simpan sekarang catatan yang tertunda (dipanggil sebelum halaman ditutup). */
+export const flushKnownIdsNow = (): void => {
+  if (knownIdsTimer) { clearTimeout(knownIdsTimer); knownIdsTimer = null; }
+  for (const key of [...knownIdsDirty]) { knownIdsDirty.delete(key); persistKnownIds(key); }
+};
+const scheduleKnownIdsPersist = (): void => {
+  if (knownIdsTimer) return;
+  knownIdsTimer = setTimeout(() => { knownIdsTimer = null; flushKnownIdsNow(); }, 2000);
+};
+
+/** Catat id yang SUDAH PASTI ada di cloud (hasil tarikan / push sukses). */
+export const knowCloudIds = (key: string, ids: string[]): void => {
+  if (!key || ids.length === 0) return;
+  let set = readKnownCloudIds(key);
+  if (!set) { set = new Set(); cloudKnownIds.set(key, set); }
+  let tambah = false;
+  for (const id of ids) if (id && !set.has(id)) { set.add(id); tambah = true; }
+  if (tambah) { knownIdsDirty.add(key); scheduleKnownIdsPersist(); }
+};
+
+/** Lupakan id — barisnya benar-benar sudah dihapus dari cloud (hapus sah). */
+export const forgetCloudIds = (key: string, ids: string[]): void => {
+  const set = readKnownCloudIds(key);
+  if (!set || ids.length === 0) return;
+  let buang = false;
+  for (const id of ids) if (set.delete(id)) buang = true;
+  if (buang) { knownIdsDirty.add(key); scheduleKnownIdsPersist(); }
+};
+
+/** Timpa catatan dari sumber PASTI (pindai ID / tarikan penuh). */
+export const replaceCloudIds = (key: string, ids: Iterable<string>): void => {
+  if (!key) return;
+  cloudKnownIds.set(key, new Set(ids));
+  knownIdsDirty.add(key);
+  scheduleKnownIdsPersist();
+};
+
+/**
+ * Pilih baris lokal yang belum pasti ada di cloud (lokal-saja: dibuat luring /
+ * push-nya gagal) — inilah yang WAJIB naik. `sumber` = kumpulan id yang sudah
+ * pasti ada di cloud, berlapis: hasil pindai ID → catatan persisten → baseline
+ * sesi. Bila tidak ada sumber bisa dipercaya → KOSONG: menebak "semua baris
+ * lokal = lokal-saja" mem-push ulang seluruh cache — penyebab kuota tulis
+ * D1 habis jam 08.03 (10-11 Nov).
+ */
+export const filterLokalSaja = <T extends { id?: string }>(
+  localRows: T[], nisan: Set<string>, sumber: { has(id: string): boolean } | null,
+): T[] =>
+  sumber
+    ? localRows.filter(r => r && r.id && !nisan.has(r.id) && !sumber.has(r.id))
+    : [];
 
 // Kunci catatan yang terus tumbuh — dilepas dari cache saat sudah tua (cloud tetap utuh).
 const localTrimRule = (key: string): { field: string; hari: number } | null => {
@@ -758,6 +863,7 @@ const pushRowsToCloud = (cfg: PerRowSync, list: RowLike[]): void => {
         }
         if (prev) markTombstones(cfg.key, [...prev.keys()]);
         cloudSnapshot.set(cfg.key, new Map());
+        replaceCloudIds(cfg.key, []); // cloud kini kosong — catatan id ikut dikosongkan
         if (status !== 'online') setStatus('online');
         return;
       }
@@ -799,6 +905,11 @@ const pushRowsToCloud = (cfg: PerRowSync, list: RowLike[]): void => {
           recordSyncConflicts(cfg.key, konflik.map(c => c.id));
           for (const c of konflik) conflictSuppressed.set(c.id, Date.now() + 10 * 60_000);
         }
+        // Catat id yang benar-benar tersimpan (bukan yang ditolak/dikonflikkan)
+        // — bekal filter lokal-saja agar tidak di-push ulang (bug kuota 10-11 Nov).
+        const gagalIds = new Set(gagal.map(f => String(f.id)));
+        const konflikIds = new Set(konflik.map(c => String(c.id)));
+        knowCloudIds(cfg.key, changed.map(r => r.id).filter(id => !gagalIds.has(id) && !konflikIds.has(id)));
       }
 
       // Baris yang hilang dari daftar → hapus, HANYA bila lolos pengaman.
@@ -828,6 +939,7 @@ const pushRowsToCloud = (cfg: PerRowSync, list: RowLike[]): void => {
             throw delErr;
           }
           markTombstones(cfg.key, removed);
+          forgetCloudIds(cfg.key, removed); // sudah tidak ada di cloud
         }
       }
 
@@ -890,10 +1002,14 @@ const pushLocalOnlyRows = async (cfg: PerRowSync, rows: RowLike[]): Promise<bool
       masihGagal = chunk; // gagal sementara (luring/limit): tahan seluruh sisa
     }
     if (masihGagal.length > 0) {
+      // Yang berhasil dikirim dicatat (tidak di-push ulang); sisanya masuk outbox.
+      const gagalIds = new Set(masihGagal.map(r => r.id));
+      knowCloudIds(cfg.key, chunk.map(r => r.id).filter(id => !gagalIds.has(id)));
       queueOutbox({ id: `rows:${cfg.table}`, kind: 'rows', table: cfg.table, rows: masihGagal, ts: Date.now() });
       warnOnce(`${masihGagal.length} data "${cfg.key}" belum naik ke server — akan dicoba ulang otomatis.`);
       return false;
     }
+    knowCloudIds(cfg.key, chunk.map(r => r.id));
   }
   return true;
 };
@@ -1174,6 +1290,7 @@ const flushPendingAttendance = async (): Promise<void> => {
     for (const p of chunk) sentIds.add(p.id);
   }
   writePendingAttendance(readPendingAttendance().filter(r => !sentIds.has(r.id)));
+  knowCloudIds(ATT_KEY, [...sentIds]);
   notifyOutbox();
 };
 
@@ -1194,6 +1311,7 @@ export const pushAttendanceToCloud = (record: AttendanceRecordLike): void => {
       const pending = readPendingAttendance();
       if (!pending.some(r => r.id === record.id)) writePendingAttendance([...pending, record]);
     } else {
+      knowCloudIds(ATT_KEY, [record.id]);
       void flushPendingAttendance();
     }
   })();
@@ -1557,39 +1675,53 @@ export const initCloudSync = async (): Promise<void> => {
       const localIds = new Set(local.map(r => r.id).filter(Boolean) as string[]);
       if (tomb.size > 0) console.info(`[cloudSync] Nisan aktif: ${tomb.size} id absensi sudah dibersihkan dari cloud.`);
       if (incremental) {
-        // Del-counter tak berubah → tak ada absensi terhapus → lewati pindai ID.
-        const cloudIdAge = delsUnchanged(ATT_TABLE)
-          ? new Map<string, string>()
-          : await fetchAllIdsWithCreatedAt(ATT_TABLE);
-        const cloudIds = new Set(cloudIdAge.keys());
+        // Del-counter tak berubah → tak ada absensi terhapus → lewati pindai ID
+        // (hemat baca) — KECUALI catatan id-cloud belum ada (app dibuka dari
+        // awal): pindai SEKALI, baca murah, daripada menebak "semua baris lokal
+        // = lokal-saja" dan mem-banjiri server upsert per baris (bug kuota
+        // 10-11 Nov).
+        let cloudIdAge: Map<string, string> | null = null;
+        if (!delsUnchanged(ATT_TABLE) || !readKnownCloudIds(ATT_KEY)) {
+          cloudIdAge = await fetchAllIdsWithCreatedAt(ATT_TABLE);
+          replaceCloudIds(ATT_KEY, cloudIdAge.keys());
+        }
+        const cloudIds = new Set((cloudIdAge ?? new Map<string, string>()).keys());
         // Heal daftar bolong: baris yang tidak ada di perangkat tak akan pernah
         // lolos filter "created_at > watermark" — tarik langsung by-id (lihat
         // komentar fetchRowsByIds). Tanpa ini daftar absensi bisa selamanya kurang.
         // Baris yang sengaja dilepas dari perangkat (watermark pemangkasan) tidak
         // dianggap hilang supaya tidak ditarik ulang. Baris bernisan dilewati.
-        const missing = missingLocalIdsWithAge(localIds, cloudIdAge, readAttendancePruneUntil())
+        const missing = missingLocalIdsWithAge(localIds, cloudIdAge ?? new Map<string, string>(), readAttendancePruneUntil())
           .filter(id => !tomb.has(id));
         if (missing.length > 0) console.info(`[cloudSync] Mengisi ulang ${missing.length} baris absensi yang hilang dari perangkat.`);
         const refilled = missing.length > 0
           ? (await fetchRowsByIds(ATT_TABLE, missing)).map(r => r.value as AttendanceRecordLike).filter(r => r && r.id && !tomb.has(r.id))
           : [];
+        knowCloudIds(ATT_KEY, [...freshRecs, ...refilled].map(r => r.id));
         const merged = mergeRowsById(
           [...freshRecs, ...refilled] as { id: string }[],
           local as { id: string }[],
           cloudIds,
+          // Absensi dibuat luring (belum naik) tidak boleh dibuang dari cache —
+          // masih harus di-push (keepIds, sama seperti tabel per-baris).
+          new Set(local.filter(r => r.id && (!cloudIds || !cloudIds.has(r.id)) && !tomb.has(r.id)).map(r => r.id)),
         ) as AttendanceRecordLike[];
         // Nisan: baris yang sengaja dihapus dari cloud tidak boleh menetap di
         // daftar lokal — buang, dan LARANG dikirim ulang di bawah.
         const tombTouched = merged.length !== merged.filter(r => !tomb.has(r.id)).length;
         const cleanMerged = merged.filter(r => !tomb.has(r.id));
-        const localOnly = local.filter(r => r.id && !cloudIds.has(r.id) && !tomb.has(r.id));
+        // Lokal-saja: baris yang belum pasti ada di cloud — WAJIB naik. Sumber
+        // id: hasil pindai (segar) → catatan persisten. Tanpa sumber: kosong,
+        // jangan menebak (bug kuota 10-11 Nov).
+        const localOnly = filterLokalSaja(local, tomb, cloudIds.size > 0 ? cloudIds : readKnownCloudIds(ATT_KEY));
         if (tombTouched) console.info(`[cloudSync] ${merged.length - cleanMerged.length} baris absensi nisan dibuang dari perangkat.`);
         // Tulis gagal (storage penuh) → attPullOk false → watermark absensi diam.
         attPullOk = writeLocalAttendance(sortAttendance(cleanMerged));
         for (const rec of localOnly) pushAttendanceToCloud(rec);
       } else {
         const cloudIds = new Set(freshRecs.map(r => r.id));
-        const localOnly = local.filter(r => r.id && !cloudIds.has(r.id) && !tomb.has(r.id));
+        replaceCloudIds(ATT_KEY, cloudIds); // tarikan penuh = kebenaran pasti
+        const localOnly = filterLokalSaja(local, tomb, cloudIds);
         attPullOk = writeLocalAttendance(sortAttendance([...freshRecs.filter(r => !tomb.has(r.id)), ...localOnly]));
       }
       void flushPendingAttendance();
@@ -1628,7 +1760,22 @@ export const initCloudSync = async (): Promise<void> => {
           const baselineAwal = cloudSnapshot.get(cfg.key);
           // Log append-only tidak pernah hapus baris → lewati cek id (hemat egress).
           // Del-counter tak berubah → tak ada yang terhapus di cloud → skip cek id.
-          const cloudIds = (cfg.appendOnly || delsUnchanged(cfg.table)) ? null : await fetchAllIds(cfg.table);
+          // Pembanding lokal-saja kini CATATAN PERSISTEN id-cloud: bila catatan
+          // belum ada (app dibuka dari awal, baseline cuma di memori) → pindai ID
+          // SEKALI (baca murah) — jangan menebak "semua baris lokal = lokal-saja",
+          // itu yang mem-push ulang seluruh cache & menghabiskan kuota (10-11 Nov).
+          let cloudIds: Set<string> | null = (cfg.appendOnly || delsUnchanged(cfg.table)) ? null : await fetchAllIds(cfg.table);
+          if (cloudIds) {
+            replaceCloudIds(cfg.key, cloudIds); // pindai segar = kebenaran pasti
+          } else if (!cfg.appendOnly) {
+            const known = readKnownCloudIds(cfg.key);
+            if (!known && localRows.length > 0) {
+              cloudIds = await fetchAllIds(cfg.table);
+              replaceCloudIds(cfg.key, cloudIds);
+            } else if (known && changed.length > 0) {
+              knowCloudIds(cfg.key, changed.map(r => r.id)); // baris tarikan = pasti di cloud
+            }
+          }
           // Heal daftar bolong (lihat fetchRowsByIds): tanpa ini perangkat yang
           // kehilangan baris lama tak pernah mendapatkannya kembali. Id bernisan
           // (sengaja dihapus tapi penghapusan cloudnya gagal) TIDAK diisi ulang.
@@ -1648,12 +1795,12 @@ export const initCloudSync = async (): Promise<void> => {
           if (!cfg.ready) anyTableFailed = true;
           // Baris yang HANYA ada di perangkat ini (dibuat saat luring / push gagal)
           // wajib naik — TANPA batas jumlah (audit perangkat); baris tetap di cache
-          // sampai server mengonfirmasi (keepIds di merge di atas).
-          // cloudIds null ≠ "semua lokal-saja": pakai baseline (baris yang belum
-          // pernah diketahui ada di cloud saja yang dinaikkan).
+          // sampai server mengonfirmasi (keepIds di merge di atas). Sumber id cloud
+          // dipilih berlapis: pindai ID → catatan persisten → baseline sesi; tanpa
+          // sumber bisa dipercaya → KOSONG (jangan menebak — bug kuota 10-11 Nov).
           if (!cfg.appendOnly && cfg.ready) {
-            const lokalSaja = localRows.filter(r => r && r.id && !nisan.has(r.id)
-              && (cloudIds ? !cloudIds.has(r.id) : !(baselineAwal?.has(r.id) ?? false))) as RowLike[];
+            const lokalSaja = filterLokalSaja(localRows, nisan,
+              cloudIds ?? readKnownCloudIds(cfg.key) ?? baselineAwal ?? null);
             const okKirim = await pushLocalOnlyRows(cfg, lokalSaja);
             if (!okKirim) anyTableFailed = true;
           }
@@ -1662,6 +1809,7 @@ export const initCloudSync = async (): Promise<void> => {
 
         const cloudRows = (await fetchAllRows(cfg.table)).map(r => r.value as RowLike).filter(r => r && r.id && !nisan.has(r.id));
         const cloudIdSet = new Set(cloudRows.map(r => r.id));
+        if (!cfg.appendOnly) replaceCloudIds(cfg.key, cloudIdSet); // tarikan penuh = kebenaran pasti
         const localRows = readLocalRows(cfg.key);
         if (cloudRows.length > 0) {
           // Lokal-saja tetap dipertahankan di cache & dinaikkan ke cloud TANPA
@@ -1679,6 +1827,7 @@ export const initCloudSync = async (): Promise<void> => {
             if (localRows.length === 0 && !writeLocalRows(cfg.key, seed)) anyTableFailed = true;
             await seedRowsToCloud(cfg, seed);
             cloudSnapshot.set(cfg.key, snapshotFrom(seed));
+            if (!cfg.appendOnly) replaceCloudIds(cfg.key, seed.map(r => r.id));
           }
           cfg.ready = true;
         }
@@ -1764,21 +1913,27 @@ const resyncDataOnWakeup = async (): Promise<void> => {
       const fresh = attRows.map(r => r.value as AttendanceRecordLike).filter(r => r && r.id && !tomb.has(r.id));
       const local = readLocalAttendance();
       if (fresh.length > 0) {
-        // Del-counter tak berubah → tak ada absensi terhapus → lewati pindai ID.
-        const cloudIdAge = delsUnchanged(ATT_TABLE)
-          ? new Map<string, string>()
-          : await fetchAllIdsWithCreatedAt(ATT_TABLE);
-        const cloudIds = new Set(cloudIdAge.keys());
+        // Del-counter tak berubah → tak ada absensi terhapus → lewati pindai ID —
+        // kecuali catatan id-cloud belum ada (app dibuka dari awal): pindai SEKALI.
+        let cloudIdAge: Map<string, string> | null = null;
+        if (!delsUnchanged(ATT_TABLE) || !readKnownCloudIds(ATT_KEY)) {
+          cloudIdAge = await fetchAllIdsWithCreatedAt(ATT_TABLE);
+          replaceCloudIds(ATT_KEY, cloudIdAge.keys());
+        }
+        const cloudIds = new Set((cloudIdAge ?? new Map<string, string>()).keys());
         const localIds = new Set(local.map(r => r.id).filter(Boolean) as string[]);
-        const missing = missingLocalIdsWithAge(localIds, cloudIdAge, readAttendancePruneUntil())
+        const missing = missingLocalIdsWithAge(localIds, cloudIdAge ?? new Map<string, string>(), readAttendancePruneUntil())
           .filter(id => !tomb.has(id));
         const refilled = missing.length > 0
           ? (await fetchRowsByIds(ATT_TABLE, missing)).map(r => r.value as AttendanceRecordLike).filter(r => r && r.id && !tomb.has(r.id))
           : [];
+        knowCloudIds(ATT_KEY, [...fresh, ...refilled].map(r => r.id));
         const merged = mergeRowsById(
           [...fresh, ...refilled] as { id: string }[],
           local as { id: string }[],
           cloudIds,
+          // Absensi dibuat luring (belum naik) tidak boleh dibuang dari cache.
+          new Set(local.filter(r => r.id && (!cloudIds || !cloudIds.has(r.id)) && !tomb.has(r.id)).map(r => r.id)),
         ) as AttendanceRecordLike[];
         // Tulis lokal gagal (storage penuh) → watermark absensi jangan maju.
         attPullOk = writeLocalAttendance(sortAttendance(merged.filter(r => !tomb.has(r.id))));
@@ -1804,7 +1959,20 @@ const resyncDataOnWakeup = async (): Promise<void> => {
         // cloudIds null TIDAK boleh dibaca "semua baris lokal = lokal-saja".
         const baselineAwal = cloudSnapshot.get(cfg.key);
         // Del-counter tak berubah → tak ada yang terhapus di cloud → skip cek id.
-        const cloudIds = (cfg.appendOnly || delsUnchanged(cfg.table)) ? null : await fetchAllIds(cfg.table);
+        // Pembanding lokal-saja kini catatan persisten; bila belum ada (app dibuka
+        // dari awal) pindai ID SEKALI, jangan menebak (bug kuota 10-11 Nov).
+        let cloudIds: Set<string> | null = (cfg.appendOnly || delsUnchanged(cfg.table)) ? null : await fetchAllIds(cfg.table);
+        if (cloudIds) {
+          replaceCloudIds(cfg.key, cloudIds);
+        } else if (!cfg.appendOnly) {
+          const known = readKnownCloudIds(cfg.key);
+          if (!known && localRows.length > 0) {
+            cloudIds = await fetchAllIds(cfg.table);
+            replaceCloudIds(cfg.key, cloudIds);
+          } else if (known && changed.length > 0) {
+            knowCloudIds(cfg.key, changed.map(r => r.id));
+          }
+        }
         const missing = cloudIds
           ? missingLocalIds(new Set(localRows.map(r => r?.id).filter(Boolean)), cloudIds).filter(id => !nisan.has(id))
           : [];
@@ -1822,8 +1990,10 @@ const resyncDataOnWakeup = async (): Promise<void> => {
         cfg.ready = sukses;
         if (!sukses) anyFailed = true; // tulis lokal gagal: watermark jangan maju
         if (!cfg.appendOnly && cfg.ready) {
-          const lokalSaja = localRows.filter(r => r && r.id && !nisan.has(r.id)
-            && (cloudIds ? !cloudIds.has(r.id) : !(baselineAwal?.has(r.id) ?? false))) as RowLike[];
+          // Sumber id cloud berlapis: pindai → catatan persisten → baseline sesi;
+          // tanpa sumber bisa dipercaya → kosong (jangan menebak — bug kuota 10-11 Nov).
+          const lokalSaja = filterLokalSaja(localRows, nisan,
+            cloudIds ?? readKnownCloudIds(cfg.key) ?? baselineAwal ?? null);
           const okKirim = await pushLocalOnlyRows(cfg, lokalSaja);
           if (!okKirim) anyFailed = true;
         }
@@ -2194,6 +2364,7 @@ if (typeof window !== 'undefined') {
   // Koneksi kembali → antar seluruh antrian secepatnya (jangan tunggu detak 60 dtk).
   window.addEventListener('online', () => { void flushOutbox(); scheduleOutboxFlush(0); });
   window.addEventListener('beforeunload', (e) => {
+    flushKnownIdsNow(); // catatan id-cloud jangan hilang saat ditutup sebelum debounce
     if (getOutboxPendingCount() > 0) {
       e.preventDefault();
       e.returnValue = 'Masih ada perubahan yang belum tersimpan. Biarkan aplikasi terbuka sampai tersimpan.';

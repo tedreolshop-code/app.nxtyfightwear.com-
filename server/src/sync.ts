@@ -252,6 +252,22 @@ const dupSalesError = async (env: Env, rows: Record<string, unknown>[]): Promise
   return null;
 };
 
+/** Bentuk kanonik nilai baris untuk perbandingan; null = tak bisa dibandingkan. */
+const kanonikNilai = (v: unknown): string | null => {
+  if (v === null || v === undefined) return null;
+  try {
+    if (typeof v === 'string') return v.length === 0 ? null : JSON.stringify(JSON.parse(v));
+    if (typeof v === 'object') return JSON.stringify(v);
+  } catch { return null; }
+  return null;
+};
+
+/** Nilai baris identik (isi sama persis) — pembanding teks JSON kanonik. */
+const nilaiBarisSama = (a: unknown, b: unknown): boolean => {
+  const ka = kanonikNilai(a);
+  return ka !== null && ka === kanonikNilai(b);
+};
+
 export const handleUpsert = async (env: Env, body: UpsertBody): Promise<ApiResult> => {
   const table = String(body.table ?? '');
   if (!READABLE_TABLES.includes(table)) return fail(`Tabel ${table} tidak dapat ditulis.`);
@@ -293,30 +309,38 @@ export const handleUpsert = async (env: Env, body: UpsertBody): Promise<ApiResul
   // ada (lookup terindeks per ≤90 id), tolak yang lebih tua, laporkan daftarnya
   // supaya klien menandainya untuk admin — tidak ada editan hilang diam-diam.
   let conflicts: Array<{ id: string; server_updated_at: string }> = [];
+  // Baris dengan NILAI persis sama yang sudah ada di server dilempar tanpa
+  // ditulis ulang: klien lama / antrean usang mem-push ulang cache yang sudah
+  // ada di cloud — menulisnya lagi hanya membakar kuota tulis harian D1 tanpa
+  // mengubah data apa pun (bug kuota 10-11 Nov: kuota habis jam 08.03).
+  // updated_at sengaja tidak di-refresh: nilai sama = tidak ada yang perlu
+  // disebar ke perangkat lain, stamp pun tidak perlu bergerak.
+  const identik = new Set<string>();
   if (table !== 'ari_store' && !ignore) {
     const byId = new Map(rows.map(r => [String(r[conflictCol]), r]));
     for (let i = 0; i < rows.length; i += IN_CHUNK) {
       const chunkIds = rows.slice(i, i + IN_CHUNK).map(r => String(r[conflictCol]));
       const existingRows = await env.DB.prepare(
-        `SELECT id, updated_at FROM ${table} WHERE id IN (${chunkIds.map(() => '?').join(',')})`
-      ).bind(...chunkIds).all<{ id: string; updated_at: string }>();
+        `SELECT id, updated_at, value FROM ${table} WHERE id IN (${chunkIds.map(() => '?').join(',')})`
+      ).bind(...chunkIds).all<{ id: string; updated_at: string; value: unknown }>();
       for (const ex of existingRows.results ?? []) {
         const incoming = byId.get(String(ex.id));
         if (!incoming) continue;
+        if (nilaiBarisSama(incoming.value, ex.value)) { identik.add(String(ex.id)); continue; }
         const incAt = String(incoming.updated_at ?? '');
         if (incAt && ex.updated_at && incAt < ex.updated_at) {
           conflicts.push({ id: ex.id, server_updated_at: ex.updated_at });
         }
       }
     }
-    if (conflicts.length > 0) {
-      const conflictIds = new Set(conflicts.map(c => c.id));
+    if (identik.size > 0 || conflicts.length > 0) {
+      const buang = new Set<string>([...identik, ...conflicts.map(c => c.id)]);
       for (let idx = rows.length - 1; idx >= 0; idx--) {
-        if (conflictIds.has(String(rows[idx][conflictCol]))) rows.splice(idx, 1);
+        if (buang.has(String(rows[idx][conflictCol]))) rows.splice(idx, 1);
       }
     }
   }
-  if (rows.length === 0) return ok({ changes: 0, conflicts });
+  if (rows.length === 0) return ok({ changes: 0, conflicts, failed: [] });
 
   // Kolom dup_hash (anti penjualan ganda) dihitung server agar backfill & client
   // lama otomatis konsisten.
